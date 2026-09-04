@@ -1,0 +1,104 @@
+# 全部 100 条待决问题
+
+---
+
+- [parity] 必须在 2-3 台不同补丁级别的真实 Windows 11 上跑 PRAGMA table_info(Note) / table_info(Media) / table_info(Stroke) / table_info(User) / table_info(Insight)，把完整 DDL 存档进仓库作为迁移器的唯一权威依据——本章 DDL 来自公开取证样本，够写方案但对生产代码覆盖度不足
+- [parity] 经典版的快捷键必须在真机上逐个按一遍验证，特别是 Ctrl+T（删除线）和 Ctrl+Shift+L（项目符号）这两条在不同版本上有出入的；错一个就是「复刻得不对」的差评
+- [parity] 需要构造 3-5 份含粗体/斜体/下划线/删除线/项目符号/图片/手写墨迹的真实便笺样本，且要同时覆盖「已同步（LastServerVersion 非空）」和「从未同步（仅 Text）」两条路径，验证两个解析器的输出差异
+- [parity] WindowPosition 值的完整语法需要在多显示器 + 混合 DPI 的真机上采样验证：是否总是 ManagedPosition= 前缀？是否存在其它变体（如未托管位置）？负坐标的实际写法是什么？
+- [parity] 颜色语义：照抄微软 7 个色值（迁移视觉无感）还是重新设计色板并做映射（品牌辨识度）？建议照抄做默认、另开自定义色，但需用户拍板
+- [parity] 是否需要支持从 Simple Sticky Notes / Notezilla / Zhorn Stickies 导入？每家格式都要单独逆向，需按实际用户量排优先级，MVP 阶段建议一个都不做
+- [parity] macOS 侧没有 Windows 便笺，Mac 用户的「迁移」入口是什么？Apple 备忘录导出的 .html？系统自带 Stickies.app 的 StickiesDatabase？需要单独定义，且这决定了 Mac 版是否有获客抓手
+- [parity] Win+D 豁免的具体实现方式需要原型验证：是监听前台窗口变化后主动 showInactive()，还是设置 WS_EX_TOOLWINDOW，还是 SetParent 到 Progman？三种方案的副作用（任务栏、Alt+Tab、多桌面）都不同，必须实测
+- [parity] 版本历史（v1.1）的保留策略参数：每条笔记最多多少快照、超过几天开始按天合并、快照是否参与云同步？直接影响本地库体积和同步流量，需结合第 5 章一起定
+- [parity] 是否为 macOS 写一个原生模块实现 kCGDesktopIconWindowLevel+1 的真·贴桌面层？成本约 3 人天 + App Store 分发风险，需要确认这是不是真实刚需还是初稿的想当然
+- [desktop] 【最高优先级，直接决定 2 周工期】用户说的「贴在桌面」到底要哪一种？Windows 自带便笺其实是普通窗口，Win+D 会一起最小化它。如果用户只是要「便笺散落在桌面上不被工作窗口挡住」，置顶 + 普通两档就够，整个 §2.2.3 可砍
+- [desktop] 是否需要「真正在桌面图标之下」（Wallpaper Engine 那种视觉）？需要的话方案 B 满足不了，必须接受方案 A 的不可打字限制，产品上要做成「只读展示 + 双击弹出独立编辑窗」的双窗口模型
+- [desktop] 开发者/公司主体注册在哪个国家/地区？直接决定 Azure Artifact Signing 是否可用（有地域与实体资格限制），还是要退到 OV 证书 + 云签名（成本约 5-8 倍）
+- [desktop] 是否已有 Apple Developer Program 账号（$99/年）和 App Store Connect API Key？没有的话预留 1-2 周审核时间；个人账号与公司账号的 Developer ID 名称不同，会影响签名身份连续性
+- [desktop] macOS 最低支持版本定在哪？SMAppService 要求 macOS 13+。要支持 macOS 12 的话自启只能走 LaunchAgent，用户在「登录项」里看不到 App 名字
+- [desktop] 同时打开的便笺数量：本章定的是软上限 20 / 硬上限 40，但这两个数字应该由用户实际习惯决定。超过 40 就需要考虑窗口虚拟化，那是另一个量级的工作
+- [desktop] 是否需要 Linux 支持？当前方案完全不考虑（WebKitGTK 短板 + 桌面环境窗口层级碎片化）。若后续要加，贴桌面在 Wayland 下基本无解
+- [desktop] 是否需要 Windows on ARM（aarch64-pc-windows-msvc）构建？CI 矩阵从 3 个 target 变 4 个，构建时间和签名次数都增加
+- [desktop] Cloudflare 账号是否已有？R2 + Worker 需绑定域名，与第 5 章的 Cloudflare Worker 决策要统一（同一账号、同一套域名规划）
+- [desktop] 富文本编辑器选 Tiptap 3.31 还是自研？影响每个便笺窗口的内存预算（Tiptap + 常用扩展约 300KB gzip，每窗口一份），需与编辑器章节对齐
+- [desktop] macOS 27 预计在 2026 秋季发布。是否需要在 v1 发版前就在 27 beta 上验证窗口层级与签名链？还是接受 v1 只保证 macOS 26.x，27 发布后再补一轮
+- [editor] 【需用户拍板, 优先级最高】目标 Windows 版本的便笺当前是否仍支持墨迹手写? 需求 1 写的是完美复刻所有功能。若仍支持, v1 砍掉墨迹就是明确违背需求, 需要用户在 4-6 周工期与需求完整性之间做取舍, 不能由技术团队单方面推迟
+- [editor] 是否需要 Web 端? 若需要, 客户端那套 (SQLCipher + simple 扩展 + FTS5) 在浏览器里全部不可用, 必须走 sqlite-wasm + OPFS 或退化成纯服务端检索 —— 这会推翻'本地优先搜索'的架构前提, 必须在编码前定
+- [editor] 版本历史保留策略建议定为'同一作者 10 分钟合并一版 + 每笔记最多 50 版 + 手动打标永久保留', 需确认这个额度是否够用, 以及是否按付费档位区分
+- [editor] 便笺 7 色是存 smallint 枚举 (复刻原版) 还是允许自定义 hex? 当前 CHECK (color BETWEEN 0 AND 6), 团队场景放开需要迁移
+- [editor] 回收站保留期定为 30 天, 是否需要按 workspace / 付费档位可配 (免费 7 天、付费 30 天)? 影响 DDL 是否加 workspace 级配置表
+- [editor] attachments 对象存储选 Cloudflare R2 还是 VPS 本地 + MinIO? 本章无法核实 R2 当期单价 (developers.cloudflare.com 在本次会话不可达), 第 6 章必须按官网现价重算, 不要沿用任何记忆中的数字
+- [editor] 链接预览抓取放服务端 (需出网、防 SSRF、遵守 robots, 但可全局缓存) 还是客户端 (暴露用户 IP 给第三方站点)? 当前 link_previews 表按服务端抓取设计, 需确认隐私取舍
+- [editor] Q2 检索查询的 p95 延迟必须用真实语料实测后填写, 本章刻意未给数字 —— 任何未经 EXPLAIN (ANALYZE, BUFFERS) 验证的延迟承诺都不应写进方案
+- [editor] macOS 侧 WKWebView 下 Magic Trackpad / 外接数位板是否暴露 pointer pressure, 需要在真机实测后再决定墨迹功能的跨平台范围, 不要凭假设写结论
+- [sync] 服务端最终跑 Node 还是 Rust？本轮发现 yrs 0.27.4 的 src/sync/ 已内置完整 y-sync protocol 与 Awareness，自己用 axum + yrs 写房间不是从零实现协议，初稿估的 3 人周明显偏高。若后端主体选 Rust，建议重新评估自写房间以避免为一个 Node 服务单独运维 Node 22 环境——需要用户先定后端语言
+- [sync] v1 是否需要网页版 / 分享链接？若需要，L1 保险箱优先级应进一步下调（浏览器拿不到密钥），且要先定分享链接是只读快照还是活文档
+- [sync] PowerSync / Cloudflare Durable Objects 的当期定价，以及 ElectricSQL Cloud 的运营状态——本轮出口受限未能核实。若要把 Cloudflare 纳入部署方案，必须先核对定价页（尤其是 WebSocket 消息如何计费、Hibernation 的实际计费边界）
+- [sync] 团队规模上限假设是多少？单条共享便笺预期同时在线 >20 人则 Hocuspocus 单房间广播扇出需压测；2-5 人（便笺真实场景）则当前设计余量很大
+- [sync] 回收站 30 天是产品决定还是可配置？团队版是否需要管理员可调（合规要求 90 天或立即硬删）？这决定 purge_after 是全局常量还是 workspace 设置
+- [sync] L1 保险箱粒度：逐条便笺开关还是固定保险箱分组？本章暂按分组设计（迁入迁出需重加密，但 UI 心智简单），需用户确认
+- [sync] AI 写入的 transaction origin 约定需与第 5 章对齐：本章已定死为本地 origin（否则触发远端变更高亮），但若 AI 走服务端代理并以远端 update 回来，该约定需要改为在客户端打标
+- [sync] 导出的 HTML 静态站是否包含正文历史版本？包含会让 zip 体积增大数倍，但对永不丢数据的承诺更完整
+- [sync] 是否在 v1 上报 shrink_guard_tripped 等遥测？需确认隐私策略（默认开启还是 opt-in）与遥测端点位置——这个指标是本章唯一能量化产品与原版便笺差距的手段，砍掉就失去了验收依据
+- [sync] L1 E2EE 便笺撞上 5000 行 / 50 MB 硬上限时到底怎么办？拒绝写入对便笺产品是不可接受的失败模式，需要产品侧决定是降级为只读、还是强制弹窗要求用户当场整理
+- [auth] 是否做国内版？决定要不要 ICP 备案（须购中国内地服务器，与 Hostinger VPS 直接冲突）、短信通道、微信开放平台企业主体。建议先只做海外版。注：备案具体要求与短信单价本轮未能联网核实
+- [auth] macOS 是否上 Mac App Store？上架意味着沙盒下 loopback 端口绑定需要 com.apple.security.network.server entitlement、必须提供 Sign in with Apple、分发走审核。若只做 Developer ID 直接分发则约束少很多
+- [auth] oauth-provider 是否内置 refresh token rotation 与复用检测？这决定 5.2.6 是挂 hook 还是自建整张表，必须在 M1 实测确认（本轮文档核实未覆盖该细节）
+- [auth] 团队/workspace 与计费的关系：个人免费 + 团队付费，还是按席位？决定 billing:manage 的边界，以及未来 guest 席位是否计费
+- [auth] 是否需要 workspace 级数据驻留（EU 用户数据必须留欧盟）？若需要，Hostinger 单 VPS 方案不成立，要提前设计 region 分片
+- [auth] LLM provider key 存放层级：workspace 级共享 key 还是每用户自带 key？当前按 workspace 级设计（ai:configure 权限），改为每用户则需要每用户加密存储，权限模型不同
+- [auth] refresh token 的滑动/绝对有效期具体取多少？初稿的 90 天滑动 + 180 天绝对上限对「装上就不管、半年不开一次」的轻度便笺用户可能引发流失。需产品侧确认，我倾向 180 天滑动 + 365 天绝对
+- [auth] 发信服务选哪家（Resend / Postmark / SES）？三者在送达率、价格、模板能力上取舍不同，且本轮均未核实定价，需要单独比选
+- [team] 后端语言仍未定，且这个决定的影响比初稿估计的小：better-auth 1.7.2 只覆盖 org/member/invitation/team 四张表的 CRUD，workspaces / shares / note_pins / notifications / audit_log 无论哪种语言都要自建。TS 省下的是邀请流程约 400 行，不是初稿说的 2 周。需与第 2 章对齐
+- [team] Node 运行时版本：pg-boss 12.30.0 硬性要求 node >= 22.12.0。若第 2 章因 Tauri sidecar 或其他原因锁了更低版本，需要决定是升 Node 还是退 pg-boss 10.4.2
+- [team] 部署形态：本章依赖 Postgres（RLS、pg-boss、LISTEN/NOTIFY）与常驻 WebSocket。LISTEN/NOTIFY 与长连接在 Cloudflare Workers 上都不成立（需要 Durable Objects + Hyperdrive 重做撤销广播）；Hostinger VPS 单机可直接落地。需第 7/8 章结论
+- [team] Resend / WorkOS / Stripe 的实际价格与额度需要人工打开定价页确认 —— 本轮网络受限无法核实，请勿引用初稿数字
+- [team] 定价数字（Team $4、Business $9）未做竞品与支付意愿验证，需用户确认
+- [team] 是否需要中国大陆用户：决定 MailProvider 的第二个实现是谁，以及 Tauri 自动更新通道的可达性
+- [team] enterprise_mode 是否在 v1 就做，还是等第一个提出合规要求的客户。做它本身只有半天，但它带来的文案与法律表述需要谨慎
+- [team] Handoff 值班交接是否真进 v1.1：需确认目标客户是否包含运维/客服/排班类团队；v1.0 的埋点方案（观察是否有便笺被当当值台账反复覆写）需要与第 3 章的编辑事件埋点对齐
+- [team] 自由画布（v1.2）的坐标是否用独立 board 级 Y.Doc —— 本章倾向是，但取决于第 4 章的文档粒度设计与 y-websocket 的房间模型
+- [team] guest 角色在 org_role enum 里保留了但 v1 不实现流程。若计费漏斗确实需要它（被单张便笺共享的外部人不占席位），需要决定它进 v1.1 还是 v1.2
+- [llm] 【最高优先级】OpenAI、Google、DeepSeek、OpenRouter 四家官方定价页在本次环境下均被网络出口策略拦截，本章这四家的数字来自 LiteLLM 价格库（其 source 字段回链官方页）。上线前必须逐条对一次官方页，尤其是 GPT-5.6 的 $4/$20 与 272K 惩罚阈值、DeepSeek 缓存读 $0.044、azure_ai/deepseek-v4-flash 的 $0.19/$0.51
+- [llm] DeepSeek V4 是否存在峰谷定价：初稿声称的 UTC 时段表查无证据，价格库无 off-peak 字段。若官方确认存在且折扣够大，7.4 的「砍掉调度器」结论需要重新计算——但即便存在，azure_ai 版仍更便宜
+- [llm] Azure AI Foundry 账号开通与配额申请对 1-3 人团队的实际摩擦有多大？azure_ai/deepseek-v4-flash 的价格优势（对 DeepSeek 官方便宜 57%/61%）是否值得多一个云账号，需要实际走一遍开通流程再定
+- [llm] 后端技术栈需与其他章节对齐：本章按 TypeScript + Hono 4.13.5 设计网关。若整体后端定为 Rust（Axum），AI SDK 用不了，需改为自研 adapter 或单独跑 Node 边车——这个决定要尽早拍板
+- [llm] Cloudflare Worker 是否承载 AI 网关：官方 TS SDK 文档明确列出 Cloudflare Workers 为受支持运行时，这一条已解决；但 Worker 的 CPU 时间上限与长时间流式 SSE 的兼容性仍需单独压测。本章默认网关跑在 Hostinger VPS 上，Cloudflare 只做 CDN/WAF
+- [llm] 定价币种与目标市场：credit 按 USD 成本核算，订阅定价写人民币。若主要面向海外用户，DeepSeek 中国境内这条会劝退团队客户——但 azure_ai 托管版已给出解法，需确认默认模型池是否按用户地区切换
+- [llm] 免费层 100 credits/月 是从成本上限（$0.05）倒推的起点，仍需灰度真实用户测 P50/P90 使用量后校准；同时确认是否做「邀请获额度」增长机制
+- [llm] 语音输入是否进 MVP：gpt-transcribe $0.27/小时，一个用户每天口述 10 分钟 ≈ $1.35/月，接近整个文本 AI 成本。需确认是付费功能还是免费层功能，以及是否改用 gemini-3.5-transcribe 以减少一个供应商
+- [llm] gemini-3.8-flash 的中文手写 OCR 准确率无任何现成数据，上线前必须用真实手写样本做一轮对比（对照组：gpt-5.6-luna vision、专用 OCR 服务）
+- [llm] 本地 embedding 模型的最终选型：bge-m3 int8 约 550MB 不可打包。需要在「按需下载 550MB」与「换用参数量小一个数量级的多语言模型并接受召回率下降」之间做实测取舍
+- [llm] 团队版是否需要 SSO / 审计导出 / ZDR。若需要 ZDR，模型池要提前分层（部分模型强制 30 天留存直接不可用）；inference_geo:"us" 的 1.1x 成本是否转嫁给客户也要定
+- [llm] prompt 的 A/B 与 eval 机制未定：本章只给了版本化落库结构。建议 200+ 真实用户后再建 eval 集，但要提前埋点收集 AI 输出的采纳/撤销率——这是最好的信号，且埋点漏了就补不回来
+- [infra] 【最高优先级】仓库公开还是私有？公开仓 GitHub Actions 免费（含 10x 倍率的 macOS runner），私有仓在 macOS 构建下很快开始收费。这一条直接决定 CI 成本模型，且是 D2 就要拍板的事
+- [infra] 本章 ⚠️ 标注的所有价格与限额（Cloudflare Workers/D1/DO/R2/Hyperdrive、GitHub Actions 计费、Azure Trusted Signing、Sentry、Grafana Cloud、Resend、Apple $99）本轮均被出口代理阻断未能核实。下单或写 wrangler.toml 前必须逐条打开官网复核——不要引用本章缓存的数字做承诺
+- [infra] Hostinger VPS 当前是哪个档位、哪个机房节点、24 个月预付何时到期？KVM 1（4 GB）跑不下完整栈（约需 5.7 GB），需确认是否已是 KVM 2 起。预付到期日是评估是否迁移到按小时计费厂商的天然决策点
+- [infra] 代码签名的申请主体是公司还是个人？个人身份的审核路径与通过率需要现在就确认，否则 Windows 发布路径要改（改成买云 HSM 版 OV 证书，年费高一个数量级）
+- [infra] LLM 是 BYOK 还是平台代付？本章建议默认 BYOK + 平台密钥仅作固定次数试用。若坚持平台代付，需要在第一版就把每用户日 token 上限、全平台日花费熔断、用量结算表设计进去，这是实打实的开发量
+- [infra] 目标用户地域分布？国内占比 > 30% 的话，8.12 的阶段二（香港节点 + DNS 分线路）应在第一版就规划进 DNS 结构，而不是事后补
+- [infra] 实时协同（多人同时编辑同一张便笺）是 v1 还是 v2？v1 的话需要决定是 VPS 上的 sync-ws + Redis 还是 Cloudflare Durable Objects——后者天然全球分布但按 20:1 计费入站消息（⚠️ 该计费规则本轮未核实），且会把架构劈成两半
+- [infra] 是否有大陆主体可用于 ICP 备案？没有的话 8.12 阶段三根本无法启动，需要提前知道这条路是否封死
+- [infra] 订阅定价与预期转化率？本章把固定成本重算为约 $35/月（0 用户），比原稿的 $28 高但更接近续费价现实。定价模型需基于这个数字重算盈亏平衡点
+- [infra] 是否接受本章推翻的 staging 结论（不买常驻 staging，改用 CI ephemeral 容器）？如果坚持要常驻 staging，建议是另买一台最小机器而不是与 prod 同机——同机方案的风险大于收益
+- [security] E2EE 保险箱是否放 v1？建议 v1 只做「本地 SQLCipher + 服务端应用层加密敏感列」，保险箱放 v1.2，但 schema 从第一天预留 vault_id / wrapped_dek / key_epoch。需要用户确认是否接受这个延后
+- [security] VPS 机房选欧盟（合规最省事、全体用户数据在 EU）还是亚太（中国大陆用户延迟更低）？这与部署章的 Cloudflare 边缘方案强耦合，需先确认目标用户地域分布
+- [security] 是否需要面向 B2B 提供 DPA？模板即可、成本低；SOC 2 则是 6 位数人民币 + 数月工作量。取决于是否要卖给有采购流程的企业
+- [security] DeepSeek API 当期的数据保留与训练条款需逐条核实（本次未验证），结果直接决定它能否对 EU 用户默认开放
+- [security] 是否提供组织管理员托管恢复（Shamir 2-of-3）？本章建议 MVP 不做，但这是企业客户常见硬需求，且会削弱 E2EE 宣传口径，需要产品定位先定调
+- [security] 客户端自动脱敏默认开还是默认关？默认开会降低 AI 输出质量（模型看不到真实上下文），默认关则隐私风险更高。本章建议默认开 + AI 面板提供单次关闭，需用户确认
+- [security] MSIX/Microsoft Store 与官网直接下载两条分发链路是否都维护？Store 版自动更新走 Store 通道，与 Tauri updater 是两套机制，会让发版复杂度翻倍，且 kill switch 在 Store 版上的行为需另行设计
+- [security] AI 是否需要写操作工具（创建/分享/删除便笺）？本章 MVP 建议只读。若产品上必须有写操作，则用户确认弹窗的交互设计需要提前定，否则会严重伤害 AI 功能的流畅度
+- [security] 以下数字需在实施前人工核实并回填: 网信办数据出境的具体人数阈值、Cloudflare R2 的 EU location hint 代码、Microsoft Store 隐私政策条款的当期编号、SQLCipher 4 的 kdf_iter 默认值、SOPS+age 之外备选密钥管理工具的当期定价
+- [product] 非 Anthropic 厂商的实时定价必须自查后重算 AI 配额：DeepSeek、OpenAI、Google 的官方 pricing 页。本章的积分规则（1 积分 ≡ $0.001 供应商成本）已设计成与厂商无关，填入真实单价即可自动生效，但配额数字需要重新校准
+- [product] Lemon Squeezy / Paddle 的当前费率必须核实。本章已用四档费率敏感性表把『年付优于月付』的结论做成对费率不敏感，但净收入绝对值和 AI COGS 上限（$0.61/月）依赖真实费率
+- [product] 代码签名成本未核实：Azure Trusted Signing 的月费与准入条件、Windows OV/EV 证书年费、Apple Developer Program 年费。这三项直接决定 M5 能否按 60 人日完成
+- [product] 对象存储选型与单价未核实。硬性条件已定（必须零出网费），但需确认所选服务的 S3 兼容性、单价与 Hostinger VPS 之间的网络延迟
+- [product] 产品定价用美元还是人民币锚定？中国区 ¥18/月 与海外 $4.99/月（约 ¥36）存在约 50% 价差，是否接受 VPN 换区套利需要决策。倾向是接受——套利成本（VPN + 支付方式）高于差价，且地区定价是行业惯例
+- [product] 是否要做端到端加密？E2EE 与服务端版本历史、团队共享、托管 AI（服务端需要明文）三者互斥。本章已把它从初稿的 Pro 权益中移除，因为它与已定的 AI 和版本历史功能直接冲突——需要明确决策：要 E2EE 就意味着 AI 只能 BYOK 本地调用、版本历史只能本地保存
+- [product] M1 免费版发布后的成功阈值需要真实基准。本章已给出替代方案（用『第 7 天仍有便笺被编辑的用户占比』和『愿为同步付 $5/月 >15%』这两个相对信号），但仍建议先采集 3-5 个同类桌面工具的公开留存数据再定绝对阈值
+- [product] 3 人小队的第二、第三人什么时候进场？M0 期只有 1 条关键路径，进场会大量空转。建议 M1 中后期（第 2 人做后端骨架）、M2 开始（第 3 人做 AI+计费+DevOps）。设计不占人头，走外包或买模板
+- [product] 团队版 $6/席位起订 2 席是否仍偏高？需要做 5-8 场定价访谈验证。备选方案：改按团队定价而非席位（如 $15/月含 3 席 + $4/额外席位），降低小团队的心理门槛
+- [product] 开源客户端后如何防止有人打包上架 Microsoft Store / Mac App Store 冒充官方？许可证做不到这件事，必须靠商标注册配合——需确认注册预算与时间线（中国商标局审查周期通常按月计）
+- [product] Y.Doc 的服务端持久化策略未定：是存全量 update log 还是定期 compact 成快照？版本历史保留 30/90/180 天对应的存储量需要在 M2 期实测后决定 compact 频率

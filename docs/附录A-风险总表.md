@@ -1,0 +1,164 @@
+# 全部 160 条风险（按章分组，原样保留）
+
+---
+
+- [parity] 本章的微软产品线叙事（新版 Sticky Notes 发布时间、Win+Alt+S、OneNote for Win10 退役日期、Cortana 各端退役月份）本次全部无法核实，support.microsoft.com / learn.microsoft.com / en.wikipedia.org 均被出网策略拦截；这些内容目前是「合理但未证实」，对外发布前必须逐条查官方支持页
+- [parity] 竞品价格（Notezilla $29.95、Obsidian Sync $4/月、Obsidian 2025-02-20 商用免费）本次无法核实，官网域名被拦截。对外材料引用未核实价格属于法律风险，必须先查官网
+- [parity] Note 表列集在 3.x 各小版本间漂移已被实证（18 列 vs 19 列），本章 DDL 来自 HTB 取证样本，未必覆盖最新版本；生产代码必须按列名容错，且要在至少 3 台不同 Windows 11 补丁级别的真机上跑 PRAGMA table_info 验证
+- [parity] Note.Text 的行内格式跨版本混用 RTF 控制字与 Markdown 标记，无官方规范，解析器一定会在部分用户数据上退化；必须有 import_degraded 标记和纯文本兜底，否则会出现「导入后格式全乱」的差评
+- [parity] 初稿提到的 SyncState / UpgradedNote / StrokeMetadata 三张表本次未从任何权威来源核实到，可能不存在或已改名；迁移器不得对它们的存在做硬假设
+- [parity] FTS5 trigram 对 1-2 字中文查询完全失效是硬约束，LIKE 旁路在便笺量级（10^2~10^3）可行，但若未来支持团队共享导致单库上万条，LIKE 全表扫描会退化；届时需重新评估原生分词扩展或迁到服务端检索
+- [parity] cfb@1.2.2 自 2022-04-06 起未更新，若发现安全问题或 Node 22+ 兼容问题将无上游修复，需要自己 fork 或改用纯手写 CFBF 读取器（约 2 人天）
+- [parity] better-sqlite3@13.0.3 要求 Node >= 22 且是 native 模块，每次 Electron 大版本升级都要重编译并跨 Win x64/arm64、macOS x64/arm64 四个目标分发；Electron 目前已到 44.2.0，升级节奏很快
+- [parity] IME composition 与富文本防抖的交互只能在真实中文输入法（微软拼音、搜狗、macOS 原生）上手工验证，无法靠单测覆盖，容易在发版后才暴露
+- [parity] 微软随时可能移除经典版 UWP Sticky Notes 或停止其云同步，plum.sqlite 迁移路径会自然枯竭——迁移功能有明确的时间窗口，越晚做价值越低
+- [parity] 已完全迁到新版 Sticky Notes 且删除了经典版数据的用户无法自动迁移（新版无可读本地私有格式），这部分用户的转化成本高，且占比未知
+- [parity] 富文本 → Markdown 导出不是无损的（下划线在标准 Markdown 无对应），必须写死降级规则并文档化，否则往返导入导出会丢格式
+- [parity] macOS 截图捕获需要 Screen Recording 权限，首次授权后还需重启 App 才生效（系统限制），这个流程必须专门做引导，否则用户会以为功能坏了
+- [desktop] 【本次未能核实，采购前必查】Azure Artifact Signing 的定价（$9.99/月说法）与主体地域资格限制；EV 证书是否仍有 SmartScreen 即时信誉；CA/B Forum 代码签名证书 460 天有效期上限及生效日期。azure.microsoft.com、cabforum.org、各 CA 官网在本次运行的网络环境中均不可达。不要把本章这三个数字当已核实事实做采购决策
+- [desktop] macOS 上 level 低于 normal(0) 的窗口能否可靠成为 key window 接受中文 IME 输入，未经实测。若点击命中测试落到 Finder 桌面视图上，贴桌面模式将无法打字。降级方案（只读 + mouseDown 临时提 level 到 0）必须在 v1 就写好开关，不要等实测失败再补
+- [desktop] HWND_BOTTOM 是会被打破的瞬时状态：用户点击便笺时系统自动激活并提前，其它程序调 SetWindowPos 也会顶掉你。必须配 2s 重放定时器 + 失焦 200ms 防抖沉底的状态机，否则「贴桌面」会表现为随机浮到最前
+- [desktop] tauri::WebviewWindow::hwnd() 返回的 HWND 来自 tauri 自己依赖的 windows crate 版本。Tauri 源码明确警告 webview2-com / objc2_web_kit 等可能在 minor 版本中更新，用 with_webview 必须 pin 到 minor 版本。Cargo.toml 里写 tauri = "2" 会在某次 cargo update 后编译不过
+- [desktop] Tauri updater 的 minisign 公钥被编译进已发出的二进制，私钥丢失后存量用户永远无法自动更新，只能手动重装。这是全项目唯一不可恢复的单点故障，必须在第一次发版前完成两处离线介质 + 密码管理器备份并写进交接文档
+- [desktop] Win+D 补偿有 1-2 帧闪烁。Rainmeter 需要 5次×2ms 重试才稳，说明 24H2 显示桌面动画存在真实时序竞争，我们同样会遇到
+- [desktop] WS_EX_TOOLWINDOW 排除 Alt+Tab 与任务栏是文档保证的；但「最小化所有窗口会跳过 TOOLWINDOW」只是长期观察到的行为、非文档保证。不要把贴桌面的可见性建立在这条上——真正的保障是 z-order 探针 + 提到 topmost band
+- [desktop] SetWinEventHook 要求调用线程有消息循环且必须在该线程注册。若误在 tokio worker 线程注册，hook 静默不工作、不报错
+- [desktop] Explorer.exe 重启会重建桌面窗口层级。方案 B 虽不 attach，但缓存的 desktop icons host 句柄会失效，必须在 EVENT_SYSTEM_FOREGROUND 回调里重新解析而不是只解析一次
+- [desktop] SmartScreen 信誉按文件哈希累积，每次新构建都要重新累积。新发布者前几周必定弹警告，签名解决不了。必须提前和用户沟通预期
+- [desktop] WebView2(Chromium 152) 与 WKWebView(WebKit) 在 contenteditable 的中文 IME composition 事件时序、候选框定位上有差异，富文本编辑器需要双份适配代码
+- [desktop] 多窗口内存增量在 macOS 上（WKWebView 每实例一个 WebContent 进程）显著高于 Windows。且「同源便笺共享 WebView2 browser process」是从 wry 传同一 data_directory 给 CreateCoreWebView2EnvironmentWithOptions 推断出的机制结论，非实测数据，30 张便笺场景必须实测
+- [desktop] macOS 每个大版本发布后 Gatekeeper 行为都可能变（thread 817887 就是一例，虽然根因是提问者证书链断裂）。每个 macOS 大版本发布后必须重跑 codesign --verify --deep --strict + spctl -a -vvv + stapler validate 整条链
+- [desktop] signCommand 漏掉 %1 占位符会静默不签名，构建成功但产物无签名，直到用户下载后才发现
+- [desktop] wry 的 set_memory_usage_level 存在，但 Tauri 未直接转发。要经 PlatformWebview::controller() 拿 ICoreWebView2Controller 再 cast 到 ICoreWebView2_19，这条路径依赖 tauri 内部 webview2-com 版本，是 pin 版本要求的又一个理由
+- [editor] schema 演进是本项目最难拆的雷: 老客户端拿到含未知节点的文档会静默丢弃, 一旦它保存, 内容就在 CRDT 里被真正删除且新客户端也恢复不了 —— schema_version 闸门必须在第一版就上线, 后补等于数据已丢
+- [editor] 投影与 Y.Doc 分叉: 后台批处理、数据修复脚本、LLM 服务端写入任何一个直接 UPDATE notes.content / content_text 都会在下次同步被 CRDT 覆盖。必须在 repository 层封死写入口, 并加一条 DB trigger 拒绝非 projector 角色的写入
+- [editor] V1/V2 编码混用: on('update') 是 V1、on('updateV2') 是 V2, 代码里混用会让 mergeUpdatesV2 静默失败或抛错。需要一条 lint 规则或 wrapper 禁止直接订阅 'update'
+- [editor] LLM 回写竞态: 即使按 3.4 的协议做块级 hash 校验, 用户在校验通过后到 insertContentAt 执行前的几十毫秒里仍可能输入。这个窗口无法完全消除, 只能靠 transact 原子性 + 一次 Ctrl+Z 兜底
+- [editor] IME 与 input rules 冲突是中文用户必然踩到的: composition 期间 ProseMirror 跳过 input rule, 拼音上屏后 '# ' 不触发。compositionend 重跑匹配的实现要配 CDP Input.imeSetComposition 回归测试, 否则每次升级 Tiptap 都可能回归
+- [editor] @tiptap/y-tiptap 是 Tiptap 私有 fork, README 明说不作为通用 Yjs-ProseMirror 绑定。换编辑器或用 y-prosemirror 生态的服务端工具时这层要重写
+- [editor] PGroonga 依赖 Groonga 原生库, 托管 PG (RDS/Supabase/Neon) 一律不支持, 锁死自管 VPS; 升 PG 大版本必须等 postgresql-NN-pgdg-pgroonga 包, 会卡住升级窗口。退出坡道已限制在 searchNotes() 一个函数内, 但迁移仍需重建索引
+- [editor] wangfenjin/simple 是可加载扩展: macOS 上 SQLite 默认禁用 load_extension 且 Apple 公证会审查 .dylib, Windows 上杀软可能拦截。bigram 兜底路径必须在 v1 就写完并在启动时探测, 不能当作 v2 的 TODO
+- [editor] bundled-sqlcipher-vendored-openssl 把 OpenSSL 静态编进二进制, 显著拉长构建时间并增大包体, macOS 上还要处理代码签名/公证对静态库的处理
+- [editor] checklist_items 由 worker 异步写入, 与 notes 存在窗口期不一致。必须约定它只服务跨笔记聚合查询, 笔记内渲染一律读 PM doc, 否则勾选框会闪烁
+- [editor] 软删除硬删任务与 attachments GC 的顺序若搞反 (先删对象再删引用), 用户从回收站恢复笔记后图片全是裂图
+- [editor] UUIDv7 泄露创建时间戳: 分享链接必须用独立随机 token, 不能暴露 note id, 否则可从公开 id 推断工作区活跃度
+- [editor] attachments 的 BLAKE3 若在 Tauri command 里同步计算, 大文件会阻塞线程池, 必须 spawn_blocking 或流式分块
+- [editor] Yjs 14.x 目前只有 beta (14.0.0-16), extension-collaboration 的 peer 写死 yjs ^13。若上游在项目周期内发布 14 正式版, 生态跟进有滞后期, 需要评估是否跟随
+- [sync] OffsetKind 地雷是静默的：用默认 Options 的 yrs 代码在纯英文测试里完全正常，只在中文/emoji 上串位。CI 语料不含中文就发现不了，而这恰恰是本产品的主语料
+- [sync] 初稿有三处定价/运营状态数字（PowerSync 分档价、Cloudflare DO 的 20:1 WS 折算、ElectricSQL Cloud 关停）本轮无法核实已删除。若后续有人从旧稿把这些数字抄回来，会基于错误成本模型做架构决策
+- [sync] yrs 与 yjs 并非 100% 特性对等：y-crdt 官方对照表显示 YMap weak links 与部分 observer 在 yrs 侧未完成。任何富文本结构操作下沉到 Rust 都可能踩到未实现分支
+- [sync] Hocuspocus 默认 unloadImmediately:true——最后一个连接断开时立即卸载文档，不等 onStoreDocument 的 debounce。不改这个默认值就直接违反本章的验收标准
+- [sync] Hocuspocus 房间是有状态的，一个 note 只能在一个进程里活。装了 extension-redis 也只是消息转发，仍需确认它对同一文档在两实例同时加载的处理语义，上线前必须做双实例并发写测试
+- [sync] 自研同步层 4000 行的估计仍可能偏低。真正的时间黑洞是 outbox 顺序保证与死信处理、WS/轮询双通道状态机的边界，这些不写测试就必然带 bug 上线
+- [sync] Yjs tombstone 永不真正回收，gc 只合并不丢弃。【整理此便笺】是有损操作，UI 措辞若不够明确，用户点完发现历史没了会是新的差评来源
+- [sync] 客户端负责 compaction 只剩 L1 E2EE 一条路径，但那条路径仍无解：用户长期不上线，其加密便笺的 note_updates 会持续积累到硬上限，届时只能拒绝新 push——这是一个会让用户在最不该失败的时刻写不进去的设计
+- [sync] HLC 双向 clamp 后仍有残余不公平：设备时钟落后但从未联网过（首次使用即离线编辑）时拿不到 server_time，其编辑仍可能系统性判负
+- [sync] L1 保险箱的密码遗忘 = 数据永久不可恢复。必须强制抄写并验证 24 词恢复码，否则制造出比丢便笺更严重的差评
+- [sync] 团队 E2EE 的成员移除需 rotate GK 并重包裹全部 DEK，是 O(便笺数) 重操作。这是不在 v1 做团队 E2EE 的核心成本理由，营销上别留口子
+- [sync] SQLite 在 Windows 上遇 OneDrive/杀软锁文件会出现间歇性 SQLITE_BUSY 与 WAL 损坏。路径必须落 %LOCALAPPDATA% 并在安装引导检测云盘同步目录
+- [sync] sessionAwareness 是 Hocuspocus 4.x 新增特性，其 .d.ts 明确警告 only set to true when connecting to a v4 server。客户端与服务端版本必须锁死同步升级，否则多窗口场景直接错乱
+- [sync] 本章依赖 Tiptap 生态的三个包（core/extension-collaboration/y-tiptap）版本号强耦合（peerDep 写死 3.31.2 精确版本），任一升级都要三包同步，锁文件必须提交
+- [sync] 取证快照与本地 7 天 update 历史叠加，重度用户的本地库可能显著大于预期。需要在设置里给出本地占用可视化与一键清理，否则会有人抱怨便笺软件占几个 G
+- [auth] 初稿断言 Tauri Stronghold「官方已不推荐、将在 v3 移除」——本轮在其官方 README 中未找到任何弃用声明，该断言无法核实已删除。若照抄初稿会在文档里留一个看似确定的错误论据
+- [auth] 初稿断言「1.7 改了 multi-session 的 set-active/revoke 语义」——changelog 中未找到该条目，已删除。同类风险：文档中任何未核实的版本行为陈述都可能误导实现
+- [auth] Clerk / WorkOS / Supabase / Better Auth 官网定价页本轮被网络出口策略拦截，全部价格数字未能核实。初稿中「Clerk 10 万用户约 $1,025/月 + organizations $100/月」「WorkOS $2,500/百万 MAU、$125/连接」「Supabase $0.00325/MAU」等数字均不可直接引用，需签约前自行核实
+- [auth] Windows CRED_MAX_CREDENTIAL_BLOB_SIZE = 2560 字节本轮未能复核（微软文档站被拦截）。风险是超限在 Windows 上静默失败而 macOS 不暴露，CI 必须有长度断言而不是依赖这个数字本身
+- [auth] 1.7 的破坏性变更面比初稿描述的大得多：Account.accountId → providerAccountId 且唯一键改为 (issuer, providerAccountId)、verifyAccessToken → verifyBearerToken、signIn.oauth2() → signIn.social()、oidcProvider 移除、MCP 插件迁出。必须锁定精确版本并在升级前跑完整 auth 集成测试
+- [auth] oauth-provider 自带 token 表与生命周期管理，初稿自建 refresh_token 表会与插件打架。落地前必须先实测插件是否内置 rotation 与复用检测，再决定是挂 hook 还是自建
+- [auth] refresh 轮转的并发竞态：多请求同时撞 401 会并发调 refresh，第二个必被判复用从而撤销整个 family。必须客户端 single-flight 互斥 + 服务端 30 秒宽限窗口
+- [auth] Apple client secret 六个月过期是延迟引爆的故障：上线时一切正常，半年后所有 Apple 登录同时失败，且失败信息在 Apple 侧不直观。轮换任务必须有独立监控与到期前告警
+- [auth] 从 Hostinger VPS 自建 SMTP 发信的投递率问题会以「用户收不到验证邮件」的形式表现为注册转化率低，而不是报错——很难在测试环境发现
+- [auth] macOS Keychain item 的 ACL 绑定 App 签名，换开发者证书后表现为「更新后所有 macOS 用户被登出」。发版前要验证签名连续性，读失败必须降级到重新登录而非崩溃
+- [auth] PgBouncer transaction pooling 下用 SET 而非 SET LOCAL 会让租户上下文残留在归还池的连接上，下一个请求继承别人的 org_id——有真实跨租户泄漏案例。所有 DB 访问必须走统一 withOrgTx()，不能有旁路
+- [auth] 「远程登出」被顺手实现成清本地数据 = 用户在另一台设备点登出后本机未同步的便笺永久丢失。对离线优先应用这是数据丢失级事故，两者必须是独立代码路径 + 独立二次确认
+- [auth] Google 拒绝 embedded webview 的策略本轮未能复核，但把 OAuth 页塞进 Tauri webview 在任何情况下都是错的（passkey 也不可用）。必须坚持系统浏览器
+- [auth] dynamicAccessControl 若开放给 owner，会产生「用户自己造出一个能改计费的角色」的提权面。第一版必须关闭
+- [auth] 本地身份 → 云账号的 claim 迁移若不幂等，用户在迁移中途断网重连会产生重复便笺。这是 M0 唯一的高风险逻辑
+- [team] 【已在本章修复，但 review 时必须复查】RLS 里 current_setting('app.user_id',true)::uuid 不加 NULLIF 会在连接池复用的连接上 100% 抛 invalid input syntax for type uuid: ""。这个 bug 在开发机第一次请求不复现，因此极易带到生产
+- [team] SET LOCAL 在事务块外只发 WARNING 然后静默无效。若 ORM 处于 autocommit 模式，app.user_id 永远不生效 —— 配合 NULLIF 后表现为「查不到数据」而非越权（失败方向可接受），但会被误判为业务 bug 排查半天。ORM 层必须强制显式事务
+- [team] workspaces.team_id 是本版新增的可见性维度，若某个查询路径忘了带 team_id 条件（尤其是搜索、导出、通知 fanout 的收件人解析），就会退化回初稿的「org 全员可见」。收件人解析必须复用 effective_note_permission 而不是自己拼 SQL
+- [team] 撤销共享/移除成员后 WS 会话不失效：pg_notify 不持久，网关重启或连接抖动期间的撤销事件会丢失。60 秒定期重校验是必需的兜底，不能省
+- [team] note_perm 的语义完全依赖 enum 声明顺序与 max()。ALTER TYPE ... ADD VALUE BEFORE 插错位置不报错、静默越权。必须为 enum_range(null::note_perm) 写快照测试
+- [team] 个人/团队 workspace 边界一旦在任一 admin 接口被打破（哪怕只是统计端点漏了 org_id 过滤），隐私承诺失效且不可挽回。必须用路由表反射生成枚举式集成测试，让新接口自动进入测试范围
+- [team] note.viewed 审计不做 30 分钟窗口去重，打开一次共享区产生几十条记录，日志量超业务数据一个数量级
+- [team] 公开链接是最大数据泄露面。除 org 级默认关闭 + 强制只读 + 强制过期外，还必须对 /p/<token> 端点做 IP 限流（建议 10 次/分钟），否则 token 可被爆破、内容可被批量抓取
+- [team] 通知过载会让用户关掉整个开关且不再回来。三条去重规则（不通知 actor 自己、同 group_key 30 秒折叠、前台可见时不弹系统通知）缺任何一条都会触发
+- [team] pg-boss 12.30.0 要求 Node >= 22.12.0。若第 2 章定的运行时低于此，要么升 Node 要么退 10.x 线，这个约束要和技术栈章节对齐
+- [team] Windows 通知在 tauri dev 下必然显示为 PowerShell 发出（tauri-winrt-notification 的 POWERSHELL_APP_ID 兜底），极易被当 bug 排查；macOS 未签名未公证构建通知表现不一致。两平台都只能在打包产物上验收
+- [team] @tauri-apps/plugin-deep-link 2.4.8 在 crates.io 上已被 yank，若 lockfile 恰好 pin 到它，CI 上 cargo 会拉不到或告警
+- [team] Resend/WorkOS/Stripe 的所有价格与额度数字本轮无法核实（搜索配额耗尽 + 域名被出口策略拦截）。若照抄初稿数字做成本模型或对外报价，可能整体偏差。定价页必须人工确认后再写进任何对外材料
+- [team] 邀请邮件是天然的滥用通道。除 48 小时过期与 org 级 pending 上限外，必须限每 org 每小时发信数（建议 50），否则产品会被当群发工具、发信域名信誉被烧掉
+- [team] enterprise_mode 开关一旦提供，就要想清楚它是否影响已存在的个人便笺（本章设计是「不显示入口」而非「迁移数据」）。若客户理解成「打开后员工过去的个人便笺归公司」，会产生法律纠纷。文案必须精确
+- [llm] GPT-5.6 长上下文惩罚基数被初稿写错：真实为 sol $4/$20，超过 272K token 后整个请求按 2x 输入/1.5x 输出 → $8/$30。按初稿的 $5/$30→$10/$45 做预算会同时高估基线成本和低估惩罚后的相对跳幅
+- [llm] DeepSeek V4 缓存读价初稿写 $0.022，实为 $0.044（2 倍误差）。若按初稿建缓存收益模型，会高估 DeepSeek 路径的省钱幅度
+- [llm] 「Gemini 3.8 Flash 2027-01-01 涨价到 $1.50/$7.50」查无证据，已删除。反向可核实的先例是 Claude Sonnet 5 原定 2026-09-01 涨到 $3/$15 的计划被官方取消——价格可能双向变动，任何硬编码价格的定价模型都会漂
+- [llm] fallback 到 claude-sonnet-5 会静默废掉两样东西且都不报错：mid-conversation system message（injection-safe operator channel，Opus 5 支持 / Sonnet 5 不支持）、prompt 缓存（min prefix 512 → 1024）。本地永远测不出来，只在生产 fallback 时暴露
+- [llm] sqlite-vec 稳定版仍是 0.1.9（最新 0.1.10-alpha.4），pre-1.0，schema 与 API 可能不兼容变更。锁版本并预留导出路径
+- [llm] fastembed 依赖的 ort 仍是 2.0.0-rc.13（release candidate），本地 ONNX 推理链路未 GA
+- [llm] @anthropic-ai/sdk 当前 0.123.0 仍是 0.x，按 SemVer 惯例 minor 版本可能带破坏性变更，必须锁精确版本并读 CHANGELOG 再升
+- [llm] bge-m3 int8 约 550MB，初稿假设的 200MB 低估近 3 倍。若已按 200MB 规划安装包体积和下载体验，Phase 2 会推翻产品设计
+- [llm] tauri-plugin-keyring 只有 0.1.0 一个发布版本且不在官方 plugins-workspace 中；押注它意味着密钥存储层随时可能失去维护
+- [llm] DeepSeek 系列无视觉能力（supports_vision:false）。任何把 OCR/图片理解按 tier 路由的实现，在 fast 档命中 DeepSeek 时会直接失败而不是降级
+- [llm] Anthropic SDK 默认重试 2 次且超时也在重试范围内，最坏墙钟 = timeout x 3（默认 10 分钟 → 最坏 30 分钟）。不显式设置会让「取消」在用户感知上失效
+- [llm] OpenRouter 的 BYOK 费率与充值手续费本次无法核实（域名被出口策略拦截），初稿的「5%/100 万次/[$25,000]」全部删除。签约前必须自行确认，否则长尾流量的隐性成本无法建模
+- [llm] gpt-4o-transcribe 已带 deprecation_date 2027-02-26，作为新代码默认会在一年内被迫迁移；初稿引用的 WER 4.1% vs 5.3% 无来源已删除
+- [llm] gemini-embedding-001 的 max_input_tokens 仅 2048，长便笺不切块会直接报错；且已标 deprecation_date 2028-05-14
+- [llm] SSE 被中间层缓冲的问题在本地开发环境完全复现不出来：proxy_buffering off + proxy_cache off + X-Accel-Buffering: no + 15 秒心跳，缺任何一项都可能在生产退化成一次性返回
+- [llm] 请求取消后不记账已产生的 output token 会形成账目黑洞——上游已经生成并计费
+- [llm] ghost text 不做 400ms 防抖 + 可取消，打字时的请求风暴能让成本翻十倍
+- [llm] 跨 provider fallback 导致分词器不同、价格不同、缓存全失效；ledger 只记 registry_id 不记 upstream_model 就无法对账
+- [llm] 免费层若开放 frontier 档：一次 Opus 5 周报 $0.455 = 910 credits，接近 Pro 整月额度的三分之一，单个薅羊毛用户一天能吃掉几十个付费用户毛利
+- [infra] 【原稿错误已修正】Hostinger 三处价格与官网不符（KVM 1 实为 $6.49 非 $4.99，KVM 4 实为 $12.99 非 $14.99，KVM 8 实为 $25.99）。若按原稿做预算会低估首年成本；且续费价接近翻倍（KVM 4: $12.99 → $28.99），必须按续费价规划
+- [infra] 【原稿编造已删除】pgvector 的 'CVE-2026-3172' 在上游 CHANGELOG 中不存在。真实修复是 0.8.2 的『并行 HNSW 构建缓冲区溢出』（无 CVE 编号）。类似地，原稿引用的 5 条 Cloudflare changelog 条目（2026-02-11 subrequest、2026-08-04 nodejs_compat、2026-04-29 Hyperdrive VPC、2026-07 Tunnel 取消带宽计费、Hyperdrive Free 10万查询/天）本轮一条都未能核实，已全部删除
+- [infra] 【原稿会导致启动失败】io_method=io_uring 在默认 Docker seccomp 下不可用（moby profile 不放行 io_uring_setup/enter/register），Postgres 会启动失败；原稿宣称的 3x 读性能提升在容器化架构下不存在
+- [infra] 【原稿会导致启动失败】pgvector/pgvector:pg18 镜像不含 pg_bigm，但配置了 shared_preload_libraries='pg_bigm'，Postgres 直接拒绝启动
+- [infra] 【原稿备份链路是断的】pgbackrest 配成 restart:unless-stopped 的独立 sidecar 会 crash-loop，且 archive_command 由 postgres 进程执行、找不到 pgbackrest 二进制 → WAL 归档从第一天起就在失败，而你以为有备份
+- [infra] 【原稿 tag 不存在】edoburu/pgbouncer:1.24 不是有效 tag（该仓库格式为 vX.Y.Z-pN，当前 v1.25.2-p0），compose 会拉取失败
+- [infra] Cloudflare 反代对非流式 HTTP 约 100 秒超时返回 524。LLM 长推理若不流式或首 chunk 迟于 100 秒，用户看到的是 524 而不是回答——原稿完全没提这条
+- [infra] Cloudflare Tunnel 是新增的单点故障，且 CF 侧故障你无能为力。单 cloudflared 副本时容器重启即全站不可达。必须 2 副本 + 演练过的 break-glass 绕行方案
+- [infra] docker compose 多副本是同时重建不是滚动更新，原稿的『lb_try_duration 实现零停机』不成立；且 Caddy 静态 upstream 只解析一次 DNS，新副本永远收不到流量
+- [infra] Redis maxmemory-policy=allkeys-lru 会驱逐 BullMQ 队列数据，导致后台任务静默丢失（邮件不发、团队邀请不到、用量不结算）且无任何报错
+- [infra] pgBackRest 备份未加密时，R2 桶凭据泄露 = 全量用户数据泄露。若加密口令与备份存在同一台 VPS 上，等于没加密
+- [infra] VPS 上单把全权 R2 key 一旦泄露，攻击者可同时删除备份并替换发布通道里的安装包（供应链攻击）
+- [infra] PgBouncer transaction 模式下 LISTEN/NOTIFY 不可用。若代码已用 Postgres NOTIFY 做实时推送，接 PgBouncer 后会静默失效
+- [infra] 附件若落 VPS 磁盘而非直传 R2，KVM 2 的 100 GB 撑不过约 2000 用户
+- [infra] 原稿关于代码签名的两条时间线有误：CSC-13 的 FIPS 140-2 L2 要求生效于 2023-06-01（不是近期变化）；『2026-03-01 起 458 天有效期』对应的是 TLS 服务器证书的缩短时间表，不是代码签名证书。基于错误时间线做的紧迫性判断不可靠
+- [infra] 本轮无法核实的价格全部集中在『0 用户也要付』的固定成本上（Apple、Windows 签名、Sentry、Actions）。这部分若实际高于估算，对 0-1000 用户档的影响是百分比级的
+- [infra] LLM 平台代付模式下，单个滥用账号可在一天内吃掉一个月利润。没有每用户日 token 上限 + 全平台日花费熔断，这个风险是无界的
+- [infra] Cloudflare anycast 在大陆晚高峰不稳定且部分主机被阻断，国内体验不可预测——不能对国内用户承诺任何 SLA
+- [infra] 在 prod 机器上跑 staging，一次压测或一条写错的迁移就能把 prod Postgres 拖进 swap 或打满 IOPS。为『安全试错』买的环境本身成了 prod 最大风险源
+- [security] hpke crate 仍是 0.14.0（pre-1.0），API 随时可能破坏性变更。必须包在自己的 crypto::seal/open 门面后面，否则升级时业务代码大面积返工；同时 pre-1.0 密码学库的长期维护性本身是风险，需在 CI 中监控其发布节奏
+- [security] Postgres RLS 依赖连接池取出后 SET LOCAL（非 SET）。配错时 RLS 给的是虚假安全感——比没有 RLS 更危险，因为团队会以为有兜底而放松应用层。必须写「同一连接连续服务两个租户」的专项测试
+- [security] DOMPurify 的 addHook 是全局的而非 per-sanitize-call。若沿用初稿的单实例写法，为 AI 输出写的严格 hook 会同时作用于便笺渲染（或反之），产生难以察觉的行为串扰
+- [security] SQLCipher 的 vendored OpenSSL 构建链会显著拉长 CI 并在 Windows/macOS 上踩坑。必须在项目第一周跑通三平台，否则临近发版引入会直接导致延期
+- [security] OS keychain 对同一用户的任何进程开放，SQLCipher 只防离线拷贝、不防恶意进程。若在营销文案中把它说成「本地数据不可破解」，构成虚假宣传风险
+- [security] updater 私钥泄漏仍是唯一的一击致命风险。kill switch 能推公告但无法自动修复，且 kill switch 自身的离线私钥若丢失则该机制失效——需要为 kill switch 私钥本身做冗余保管
+- [security] 间接提示注入在便笺共享场景下极难根治: 攻击者只需共享一条含指令的便笺。若后续给 AI 开放写操作工具而忘了保留用户确认弹窗，会直接演变为「读一条便笺就被静默分享全空间」
+- [security] E2EE 服务端可在团队共享时插入自己的公钥做 MITM，用户无法察觉。TOFU + 指纹校验只是缓解。任何「零知识」宣传都会构成可被安全研究者公开打脸的过度承诺
+- [security] 移除共享成员后其缓存的旧 DEK 对已下载内容永久有效，DEK 轮换只保护后续版本。UI 不明说即构成虚假的安全承诺
+- [security] 忘记保险箱密码 = 数据永久丢失，会产生真实的客服灾难和差评。恢复码强制回填能挡大部分但仍有漏网，上线前需备好话术
+- [security] npm ci --ignore-scripts 会让需要编译原生模块的依赖安装失败。若未在上线前验证整条链，会有人为了让 CI 变绿而偷偷去掉这个 flag，供应链防线静默失效
+- [security] 三级 AI 开关（inherit × 组织禁用 × 个人开启）组合状态多，缺穷举测试会出现「管理员以为禁了但没禁」的合规事故——这是直接面向企业客户的信任崩塌点
+- [security] Sentry 默认会把局部变量与 breadcrumb 一起上报，便笺正文极易泄漏到第三方。默认配置下这几乎必然发生，且不实机验证就无法发现
+- [security] 各 LLM provider 的数据保留与训练条款变动频繁，本次未逐条核实。若隐私政策与实际条款不符，在 GDPR 与应用商店两条线上同时暴露
+- [security] Apple 已收紧第三方 AI 数据共享披露要求，LLM provider 必须按 third-party 披露，Privacy Manifest 理由码填错会被拒审或下架
+- [security] 本章多处依赖的具体数字（PIPL 出境阈值、R2 location hint、Store 条款编号、密钥管理工具定价）本次因网络受限未能核实，已在正文标注；若实施者忽略标注直接照抄，会在合规文件中写入错误事实
+- [product] 初稿中 DeepSeek V4-Flash / GPT-5.6 Luna / GPT-5.6 Sol / Gemini 3.1 Flash-Lite 四个模型 ID 及其全部单价无法在任何可达来源证实，本次已从章节中删除。若照初稿定价做配额设计，AI 成本会被低估约一个数量级（可核实的最便宜档 Haiku 4.5 是 $0.0028/次，初稿假设 $0.00022）
+- [product] 本次环境通用 Web 出口被网络策略阻断且 WebSearch 配额耗尽，以下数字全部未核实、已在正文标 [待核实]：非 Anthropic 厂商实时单价、Lemon Squeezy/Paddle 当前费率、Apple Developer Program 年费、Azure Trusted Signing 与 OV/EV 证书费用、对象存储与出网单价、应用商店抽成、Hostinger VPS 套餐价。落地前必须逐条自查
+- [product] 分发失败仍是 #1 风险：便笺是『够用就行』品类，用户不会主动搜索替代品。若 M1 免费版无人使用，后续约 190 人日全部沉没。且初稿的 D7>25% 阈值是拍出来的，没有同类基准支撑
+- [product] Windows WorkerW 贴桌面被系统更新打破：未文档化 hack 且恰是核心差异点。缓解靠 DesktopPin trait 三级降级 + 运行时能力探测 + 多版本 VM 冒烟 + 官网文案不把价值全押在它上
+- [product] 同步丢数据：用户容忍度为零，一次就永久流失。缓解靠本地 append-only update log + 合并前快照保留 30 天可回滚 + 服务端全量 update log 可回放 + fast-check/proptest 属性测试 + nightly 50 万次 fuzz + 灰度 5%
+- [product] drizzle-orm 0.45.2 自 2026-03-27 起 5 个月未更新。不是弃坑证据但对要压 5 年的 ORM 是黄灯；M0 期必须验证 PostgreSQL 17 + TypeScript 7 下能正常生成迁移，否则切 Kysely（此时 <3 人日，M2 后 15 人日）
+- [product] TypeScript 7.0.2 是 Go 原生重写版，type-aware ESLint 规则、drizzle-kit、Vite 插件链可能尚未完全跟上。必须用 S0 半天验证，失败回落 6.0.3
+- [product] Vitest 5.0.0 于 2026-09-03 发布（仅一天）。若图新把它引入 monorepo，等于用全部测试基建赌一个刚发布的大版本。已锁 4.1.11
+- [product] @wdio/tauri-service 仅 1.3.0（2026-08 发布），tauri-driver 2.0.6 在 macOS 上无 WKWebView WebDriver 实现。桌面 E2E 只能覆盖 5 条冒烟路径且只在 Windows CI 跑，macOS 侧必须接受更多手工回归
+- [product] AGPL/GPL 与 Apple App Store 分发条款冲突（VLC 先例），初稿的 AGPL+CLA 方案会自断 Mac App Store 渠道——而 macOS 用户恰是核心付费人群之一。已改 source-available
+- [product] 支付手续费是最大成本项（月付被抽 8-15%），且若大量用户选月付，AI 成本预算会被压缩到不可行。年付默认选中是刚性要求不是优化项
+- [product] AI 账单被刷：10 万 MAU 中 20% 触碰 AI 的免费层敞口约 $1200/月。三层闸门（单用户 $1.00 硬顶 + 每日 5 次 + 全局 $500 熔断）缺一不可，一次 Product Hunt 上榜就能打穿账单
+- [product] S1 失败时的『单窗口多画布』Plan B 真实成本 22-30 人日（初稿写 8），要自实现拖拽/缩放/贴边/z-order/多显示器/每屏 DPI/窗口阴影。若 S1 亮红灯，M1 排期需整体重估
+- [product] 合规项（隐私政策/数据导出/账号注销/GDPR 删除）是上架商店与面向欧盟销售的硬性前置，初稿完全遗漏。已补 7 人日，但法律文本本身可能还需外部审阅成本
+- [product] macOS 公证/签名常因 entitlements、hardened runtime 反复被拒。预留 5 人日并在 M5 开始时就做，不要留到发版前一周
+- [product] 团队功能的权限过滤若只做在客户端会是安全事故：服务端必须在 update 分发层鉴权，且需 24 条权限用例的集成测试兜底
+- [product] 国内支付需企业主体 + 对公账户 + ICP 备案，第一年基本不可行。国内用户只能走 MoR 的支付宝通道（该通道当前是否支持需核实），转化率会明显低于海外
+- [product] 产品名『桌笺 / Deskly』的商标与域名可用性未核实。发布前必须走中国商标局第 9/42 类 + USPTO TESS + 域名查询三步——改名在发布前零成本，发布后是灾难
+- [product] Windows 便笺 plum.sqlite 的表结构与正文列编码随版本变化，且数据库被独占锁定（必须连 -wal/-shm 一起复制才能读到最新数据）。任何博客里的字段名都不可直接照抄，必须现场 dump，已预留 3 人日适配
