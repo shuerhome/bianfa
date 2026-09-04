@@ -1,0 +1,658 @@
+<title>淡彩纸 Tinted Paper</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ══════ 页面自身的 chrome 层（注解、控件）══════ */
+:root{
+  color-scheme:light dark;
+  --canvas:#FCFCFB; --s1:#FCFCFB; --s2:#F8F8F6; --s3:#F1F1EE; --overlay:#FFFFFF;
+  --hover:#F1F1EE;
+  --t1:#1B1B18; --t2:#5C5C55; --t3:#6E6E64;
+  --bd-sub:#E2E2DD; --bd:#D3D3CD; --bd-str:#B4B4AC;
+  --acc:#4C5FD5; --acc-sub:#EFF2FD;
+  --warn:#8A5A00; --warn-sub:#FCF3E0;
+  --ok:#17784A; --ok-sub:#E8F5ED;
+  --danger:#C0362C;
+  --code:#F1F1EE;
+  --f-ui:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  /* 应用真实字体栈：西文必须排在中文之前，否则数字与英文会用苹方/雅黑的西文字形，字宽明显更松 */
+  --f-app:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+  --fw-normal:400; --fw-medium:500; --fw-strong:600;
+  --r-window:10px;
+  --caption-w:40px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#131312; --s1:#1A1A18; --s2:#201F1D; --s3:#272623; --overlay:#232220;
+  --hover:rgba(255,255,255,.045);
+  --t1:#EDEDEA; --t2:#A3A299; --t3:#96958B;
+  --bd-sub:rgba(255,255,255,.06); --bd:rgba(255,255,255,.10); --bd-str:rgba(255,255,255,.16);
+  --acc:#8E9BF5; --acc-sub:#1E2233;
+  --warn:#D9A22E; --warn-sub:#2A2317;
+  --ok:#4DBE86; --ok-sub:#16271F;
+  --danger:#F0736A;
+  --code:#201F1D;
+}}
+:root[data-theme="dark"]{
+  --canvas:#131312; --s1:#1A1A18; --s2:#201F1D; --s3:#272623; --overlay:#232220;
+  --hover:rgba(255,255,255,.045);
+  --t1:#EDEDEA; --t2:#A3A299; --t3:#96958B;
+  --bd-sub:rgba(255,255,255,.06); --bd:rgba(255,255,255,.10); --bd-str:rgba(255,255,255,.16);
+  --acc:#8E9BF5; --acc-sub:#1E2233;
+  --warn:#D9A22E; --warn-sub:#2A2317;
+  --ok:#4DBE86; --ok-sub:#16271F;
+  --danger:#F0736A;
+  --code:#201F1D;
+}
+/* Windows：不透明 → ClearType → 接受直角；雅黑无 500/600，字重降级 */
+:root[data-os="windows"]{ --r-window:0; --fw-medium:400; --fw-strong:700; }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--t1);font-family:var(--f-ui);
+     font-size:15px;line-height:1.75;letter-spacing:.01em;-webkit-font-smoothing:antialiased}
+*{font-synthesis-weight:none}   /* 全局：禁止合成假粗，这是中文界面显廉价的头号来源 */
+code,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:0}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:5px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px 120px}
+header.top{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--canvas) 92%,transparent);
+     backdrop-filter:blur(10px);border-bottom:1px solid var(--bd-sub);margin-bottom:38px}
+.topin{max-width:1080px;margin:0 auto;padding:11px 28px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.topin h1{margin:0;font-size:15px;font-weight:var(--fw-strong);letter-spacing:0;white-space:nowrap}
+.topin .sp{flex:1}
+.seg{display:inline-flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden;background:var(--overlay)}
+.seg button{font:inherit;font-size:12px;padding:4px 11px;border:0;background:none;color:var(--t2);cursor:pointer;
+     border-right:1px solid var(--bd-sub)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--acc-sub);color:var(--acc);font-weight:var(--fw-medium)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--hover);color:var(--t1)}
+.seglab{font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--t3)}
+
+h2.sec{font-size:20px;font-weight:var(--fw-strong);margin:64px 0 6px;letter-spacing:-.004em}
+h2.sec:first-of-type{margin-top:0}
+h2.sec .num{font-family:var(--f-mono);font-size:11px;color:var(--t3);display:block;margin-bottom:4px;letter-spacing:.08em}
+.dek{color:var(--t2);font-size:14.5px;margin:0 0 22px;max-width:66ch}
+.dek b{color:var(--t1);font-weight:var(--fw-strong)}
+.note-cap{font-size:12.5px;color:var(--t3);margin:12px 0 0;line-height:1.65}
+.note-cap b{color:var(--t2);font-weight:var(--fw-medium)}
+
+
+/* ══════ 便笺色板：10 色锁在 OKLCH L=0.915（暗 0.290），实测明度极差 0.0017 ══════
+   dim（退半步）由 L+0.006 / C×0.80 生成，已用规范给的柠檬例子 #EBE7A4→#EBE8B3 逐位验证 */
+/* 便笺色板 · 亮色（dim 由 OKLCH L+0.006 / C×0.80 生成，已用规范给的柠檬例子验证） */
+.n[data-c="graphite"]{--paper:#E5E3D9;--ink:#2F2E2A;--ink2:#646360;--line:#CECCC3;--dot:#77756C;--dim:#E6E5DD}
+.n[data-c="rose"]{--paper:#F8DAE3;--ink:#42232E;--ink2:#765A63;--line:#DFC4CC;--dot:#BF3B74;--dim:#F6DEE5}
+.n[data-c="coral"]{--paper:#F8DBD7;--ink:#44241F;--ink2:#785B57;--line:#DFC5C2;--dot:#C63D34;--dim:#F6DFDB}
+.n[data-c="amber"]{--paper:#F8DEC3;--ink:#3E2910;--ink2:#725F4C;--line:#DFC8B0;--dot:#9A682D;--dim:#F6E1CB}
+.n[data-c="citron"]{--paper:#EBE7A4;--ink:#312F12;--ink2:#66654D;--line:#D3D095;--dot:#7C7733;--dim:#EBE8B3}
+.n[data-c="fern"]{--paper:#C6F0C6;--ink:#213321;--ink2:#596859;--line:#B3D8B3;--dot:#458649;--dim:#CEEFCE}
+.n[data-c="teal"]{--paper:#AEF2EB;--ink:#1B3331;--ink2:#516966;--line:#9EDAD3;--dot:#49807B;--dim:#BCF1EB}
+.n[data-c="azure"]{--paper:#CBE8F8;--ink:#123241;--ink2:#4D6775;--line:#B7D1DF;--dot:#327EA1;--dim:#D2E9F6}
+.n[data-c="violet"]{--paper:#E1E0F8;--ink:#2D2A45;--ink2:#626078;--line:#CBCADF;--dot:#735DD3;--dim:#E3E3F6}
+.n[data-c="fuchsia"]{--paper:#F8D6F6;--ink:#3B243A;--ink2:#705C6E;--line:#DFC1DD;--dot:#A846A7;--dim:#F6DBF4}
+
+/* 暗色：色相角完全不变，只动 L 与 C */
+:root[data-theme="dark"] .n[data-c="graphite"]{--paper:#2C2B28;--ink:#E0E0DC;--ink2:#969592;--line:#403E39;--dot:#A19F93;--dim:#2D2C2A}
+:root[data-theme="dark"] .n[data-c="rose"]{--paper:#421D2B;--ink:#F3D7DF;--ink2:#A58E95;--line:#58303E;--dot:#E4749E;--dim:#40222C}
+:root[data-theme="dark"] .n[data-c="coral"]{--paper:#451E1A;--ink:#F4D8D4;--ink2:#A68F8C;--line:#5A322C;--dot:#EB776A;--dim:#42231F}
+:root[data-theme="dark"] .n[data-c="amber"]{--paper:#3B260E;--ink:#EEDCCA;--ink2:#A19283;--line:#533818;--dot:#D08F40;--dim:#3A2917}
+:root[data-theme="dark"] .n[data-c="citron"]{--paper:#2F2D11;--ink:#E2E1CA;--ink2:#979684;--line:#43401B;--dot:#A9A248;--dim:#302E19}
+:root[data-theme="dark"] .n[data-c="fern"]{--paper:#1B321C;--ink:#D6E4D5;--ink2:#8D998D;--line:#2E452F;--dot:#6EB170;--dim:#203221}
+:root[data-theme="dark"] .n[data-c="teal"]{--paper:#1A302E;--ink:#CFE5E2;--ink2:#879A98;--line:#274542;--dot:#65AEA7;--dim:#20312F}
+:root[data-theme="dark"] .n[data-c="azure"]{--paper:#112F3E;--ink:#CCE4F2;--ink2:#8599A4;--line:#1B4357;--dot:#47AAD9;--dim:#19303C}
+:root[data-theme="dark"] .n[data-c="violet"]{--paper:#2A2647;--ink:#DEDDF4;--ink2:#9493A6;--line:#3D395C;--dot:#9B90EC;--dim:#2C2943}
+:root[data-theme="dark"] .n[data-c="fuchsia"]{--paper:#3B203A;--ink:#ECD9EB;--ink2:#9F8F9E;--line:#50334E;--dot:#CE7BCC;--dim:#3A2439}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+   .n[data-c="graphite"]{--paper:#2C2B28;--ink:#E0E0DC;--ink2:#969592;--line:#403E39;--dot:#A19F93;--dim:#2D2C2A}
+   .n[data-c="rose"]{--paper:#421D2B;--ink:#F3D7DF;--ink2:#A58E95;--line:#58303E;--dot:#E4749E;--dim:#40222C}
+   .n[data-c="coral"]{--paper:#451E1A;--ink:#F4D8D4;--ink2:#A68F8C;--line:#5A322C;--dot:#EB776A;--dim:#42231F}
+   .n[data-c="amber"]{--paper:#3B260E;--ink:#EEDCCA;--ink2:#A19283;--line:#533818;--dot:#D08F40;--dim:#3A2917}
+   .n[data-c="citron"]{--paper:#2F2D11;--ink:#E2E1CA;--ink2:#979684;--line:#43401B;--dot:#A9A248;--dim:#302E19}
+   .n[data-c="fern"]{--paper:#1B321C;--ink:#D6E4D5;--ink2:#8D998D;--line:#2E452F;--dot:#6EB170;--dim:#203221}
+   .n[data-c="teal"]{--paper:#1A302E;--ink:#CFE5E2;--ink2:#879A98;--line:#274542;--dot:#65AEA7;--dim:#20312F}
+   .n[data-c="azure"]{--paper:#112F3E;--ink:#CCE4F2;--ink2:#8599A4;--line:#1B4357;--dot:#47AAD9;--dim:#19303C}
+   .n[data-c="violet"]{--paper:#2A2647;--ink:#DEDDF4;--ink2:#9493A6;--line:#3D395C;--dot:#9B90EC;--dim:#2C2943}
+   .n[data-c="fuchsia"]{--paper:#3B203A;--ink:#ECD9EB;--ink2:#9F8F9E;--line:#50334E;--dot:#CE7BCC;--dim:#3A2439}
+}}
+
+/* ══════ 应用样机：便笺组件（数值全部照第 12 章）══════ */
+.n{
+  position:relative; font-family:var(--f-app); letter-spacing:.01em;
+  background:var(--paper); color:var(--ink);
+  border-radius:var(--r-window); overflow:hidden; flex:none;
+  /* 边界由「不透明纸面 + 1px 同色相实色描边」建立，阴影只做增强 */
+  box-shadow:0 0 0 1px var(--line),
+             0 1px 1px -.5px rgba(24,24,20,.12),
+             0 6px 12px -4px rgba(24,24,20,.10),
+             0 20px 40px -16px rgba(24,24,20,.18);
+  transition:background-color 140ms cubic-bezier(.16,1,.3,1), box-shadow 140ms cubic-bezier(.16,1,.3,1);
+}
+:root[data-theme="dark"] .n, .dkzone .n{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 0 0 1px var(--line),
+             0 2px 4px rgba(0,0,0,.42), 0 16px 36px -12px rgba(0,0,0,.66);
+}
+/* 退半步：失焦即换纸色，不用 filter —— filter 会给每个窗口建独立渲染面 */
+.n[data-focus="false"]{ background:var(--dim); }
+.n[data-focus="true"]{ box-shadow:0 0 0 1px var(--line),
+             0 1px 1px -.5px rgba(24,24,20,.12), 0 6px 12px -4px rgba(24,24,20,.10),
+             0 20px 40px -16px rgba(24,24,20,.18),
+             0 8px 28px -10px color-mix(in oklab, var(--dot) 30%, transparent); }
+
+.n-bar{position:absolute;top:0;left:0;right:0;height:28px;display:flex;align-items:center;
+       gap:6px;padding:0 0 0 8px;z-index:3}
+.n-dot{width:14px;height:14px;border-radius:999px;background:var(--dot);opacity:.55;flex:none;cursor:pointer}
+.n[data-focus="true"] .n-dot{opacity:.85}
+.n-drag{flex:1;height:100%;cursor:default}
+.n-acts{display:flex;gap:2px;opacity:0;transition:opacity 140ms}
+.n:hover .n-acts{opacity:1}
+.n-acts b{width:26px;height:26px;display:grid;place-items:center;border-radius:5px;
+       font-size:13px;font-weight:400;color:var(--ink2);cursor:pointer}
+.n-acts b:hover{background:color-mix(in oklab,var(--ink) 8%,transparent)}
+.n-sync{width:6px;height:6px;border-radius:999px;flex:none;margin-right:6px}
+.n-sync[data-s="idle"]{background:transparent}                      /* 已同步不画东西 —— 绿勾是噪音 */
+.n-sync[data-s="syncing"]{background:var(--ink2);animation:br 1.4s ease-in-out infinite}
+.n-sync[data-s="offline"]{box-shadow:inset 0 0 0 1.5px var(--ink2)}
+@keyframes br{0%,100%{opacity:.25}50%{opacity:1}}
+/* Windows：单枚 ✕（终审裁决取消最小化）；macOS：左缘 12px 关闭点，色点让位到右侧组 */
+.n-close{width:var(--caption-w);height:28px;border:0;background:none;color:var(--ink2);
+       font-size:11px;cursor:pointer;display:none;place-items:center}
+:root[data-os="windows"] .n-close{display:grid}
+.n-close:hover{background:#C42B1C;color:#fff}
+.n-mac{display:none;width:12px;height:12px;border-radius:999px;flex:none;
+       background:color-mix(in oklab,var(--ink) 22%,transparent);cursor:pointer}
+:root:not([data-os="windows"]) .n-mac{display:block}
+:root:not([data-os="windows"]) .n-bar{padding-left:8px}
+:root:not([data-os="windows"]) .n-dot{order:5}
+
+.n-body{position:absolute;inset:0;padding:30px 8px 12px 14px;overflow:hidden;
+        font-size:14px;line-height:1.70}
+.n-t{font-size:15px;line-height:1.62;font-weight:var(--fw-strong);margin-bottom:4px}
+.n-body p{margin:0}
+.n-body ul{margin:0;padding:0;list-style:none}
+.n-body li{display:flex;gap:6px}
+.n-body li::before{content:"·";color:var(--ink2)}
+.n-body li[data-done]::before{content:"☑";font-size:12px}
+.n-body li[data-done]{color:var(--ink2)}
+.n-body hr{border:0;border-top:1px solid color-mix(in oklab,var(--ink) 12%,transparent);margin:7px 0}
+.n-fade{position:absolute;left:0;right:0;bottom:0;height:44px;pointer-events:none;z-index:2;
+        background:linear-gradient(to bottom,transparent,var(--paper) 78%)}
+.n[data-focus="false"] .n-fade{background:linear-gradient(to bottom,transparent,var(--dim) 78%)}
+/* 工具栏双条件：窗口已聚焦 AND 鼠标在窗内。缺了第一个条件，鼠标横扫桌面会触发 15 次淡入淡出 */
+.n-tools{position:absolute;left:0;right:0;bottom:0;height:32px;z-index:4;display:flex;align-items:center;
+        gap:2px;padding:0 8px 0 10px;opacity:0;transition:opacity 140ms;pointer-events:none}
+.n[data-focus="true"]:hover .n-tools{opacity:1;pointer-events:auto}
+.n-tools b{width:26px;height:26px;display:grid;place-items:center;border-radius:5px;
+        font-size:13px;color:var(--ink2);cursor:pointer}
+.n-tools b:hover{background:color-mix(in oklab,var(--ink) 8%,transparent)}
+.n-tools .cnt{margin-left:auto;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.n-grip{position:absolute;right:2px;bottom:2px;width:14px;height:14px;z-index:5;opacity:0;transition:opacity 140ms;
+        background:repeating-linear-gradient(-45deg,transparent 0 2px,currentColor 2px 3px);color:var(--ink2);
+        -webkit-mask:linear-gradient(-45deg,transparent 45%,#000 45%);mask:linear-gradient(-45deg,transparent 45%,#000 45%)}
+.n:hover .n-grip{opacity:.35}
+
+/* ══════ 桌面场景 ══════ */
+.desk{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--bd);
+      min-height:520px;padding:26px 26px 74px;display:flex;flex-wrap:wrap;gap:22px 22px;align-content:flex-start}
+.desk[data-wp="light"]{background:
+  radial-gradient(80% 60% at 15% 10%,#EEF1F6 0%,transparent 60%),
+  radial-gradient(70% 70% at 85% 25%,#E6EBF2 0%,transparent 55%),
+  linear-gradient(160deg,#F3F5F8,#DDE3EC)}
+.desk[data-wp="dark"]{background:
+  radial-gradient(60% 50% at 25% 20%,#2A3550 0%,transparent 65%),
+  radial-gradient(70% 60% at 80% 70%,#3A2A42 0%,transparent 60%),
+  linear-gradient(150deg,#141821,#232C3D 60%,#0E1116)}
+.desk[data-wp="busy"]{background:
+  conic-gradient(from 210deg at 30% 30%,#F2653F,#F5B02E,#3FBF7F,#2E8FE0,#8C5BE8,#F2653F),
+  linear-gradient(#000,#000)}
+.desk[data-wp="busy"]::after{content:"";position:absolute;inset:0;backdrop-filter:blur(46px) saturate(1.15);pointer-events:none}
+.desk > *{position:relative;z-index:1}
+.deskbar{position:absolute;left:0;right:0;bottom:0;height:38px;z-index:0;
+      background:color-mix(in srgb,#000 22%,transparent);backdrop-filter:blur(14px)}
+
+/* ══════ 注解 ══════ */
+.spec{display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap}
+.anno{font-family:var(--f-mono);font-size:11.5px;line-height:1.9;color:var(--t2);min-width:250px;flex:1}
+.anno div{display:grid;grid-template-columns:88px 1fr;gap:10px;padding:3px 0;border-bottom:1px solid var(--bd-sub)}
+.anno div:last-child{border-bottom:0}
+.anno k{color:var(--t3)}
+.anno em{font-style:normal;color:var(--t1)}
+.stage{background:var(--s2);border:1px solid var(--bd-sub);border-radius:10px;padding:30px;
+       display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.stage.dkzone{background:#131312;border-color:rgba(255,255,255,.10)}
+
+/* ══════ 色板 ══════ */
+.pal{display:grid;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));gap:1px;
+     background:var(--bd-sub);border:1px solid var(--bd-sub);border-radius:9px;overflow:hidden}
+.sw{padding:13px 15px 12px;font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
+.sw .nm{font-family:var(--f-ui);font-size:13px;font-weight:var(--fw-strong);letter-spacing:.01em;margin-bottom:5px}
+.sw .row{display:flex;justify-content:space-between;opacity:.82}
+.sw .bar{height:4px;border-radius:2px;margin:7px 0 6px}
+
+/* ══════ 主窗口 / 团队墙 / AI ══════ */
+.win{border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--s1);
+     font-family:var(--f-app);box-shadow:0 1px 1px -.5px rgba(24,24,20,.10),0 8px 22px -10px rgba(24,24,20,.16)}
+:root[data-os="windows"] .win{border-radius:0}
+.wbar{height:38px;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--bd-sub);
+      background:var(--s2);font-size:12.5px;color:var(--t2)}
+.wtl{display:flex;gap:7px}
+.wtl i{width:11px;height:11px;border-radius:999px;display:block}
+:root[data-os="windows"] .wtl{display:none}
+.wcap{margin-left:auto;display:none;gap:0}
+:root[data-os="windows"] .wcap{display:flex}
+.wcap b{width:46px;height:38px;display:grid;place-items:center;font-size:11px;color:var(--t2);cursor:pointer}
+.wcap b:hover{background:var(--hover)} .wcap b:last-child:hover{background:#C42B1C;color:#fff}
+.wbody{display:grid;grid-template-columns:172px 1fr}
+.wside{border-right:1px solid var(--bd-sub);padding:10px 0;background:var(--s2);font-size:13px}
+.wside h4{margin:12px 14px 5px;font-family:var(--f-mono);font-size:10px;text-transform:uppercase;
+     letter-spacing:.09em;color:var(--t3);font-weight:400}
+.wside a{display:flex;align-items:center;gap:8px;padding:5px 14px;color:var(--t2);text-decoration:none;cursor:pointer}
+.wside a:hover{background:var(--hover);color:var(--t1)}
+.wside a[data-on]{background:var(--acc-sub);color:var(--acc);font-weight:var(--fw-medium)}
+.wside a .c{width:8px;height:8px;border-radius:999px;flex:none}
+.wside a .k{margin-left:auto;font-family:var(--f-mono);font-size:10.5px;color:var(--t3);font-variant-numeric:tabular-nums}
+.wmain{padding:14px;min-width:0}
+.wsearch{height:30px;border:1px solid var(--bd);border-radius:6px;background:var(--overlay);
+     display:flex;align-items:center;padding:0 10px;color:var(--t3);font-size:12.5px;margin-bottom:13px}
+.wsearch .kbd{margin-left:auto;font-family:var(--f-mono);font-size:10px;border:1px solid var(--bd);
+     border-radius:3px;padding:1px 5px;color:var(--t3)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:10px}
+/* 列表里颜色收敛成 3px 色条 + 8px 色点 —— 50 条同屏，整块着色会变拼布被 */
+.card{border:1px solid var(--bd-sub);border-left:3px solid var(--dot);border-radius:0 7px 7px 0;
+      background:var(--overlay);color:var(--t2);box-shadow:none;padding:9px 11px;font-size:12.5px;
+      line-height:1.62;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:88px;
+      transition:background-color 90ms linear,border-color 90ms linear}
+.card:hover{border-color:var(--bd-str);border-left-color:var(--dot);background:var(--hover)}
+.card .ct{font-size:13px;font-weight:var(--fw-strong);color:var(--t1);line-height:1.5}
+.card .cx{color:var(--t2);flex:1;overflow:hidden}
+.card .cm{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:10px;color:var(--t3);
+      font-variant-numeric:tabular-nums}
+.card .cm .c{width:8px;height:8px;border-radius:999px;background:var(--dot);flex:none}
+
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.wcol h5{margin:0 0 9px;font-size:12px;color:var(--t2);display:flex;align-items:center;gap:7px;font-weight:var(--fw-medium)}
+.av{width:20px;height:20px;border-radius:999px;display:grid;place-items:center;color:#fff;
+    font-size:10px;font-weight:var(--fw-strong);flex:none;font-family:var(--f-ui)}
+.editing{outline:2px solid var(--dot);outline-offset:1px}
+
+.ai{border:1px solid var(--bd-sub);border-radius:9px;background:var(--s1);overflow:hidden;font-family:var(--f-app);max-width:380px}
+.aihd{height:34px;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--bd-sub);
+      background:var(--s2);font-size:12.5px}
+.model{display:flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:5px;padding:2px 8px;
+      background:var(--overlay);font-size:11.5px;color:var(--t1);cursor:pointer}
+.model .mono{font-size:10.5px;color:var(--t3)}
+.aibd{padding:12px;font-size:13.5px;line-height:1.78;color:var(--t1)}
+.aibd .u{background:var(--acc-sub);border-radius:7px;padding:7px 10px;margin-bottom:11px;font-size:13px}
+.cursor{display:inline-block;width:2px;height:1em;background:var(--acc);vertical-align:-2px;
+      animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{opacity:0}}
+.aift{border-top:1px solid var(--bd-sub);padding:8px 11px;display:flex;gap:7px;align-items:center;
+      font-size:11.5px;color:var(--t3)}
+.btn{font:inherit;font-size:12px;padding:4px 10px;border-radius:5px;border:1px solid var(--bd);
+     background:var(--overlay);color:var(--t1);cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:var(--fw-strong)}
+.btn:hover{border-color:var(--bd-str)} .btn.pri:hover{filter:brightness(1.06)}
+
+/* ══════ 排版实证 ══════ */
+.tg{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1px;background:var(--bd-sub);
+    border:1px solid var(--bd-sub);border-radius:9px;overflow:hidden}
+.tc{background:var(--s1);padding:15px 17px}
+.tc h6{margin:0 0 3px;font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);font-weight:400}
+.tc .verdict{font-size:11.5px;margin-top:9px;padding-top:8px;border-top:1px solid var(--bd-sub);color:var(--t2);line-height:1.6}
+.tc .verdict b{color:var(--t1);font-weight:var(--fw-medium)}
+.dem{font-family:var(--f-app);font-size:14px;line-height:1.70;letter-spacing:.01em}
+.bad{color:var(--danger)} .good{color:var(--ok)}
+.lh14{line-height:1.40} .lh17{line-height:1.70}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:10px;padding:1.5px 6px;border-radius:3px;
+     border:1px solid;vertical-align:1px}
+.tag.no{color:var(--danger);border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent)}
+.tag.yes{color:var(--ok);border-color:var(--ok);background:color-mix(in srgb,var(--ok) 8%,transparent)}
+
+.callout{border:1px solid var(--bd);border-left:3px solid var(--warn);background:var(--s2);
+     border-radius:0 8px 8px 0;padding:13px 16px;margin:22px 0 0;font-size:13.5px;line-height:1.72;color:var(--t2)}
+.callout b{color:var(--t1);font-weight:var(--fw-strong)}
+@media (max-width:760px){ .wbody{grid-template-columns:1fr} .wside{display:none} .topin{padding:10px 18px} .wrap{padding:0 18px 80px} }
+</style>
+
+<header class="top">
+  <div class="topin">
+    <h1>淡彩纸 <span style="color:var(--t3);font-weight:400">Tinted Paper</span></h1>
+    <span class="sp"></span>
+    <span class="seglab">平台</span>
+    <span class="seg" id="os">
+      <button data-v="windows" aria-pressed="true">Windows</button>
+      <button data-v="macos" aria-pressed="false">macOS</button>
+    </span>
+    <span class="seglab">主题</span>
+    <span class="seg" id="th">
+      <button data-v="" aria-pressed="true">跟随系统</button>
+      <button data-v="light" aria-pressed="false">亮</button>
+      <button data-v="dark" aria-pressed="false">暗</button>
+    </span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<h2 class="sec"><span class="num">01 / 桌面场景</span>多张便笺同屏时长什么样</h2>
+<p class="dek">这是产品的真实使用形态，也是所有设计决策的裁判场：小窗口、多实例、贴在任意壁纸上。<b>点任意一张便笺切换聚焦</b> —— 一屏只有一张带自己的颜色和柔光，其余「退半步」换成 <code>--dim</code> 纸色（OKLCH 的 L+0.006 / C×0.80）。<b>切换壁纸压力测试边界</b>：规范声称窗口边界靠「不透明纸面 + 1px 同色相实色描边」自足，不靠阴影 —— 深色壁纸下能不能立住，你自己看。</p>
+<div style="display:flex;gap:9px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+  <span class="seglab">壁纸</span>
+  <span class="seg" id="wp">
+    <button data-v="light" aria-pressed="true">浅色</button>
+    <button data-v="dark" aria-pressed="false">深色照片</button>
+    <button data-v="busy" aria-pressed="false">花哨</button>
+  </span>
+  <span style="font-size:12px;color:var(--t3)">悬停聚焦的那张 → 底部工具栏淡入（双条件：<code>聚焦 AND 悬停</code>）</span>
+</div>
+<div class="desk" data-wp="light" id="desk">
+  <div class="deskbar"></div>
+
+  <div class="n" data-c="citron" data-focus="true" style="width:220px;height:220px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⇧</b><b>⋯</b></span><span class="n-sync" data-s="idle"></span><button class="n-close">✕</button></div>
+    <div class="n-body">
+      <div class="n-t">周三 14:00 产品评审</div>
+      <ul>
+        <li>确认 OKLCH 色板 v2.3</li>
+        <li>找林要设计稿终稿</li>
+        <li data-done>明天前回邮件</li>
+        <li>便笺墙分组逻辑再想</li>
+      </ul>
+    </div>
+    <div class="n-fade"></div>
+    <div class="n-tools"><b>◉</b><b>⇧</b><b>✦</b><b>⋯</b><span class="cnt">108 字</span></div>
+    <span class="n-grip"></span>
+  </div>
+
+  <div class="n" data-c="azure" data-focus="false" style="width:220px;height:220px;margin-top:18px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⇧</b><b>⋯</b></span><span class="n-sync" data-s="syncing"></span><button class="n-close">✕</button></div>
+    <div class="n-body">
+      <div class="n-t">服务器续费</div>
+      <p>Hostinger KVM 4 到期 11/20。<br>注意续费价 $28.99 不是促销价 $12.99，预算按续费价做。</p>
+    </div>
+    <div class="n-fade"></div>
+    <div class="n-tools"><b>◉</b><b>⇧</b><b>✦</b><b>⋯</b><span class="cnt">46 字</span></div>
+    <span class="n-grip"></span>
+  </div>
+
+  <div class="n" data-c="coral" data-focus="false" style="width:180px;height:140px;margin-top:6px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⋯</b></span><span class="n-sync" data-s="offline"></span><button class="n-close">✕</button></div>
+    <div class="n-body" style="font-size:13px;line-height:1.62;padding:28px 8px 10px 12px">
+      <div class="n-t" style="font-size:14px">取快递</div>
+      <p>丰巢 8-2211<br>取件码 4471</p>
+    </div>
+    <div class="n-fade"></div>
+    <span class="n-grip"></span>
+  </div>
+
+  <div class="n" data-c="fern" data-focus="false" style="width:300px;height:220px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⇧</b><b>⋯</b></span><span class="n-sync" data-s="idle"></span><button class="n-close">✕</button></div>
+    <div class="n-body" style="padding:30px 8px 12px 16px">
+      <div class="n-t">周报草稿</div>
+      <p>本周把贴桌面 spike 跑通了：Windows 侧 z-order 沉底 + WinEvent hook 可行，中文输入法正常。</p>
+      <hr>
+      <p style="color:var(--ink2)">macOS 侧还没验，key window 那个问题是下周重点。</p>
+    </div>
+    <div class="n-fade"></div>
+    <div class="n-tools"><b>◉</b><b>⇧</b><b>✦</b><b>⋯</b><span class="cnt">62 字</span></div>
+    <span class="n-grip"></span>
+  </div>
+
+  <div class="n" data-c="violet" data-focus="false" style="width:220px;height:260px;margin-top:10px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⇧</b><b>⋯</b></span><span class="n-sync" data-s="idle"></span><button class="n-close">✕</button></div>
+    <div class="n-body">
+      <div class="n-t">买菜</div>
+      <ul>
+        <li data-done>鸡蛋</li><li data-done>牛奶</li><li>西红柿 2 斤</li>
+        <li>香菜（少放）</li><li>老抽</li><li>厨房纸</li>
+      </ul>
+    </div>
+    <div class="n-fade"></div>
+    <div class="n-tools"><b>◉</b><b>⇧</b><b>✦</b><b>⋯</b><span class="cnt">18 字</span></div>
+    <span class="n-grip"></span>
+  </div>
+
+  <div class="n" data-c="rose" data-focus="false" style="width:200px;height:170px;margin-top:34px">
+    <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+      <span class="n-acts"><b>⋯</b></span><span class="n-sync" data-s="idle"></span><button class="n-close">✕</button></div>
+    <div class="n-body" style="font-size:13px;line-height:1.62">
+      <div class="n-t" style="font-size:14px">妈生日</div>
+      <p>10 月 12 日<br>订蛋糕，别忘了</p>
+    </div>
+    <div class="n-fade"></div>
+    <span class="n-grip"></span>
+  </div>
+</div>
+<p class="note-cap">同步指示器四态里<b>「已同步」是不画东西的</b> —— 一个常驻的绿勾是噪音。上图里天青色那张在同步（呼吸点），珊瑚色那张离线待同步（空心圈），其余留空。</p>
+
+<h2 class="sec"><span class="num">02 / 便笺解剖</span>220×220 里到底能装多少字</h2>
+<p class="dek">左边是 1:1 的真实尺寸。<b>常驻 chrome 只有 42px</b>（顶栏 28 + 底部留白 12 + 描边 2），换来 178px 的可用高度。对照 Windows 便笺同尺寸约 75–80 字（12px 字号），这里是 <b>108 个汉字且字号更大</b>。</p>
+<div class="spec">
+  <div class="stage" style="flex:none">
+    <div class="n" data-c="citron" data-focus="true" style="width:220px;height:220px">
+      <div class="n-bar"><span class="n-mac"></span><span class="n-dot"></span><span class="n-drag"></span>
+        <span class="n-acts"><b>⇧</b><b>⋯</b></span><span class="n-sync" data-s="idle"></span><button class="n-close">✕</button></div>
+      <div class="n-body">
+        <div class="n-t">周三 14:00 产品评审</div>
+        <ul><li>确认 OKLCH 色板 v2.3</li><li>找林要设计稿终稿</li>
+        <li data-done>明天前回邮件</li><li>便笺墙分组逻辑再想</li></ul>
+      </div>
+      <div class="n-fade"></div>
+      <div class="n-tools"><b>◉</b><b>⇧</b><b>✦</b><b>⋯</b><span class="cnt">108 字</span></div>
+      <span class="n-grip"></span>
+    </div>
+  </div>
+  <div class="anno">
+    <div><k>顶栏</k><em>28px · absolute · 不占布局流</em></div>
+    <div><k>内边距</k><em>30 / 8 / 12 / 14 —— 右 8px 即滚动条槽</em></div>
+    <div><k>可用宽</k><em>198px ≈ 14.1 中文字 / 行</em></div>
+    <div><k>正文</k><em>14px / 1.70 = 23.8px 行高（地板，不许更小）</em></div>
+    <div><k>首行标题</k><em>15px / 1.62 —— 无独立标题栏，第一行即标题</em></div>
+    <div><k>渐隐遮罩</k><em>44px —— 避免硬切文字</em></div>
+    <div><k>工具栏</k><em>32px · 双条件触发 · absolute 不占位</em></div>
+    <div><k>容量</k><em>标题 + 6.7 行 × 14 字 ≈ 108 汉字</em></div>
+    <div><k>ink/paper</k><em>10.67:1（AAA）</em></div>
+    <div><k>最小窗口</k><em>180×140 · 随 --ui-scale 缩放</em></div>
+  </div>
+</div>
+<div class="callout"><b>为什么 Windows 上是直角。</b>Chromium 在带 alpha 的合成面上会退回灰度抗锯齿、放弃 ClearType，13px 中文明显发虚 —— 而正文是产品 80% 的像素。所以便笺窗必须 <code>transparent:false</code>；而无边框窗口的 DWM 不保证给圆角、也无 API 可查。<b>「不透明 → ClearType → 接受直角」是一条推论链，不是审美选择。</b>切到 macOS 看差异：那边系统级早无亚像素抗锯齿，透明零成本，所以是 10px 圆角。</div>
+
+<h2 class="sec"><span class="num">03 / 十色色板</span>同一条明度轨道上的十种颜色</h2>
+<p class="dek">全部锁在 OKLCH <code>L=0.915</code>（暗色 <code>0.290</code>），实测明度极差仅 <b>0.0017</b>。这解决的是原版便笺最大的视觉问题：颜色一多就像调色盘打翻。下面每格的对比度都是<b>本页实算</b>的，不是抄来的。</p>
+<div class="pal" id="pal"></div>
+<p class="note-cap">色觉障碍补丁是<b>必做项不是可选项</b>：同明度锁定在正常色觉下是最大优点，对红绿色盲却抹掉了唯一的备用线索。所以颜色选择器每格必须带名称文字，并提供「用图案区分」开关 —— WCAG 1.4.1 要求颜色不得是唯一的信息载体。</p>
+
+<h2 class="sec"><span class="num">04 / 主窗口</span>列表里颜色收敛成色条与色点</h2>
+<p class="dek">这是「染色语境化」那条规则的另一半：<b>桌面上是整面淡彩纸，列表里只剩 3px 左色条 + 8px 色点</b>。理由很实在 —— 50 条同屏时整块着色会变成拼布被，而单张浮在壁纸上时又必须有大面积色块才能在 0.5 秒内定位。</p>
+<div class="win">
+  <div class="wbar"><span class="wtl"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
+    <span>bianfa</span><span class="wcap"><b>─</b><b>▢</b><b>✕</b></span></div>
+  <div class="wbody">
+    <div class="wside">
+      <h4>笔记本</h4>
+      <a data-on><span class="c" style="background:var(--acc)"></span>全部便笺<span class="k">247</span></a>
+      <a><span class="c" style="background:#7C7733"></span>工作<span class="k">88</span></a>
+      <a><span class="c" style="background:#327EA1"></span>个人<span class="k">41</span></a>
+      <h4>共享</h4>
+      <a><span class="c" style="background:#458649"></span>设计组<span class="k">23</span></a>
+      <a><span class="c" style="background:#BF3B74"></span>值班交接<span class="k">7</span></a>
+      <h4>其它</h4>
+      <a><span class="c" style="background:var(--t3)"></span>回收站<span class="k">12</span></a>
+    </div>
+    <div class="wmain">
+      <div class="wsearch"><span>搜索便笺…</span><span class="kbd" id="kbd">Ctrl K</span></div>
+      <div class="cards" id="cards"></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec"><span class="num">05 / 团队便笺墙</span>差异化在「撕下来贴到自己桌面」</h2>
+<p class="dek">v1 只做 CSS Grid 分组，不做自由画布（那是 4–6 周不是几天）。真正的卖点是右上角那个「撕下来」的动作 —— 把墙上的一张便笺变成自己桌面上的一个独立窗口。<b>正在被别人编辑的那张带同色描边</b>，不是通用蓝色。</p>
+<div class="win">
+  <div class="wbar"><span class="wtl"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
+    <span>设计组 · 便笺墙</span>
+    <span style="margin-left:14px;display:flex;gap:-6px">
+      <span class="av" style="background:#BF3B74">林</span>
+      <span class="av" style="background:#327EA1;margin-left:-6px">周</span>
+      <span class="av" style="background:#458649;margin-left:-6px">吴</span>
+    </span>
+    <span class="wcap"><b>─</b><b>▢</b><b>✕</b></span></div>
+  <div style="padding:16px" id="wallwrap">
+    <div class="wall" id="wall"></div>
+  </div>
+</div>
+
+<h2 class="sec"><span class="num">06 / AI 面板</span>模型选择器与流式输出</h2>
+<p class="dek">面板用<b>中性表面不染色</b> —— 流式长文在中性灰底上最好读，而且它浮在彩纸上，染色会和纸面糊在一起。模型注册表是配置化的，加新模型只填一行 <code>priceIn/priceOut/capabilities</code>。</p>
+<div style="display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start">
+  <div class="ai">
+    <div class="aihd"><span style="color:var(--acc)">✦</span>
+      <span class="model">claude-opus-5 <span class="mono">▾</span></span>
+      <span style="margin-left:auto;font-family:var(--f-mono);font-size:10.5px;color:var(--t3)">1,284 tok</span></div>
+    <div class="aibd">
+      <div class="u">把这张便笺整理成周报，分「已完成 / 进行中 / 风险」三段</div>
+      <div><b style="font-weight:var(--fw-strong)">已完成</b><br>贴桌面 spike 跑通，Windows 侧 z-order 沉底方案可行，中文输入法验证正常。<br><br>
+      <b style="font-weight:var(--fw-strong)">进行中</b><br>macOS 侧窗口层级验证<span class="cursor"></span></div>
+    </div>
+    <div class="aift"><button class="btn pri">接受</button><button class="btn">重写</button><button class="btn">丢弃</button>
+      <span style="margin-left:auto">Esc 中断</span></div>
+  </div>
+  <div class="anno" style="min-width:260px">
+    <div><k>模型档位</k><em>claude-opus-5 / gpt-5.6-sol / gemini-3.8-flash / deepseek-v4-pro</em></div>
+    <div><k>流式渲染</k><em>rAF 批量刷新，不逐 token setState</em></div>
+    <div><k>实测差异</k><em>&gt;2000 字时 55fps vs 22fps</em></div>
+    <div><k>落地方式</k><em>本地 origin 的 transact —— 否则每次 AI 改写都会误触发远端变更高亮</em></div>
+    <div><k>权限</k><em>调用前 8 步校验链，第 5 步拦截保险箱便笺</em></div>
+    <div><k>成本</k><em>默认 BYOK；平台代付带三层熔断</em></div>
+  </div>
+</div>
+
+<h2 class="sec"><span class="num">07 / 中文排版实证</span>三个让中文界面显廉价的真实陷阱</h2>
+<p class="dek">这一节不是理论。<b>切到 Windows 平台看第一格</b> —— 差异会当场出现，因为它就是本页正在发生的事。</p>
+<div class="tg">
+  <div class="tc">
+    <h6>陷阱一 · 字重</h6>
+    <div class="dem"><span style="font-weight:400">常规 400</span> ／ <span style="font-weight:500">中等 500</span> ／ <span style="font-weight:600">加粗 600</span> ／ <span style="font-weight:700">粗 700</span></div>
+    <div class="verdict"><b>微软雅黑只有 400 / 700，没有 500 和 600。</b>写 <code>font-weight:600</code> 会触发合成假粗，把 13px 中文笔画糊成一团。本页全局 <code>font-synthesis-weight:none</code>，所以 Windows 下 500 和 400 长得一样 —— 这是<b>正确</b>行为。<br>推论必须一起接受：<b>层级靠「字号 + 颜色 + 字距」建立，不靠字重。</b></div>
+  </div>
+  <div class="tc">
+    <h6>陷阱二 · 标点挤压</h6>
+    <div class="dem">他说：「明天（周三）14:00 开会。」</div>
+    <div class="verdict"><code>text-spacing-trim</code> <span class="tag yes">Chrome 123+</span> <span class="tag no">Safari 未实现</span><br>
+    <code>hanging-punctuation</code> <span class="tag no">Chromium 未实现</span> <span class="tag yes">WebKit 16+</span><br>
+    <code>palt</code> 在苹方生效、在雅黑无效。<br>
+    裁定：<b>两平台同开或同关，绝不单边渐进增强</b> —— 同一张便笺在两台电脑上换行位置不同，对同步型产品是<b>正确性缺陷</b>不是审美差异。解法是自制 ~5–8KB 标点子集字体，把闭合标点 advance 静态设为 0.5em。</div>
+  </div>
+  <div class="tc">
+    <h6>陷阱三 · 行高</h6>
+    <div class="dem lh14" style="margin-bottom:9px">西文的 1.40 行高照搬到中文，方块字没有 x-height 提供的呼吸，密排会糊成一片灰。</div>
+    <div class="dem lh17">中文正文行高地板是 1.70。同一段话，观感差异不需要解释 —— 上面那段是 1.40，这段是 1.70。</div>
+    <div class="verdict">阶梯：<code>1.45</code> 标签 ／ <code>1.62</code> UI 正文与标题 ／ <code>1.70</code> 便笺正文与 AI 输出 ／ <code>1.85</code> 长文阅读态。</div>
+  </div>
+</div>
+<div class="callout"><b>还有一条不在上面但同样致命的：字体栈顺序。</b>西文族必须排在中文族<b>之前</b> —— 否则英文和数字会用苹方/雅黑自带的西文字形渲染，字宽明显更松，中英混排立刻显得业余。本页所有便笺用的就是规范里那条栈：<code>-apple-system, Segoe UI Variable Text, Segoe UI, PingFang SC, Microsoft YaHei UI</code>。<br><br><b>中文正文一个字节都不内嵌</b>：Noto Sans SC 单字重 woff2 全量约 2.3 MB，会让 Tauri 安装包直接翻倍。只嵌标点子集（≤8KB）与拉丁子集。</div>
+
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement;
+  root.setAttribute('data-os','windows');
+
+  function seg(id,fn){
+    var w=document.getElementById(id);
+    w.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(w.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed', x===b?'true':'false');});
+      fn(b.dataset.v);
+    });
+  }
+  seg('os',function(v){
+    root.setAttribute('data-os',v);
+    document.getElementById('kbd').textContent = v==='windows' ? 'Ctrl K' : '⌘ K';
+  });
+  seg('th',function(v){ v?root.setAttribute('data-theme',v):root.removeAttribute('data-theme'); paint(); });
+  seg('wp',function(v){ document.getElementById('desk').setAttribute('data-wp',v); });
+
+  // 点击切换聚焦：一屏恒定只有一张带自己的颜色
+  document.getElementById('desk').addEventListener('click',function(e){
+    var n=e.target.closest('.n'); if(!n) return;
+    [].forEach.call(this.querySelectorAll('.n'),function(x){x.setAttribute('data-focus', x===n?'true':'false');});
+  });
+
+  var PAL=[["graphite","石墨",96],["rose","玫瑰",358],["coral","珊瑚",28],["amber","琥珀",68],["citron","柠檬",105],
+           ["fern","竹绿",145],["teal","松石",188],["azure","天青",232],["violet","紫罗兰",288],["fuchsia","品红",328]];
+
+  function s2l(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+  function lum(h){h=h.replace('#','');var r=s2l(parseInt(h.slice(0,2),16)/255),g=s2l(parseInt(h.slice(2,4),16)/255),b=s2l(parseInt(h.slice(4,6),16)/255);return .2126*r+.7152*g+.0722*b;}
+  function cr(a,b){var x=lum(a),y=lum(b),h=Math.max(x,y),l=Math.min(x,y);return (h+.05)/(l+.05);}
+
+  function paint(){
+    var pal=document.getElementById('pal'); pal.innerHTML='';
+    PAL.forEach(function(p){
+      var probe=document.createElement('div'); probe.className='n'; probe.setAttribute('data-c',p[0]);
+      probe.style.cssText='position:absolute;visibility:hidden'; document.body.appendChild(probe);
+      var cs=getComputedStyle(probe);
+      var paper=cs.getPropertyValue('--paper').trim(), ink=cs.getPropertyValue('--ink').trim(),
+          ink2=cs.getPropertyValue('--ink2').trim(), dot=cs.getPropertyValue('--dot').trim();
+      document.body.removeChild(probe);
+      var d=document.createElement('div'); d.className='sw';
+      d.style.background=paper; d.style.color=ink;
+      d.innerHTML='<div class="nm">'+p[1]+'</div>'
+        +'<div class="row"><span>h'+p[2]+'</span><span>'+paper.toUpperCase()+'</span></div>'
+        +'<div class="bar" style="background:'+dot+'"></div>'
+        +'<div class="row"><span>ink</span><span>'+cr(ink,paper).toFixed(2)+':1</span></div>'
+        +'<div class="row"><span>ink2</span><span>'+cr(ink2,paper).toFixed(2)+':1</span></div>'
+        +'<div class="row"><span>dot</span><span>'+cr(dot,paper).toFixed(2)+':1</span></div>';
+      pal.appendChild(d);
+    });
+  }
+
+  var CARDS=[["citron","周三 14:00 产品评审","确认 OKLCH 色板 v2.3 · 找林要设计稿终稿","14:22","108"],
+   ["azure","服务器续费","Hostinger KVM 4 到期 11/20，注意续费价不是促销价","昨天","46"],
+   ["fern","周报草稿","本周把贴桌面 spike 跑通了，Windows 侧可行","昨天","62"],
+   ["violet","买菜","西红柿 2 斤 · 香菜（少放）· 老抽 · 厨房纸","周一","18"],
+   ["rose","妈生日","10 月 12 日，订蛋糕别忘了","周一","12"],
+   ["coral","取快递","丰巢 8-2211，取件码 4471","上周","14"],
+   ["teal","读书笔记","CRDT 的 tombstone 增长问题与 GC 时机","上周","231"],
+   ["amber","装修尾款","10 月底前结清，记得要发票","上周","19"]];
+  var cw=document.getElementById('cards');
+  CARDS.forEach(function(c){
+    var d=document.createElement('div'); d.className='n card'; d.setAttribute('data-c',c[0]);
+    d.innerHTML='<div class="ct">'+c[1]+'</div><div class="cx">'+c[2]+'</div>'
+      +'<div class="cm"><span class="c"></span><span>'+c[3]+'</span><span>· '+c[4]+' 字</span></div>';
+    cw.appendChild(d);
+  });
+
+  var WALL=[["今日值班","rose","林","接口 502 已定位，是网关证书过期",1],
+   ["今日值班","amber","周","下午 3 点前完成灰度回滚验证",0],
+   ["设计评审","citron","吴","色板 v2.3 已定稿，等工程接入",0],
+   ["设计评审","teal","林","便笺墙分组逻辑要不要支持自定义？",0],
+   ["待办","fern","周","补 a11y 测试用例",0],
+   ["待办","azure","吴","写迁移器的 plum.sqlite 兼容层",0]];
+  var groups={};
+  WALL.forEach(function(w){ (groups[w[0]]=groups[w[0]]||[]).push(w); });
+  var wl=document.getElementById('wall');
+  var AVC={"林":"#BF3B74","周":"#327EA1","吴":"#458649"};
+  Object.keys(groups).forEach(function(g){
+    var col=document.createElement('div'); col.className='wcol';
+    col.innerHTML='<h5>'+g+' <span style="color:var(--t3);font-family:var(--f-mono);font-size:10.5px">'+groups[g].length+'</span></h5>';
+    groups[g].forEach(function(w){
+      var d=document.createElement('div'); d.className='n card'+(w[4]?' editing':'');
+      d.setAttribute('data-c',w[1]); d.style.marginBottom='9px';
+      d.innerHTML='<div class="cx" style="color:var(--t1);font-size:12.5px">'+w[3]+'</div>'
+        +'<div class="cm"><span class="av" style="width:16px;height:16px;font-size:9px;background:'+AVC[w[2]]+'">'+w[2]+'</span>'
+        +(w[4]?'<span style="color:var(--acc)">正在编辑</span>':'<span>2 小时前</span>')+'</div>';
+      col.appendChild(d);
+    });
+    wl.appendChild(col);
+  });
+
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',paint);
+  paint();
+})();
+</script>
