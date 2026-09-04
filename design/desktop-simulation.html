@@ -1,0 +1,520 @@
+<title>便笺试用间</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light dark;
+  --t1:#1B1B18; --t2:#5C5C55; --t3:#6E6E64;
+  --canvas:#FCFCFB; --s2:#F8F8F6; --s3:#F1F1EE; --overlay:#FFFFFF;
+  --bd-sub:#E2E2DD; --bd:#D3D3CD; --bd-str:#B4B4AC; --hover:#F1F1EE;
+  --acc:#4C5FD5; --acc-sub:#EFF2FD;
+  --f-ui:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  --f-app:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+  --fw-medium:500; --fw-strong:600;
+  --r-window:10px; --caption-w:40px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --t1:#EDEDEA; --t2:#A3A299; --t3:#96958B;
+  --canvas:#131312; --s2:#201F1D; --s3:#272623; --overlay:#232220;
+  --bd-sub:rgba(255,255,255,.06); --bd:rgba(255,255,255,.10); --bd-str:rgba(255,255,255,.16);
+  --hover:rgba(255,255,255,.045); --acc:#8E9BF5; --acc-sub:#1E2233;
+}}
+:root[data-theme="dark"]{
+  --t1:#EDEDEA; --t2:#A3A299; --t3:#96958B;
+  --canvas:#131312; --s2:#201F1D; --s3:#272623; --overlay:#232220;
+  --bd-sub:rgba(255,255,255,.06); --bd:rgba(255,255,255,.10); --bd-str:rgba(255,255,255,.16);
+  --hover:rgba(255,255,255,.045); --acc:#8E9BF5; --acc-sub:#1E2233;
+}
+:root[data-os="windows"]{ --r-window:0; --fw-medium:400; --fw-strong:700; }
+
+/* 便笺色板：10 色锁在 OKLCH L=0.915（暗 0.290）；dim = L+0.006, C×0.80 */
+.n[data-c="graphite"]{--paper:#E5E3D9;--ink:#2F2E2A;--ink2:#646360;--line:#CECCC3;--dot:#77756C;--dim:#E6E5DD}
+.n[data-c="rose"]{--paper:#F8DAE3;--ink:#42232E;--ink2:#765A63;--line:#DFC4CC;--dot:#BF3B74;--dim:#F6DEE5}
+.n[data-c="coral"]{--paper:#F8DBD7;--ink:#44241F;--ink2:#785B57;--line:#DFC5C2;--dot:#C63D34;--dim:#F6DFDB}
+.n[data-c="amber"]{--paper:#F8DEC3;--ink:#3E2910;--ink2:#725F4C;--line:#DFC8B0;--dot:#9A682D;--dim:#F6E1CB}
+.n[data-c="citron"]{--paper:#EBE7A4;--ink:#312F12;--ink2:#66654D;--line:#D3D095;--dot:#7C7733;--dim:#EBE8B3}
+.n[data-c="fern"]{--paper:#C6F0C6;--ink:#213321;--ink2:#596859;--line:#B3D8B3;--dot:#458649;--dim:#CEEFCE}
+.n[data-c="teal"]{--paper:#AEF2EB;--ink:#1B3331;--ink2:#516966;--line:#9EDAD3;--dot:#49807B;--dim:#BCF1EB}
+.n[data-c="azure"]{--paper:#CBE8F8;--ink:#123241;--ink2:#4D6775;--line:#B7D1DF;--dot:#327EA1;--dim:#D2E9F6}
+.n[data-c="violet"]{--paper:#E1E0F8;--ink:#2D2A45;--ink2:#626078;--line:#CBCADF;--dot:#735DD3;--dim:#E3E3F6}
+.n[data-c="fuchsia"]{--paper:#F8D6F6;--ink:#3B243A;--ink2:#705C6E;--line:#DFC1DD;--dot:#A846A7;--dim:#F6DBF4}
+.dark .n[data-c="graphite"]{--paper:#2C2B28;--ink:#E0E0DC;--ink2:#969592;--line:#403E39;--dot:#A19F93;--dim:#2D2C2A}
+.dark .n[data-c="rose"]{--paper:#421D2B;--ink:#F3D7DF;--ink2:#A58E95;--line:#58303E;--dot:#E4749E;--dim:#40222C}
+.dark .n[data-c="coral"]{--paper:#451E1A;--ink:#F4D8D4;--ink2:#A68F8C;--line:#5A322C;--dot:#EB776A;--dim:#42231F}
+.dark .n[data-c="amber"]{--paper:#3B260E;--ink:#EEDCCA;--ink2:#A19283;--line:#533818;--dot:#D08F40;--dim:#3A2917}
+.dark .n[data-c="citron"]{--paper:#2F2D11;--ink:#E2E1CA;--ink2:#979684;--line:#43401B;--dot:#A9A248;--dim:#302E19}
+.dark .n[data-c="fern"]{--paper:#1B321C;--ink:#D6E4D5;--ink2:#8D998D;--line:#2E452F;--dot:#6EB170;--dim:#203221}
+.dark .n[data-c="teal"]{--paper:#1A302E;--ink:#CFE5E2;--ink2:#879A98;--line:#274542;--dot:#65AEA7;--dim:#20312F}
+.dark .n[data-c="azure"]{--paper:#112F3E;--ink:#CCE4F2;--ink2:#8599A4;--line:#1B4357;--dot:#47AAD9;--dim:#19303C}
+.dark .n[data-c="violet"]{--paper:#2A2647;--ink:#DEDDF4;--ink2:#9493A6;--line:#3D395C;--dot:#9B90EC;--dim:#2C2943}
+.dark .n[data-c="fuchsia"]{--paper:#3B203A;--ink:#ECD9EB;--ink2:#9F8F9E;--line:#50334E;--dot:#CE7BCC;--dim:#3A2439}
+
+*{box-sizing:border-box}
+*{font-synthesis-weight:none}
+body{margin:0;background:var(--canvas);color:var(--t1);font-family:var(--f-ui);font-size:14px;
+     line-height:1.7;letter-spacing:.01em;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:5px}
+code,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:0}
+
+.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 20px;
+     border-bottom:1px solid var(--bd-sub);background:var(--s2)}
+.bar h1{margin:0;font-size:14px;font-weight:var(--fw-strong);white-space:nowrap;letter-spacing:0}
+.bar .sp{flex:1}
+.lab{font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--t3)}
+.seg{display:inline-flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden;background:var(--overlay)}
+.seg button{font:inherit;font-size:12px;padding:4px 10px;border:0;border-right:1px solid var(--bd-sub);
+     background:none;color:var(--t2);cursor:pointer;white-space:nowrap}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--acc-sub);color:var(--acc);font-weight:var(--fw-medium)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--hover);color:var(--t1)}
+.hint{padding:8px 20px;font-size:12.5px;color:var(--t2);background:var(--s3);border-bottom:1px solid var(--bd-sub)}
+.hint b{color:var(--t1);font-weight:var(--fw-medium)}
+.hint code{background:var(--overlay);border:1px solid var(--bd-sub);border-radius:3px;padding:0 4px;font-size:11px}
+
+/* ══ 屏幕 ══ */
+.screen{position:relative;height:640px;overflow:hidden;user-select:none;isolation:isolate}
+.wall{position:absolute;inset:0;z-index:0}
+.wall[data-wp="light"]{background:radial-gradient(80% 60% at 15% 10%,#EEF1F6,transparent 60%),
+  radial-gradient(70% 70% at 85% 25%,#E6EBF2,transparent 55%),linear-gradient(160deg,#F3F5F8,#DDE3EC)}
+.wall[data-wp="dark"]{background:radial-gradient(60% 50% at 25% 20%,#2A3550,transparent 65%),
+  radial-gradient(70% 60% at 80% 70%,#3A2A42,transparent 60%),linear-gradient(150deg,#141821,#232C3D 60%,#0E1116)}
+.wall[data-wp="busy"]{background:conic-gradient(from 210deg at 30% 30%,#F2653F,#F5B02E,#3FBF7F,#2E8FE0,#8C5BE8,#F2653F)}
+.wall[data-wp="busy"]::after{content:"";position:absolute;inset:0;backdrop-filter:blur(48px) saturate(1.1)}
+/* 桌面图标：用来演示「贴桌面」到底是贴在图标之上还是之下 */
+.icons{position:absolute;top:16px;left:16px;z-index:1;display:flex;flex-direction:column;gap:14px}
+.icon{width:64px;text-align:center;color:#fff;font-size:11px;text-shadow:0 1px 3px rgba(0,0,0,.7);line-height:1.35}
+.icon i{display:block;width:38px;height:38px;margin:0 auto 3px;border-radius:7px;
+        background:rgba(255,255,255,.30);border:1px solid rgba(255,255,255,.45);backdrop-filter:blur(4px)}
+.wall[data-wp="light"] ~ .icons .icon{color:#2A2E36;text-shadow:0 1px 2px rgba(255,255,255,.8)}
+.wall[data-wp="light"] ~ .icons .icon i{background:rgba(255,255,255,.85);border-color:rgba(0,0,0,.16);
+     box-shadow:0 1px 3px rgba(24,24,20,.14)}
+
+.layer{position:absolute;inset:0;z-index:5}
+/* 贴桌面：便笺沉到图标之下（z-index 0.5 层）—— 这是需求 4 的「后者」语义 */
+.screen[data-pin="desktop"] .layer{z-index:0}
+
+/* ══ 便笺 ══ */
+.n{position:absolute;font-family:var(--f-app);letter-spacing:.01em;background:var(--paper);color:var(--ink);
+   border-radius:var(--r-window);overflow:hidden;
+   box-shadow:0 0 0 1px var(--line),0 1px 1px -.5px rgba(24,24,20,.12),
+              0 6px 12px -4px rgba(24,24,20,.10),0 20px 40px -16px rgba(24,24,20,.18);
+   transition:background-color 140ms cubic-bezier(.16,1,.3,1),box-shadow 140ms cubic-bezier(.16,1,.3,1),
+              height 200ms cubic-bezier(.16,1,.3,1);}
+.dark .n{box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 0 0 1px var(--line),
+         0 2px 4px rgba(0,0,0,.42),0 16px 36px -12px rgba(0,0,0,.66)}
+.n[data-focus="false"]{background:var(--dim)}
+.n[data-focus="true"]{box-shadow:0 0 0 1px var(--line),0 1px 1px -.5px rgba(24,24,20,.12),
+   0 6px 12px -4px rgba(24,24,20,.10),0 20px 40px -16px rgba(24,24,20,.18),
+   0 8px 28px -10px color-mix(in oklab,var(--dot) 30%,transparent)}
+.n.new{animation:pop 360ms linear(0,.164,.470,.746,.931,1.026,1.057,1.053,1.037,1.020,1.007,1,1)}
+@keyframes pop{from{transform:scale(.94) rotate(.8deg)}to{transform:none}}
+.n.bye{opacity:0;transform:translateY(-6px) rotate(-1.2deg) scale(.98);transition:all 180ms cubic-bezier(.16,1,.3,1)}
+
+.nb{position:absolute;top:0;left:0;right:0;height:28px;display:flex;align-items:center;gap:6px;
+    padding-left:8px;z-index:3;cursor:grab}
+.n[data-drag] .nb{cursor:grabbing}
+.nd{width:14px;height:14px;border-radius:999px;background:var(--dot);opacity:.55;flex:none;cursor:pointer}
+.n[data-focus="true"] .nd{opacity:.85}
+.nf{flex:1;height:100%}
+.na{display:flex;gap:2px;opacity:0;transition:opacity 140ms}
+.n:hover .na{opacity:1}
+.na b{width:26px;height:26px;display:grid;place-items:center;border-radius:5px;font-size:12px;
+      color:var(--ink2);cursor:pointer;font-weight:400}
+.na b:hover{background:color-mix(in oklab,var(--ink) 8%,transparent)}
+.na b[data-on]{color:var(--dot)}
+.ns{width:6px;height:6px;border-radius:999px;flex:none;margin-right:6px;background:transparent}
+.nx{width:var(--caption-w);height:28px;border:0;background:none;color:var(--ink2);font-size:11px;
+    cursor:pointer;display:none;place-items:center;flex:none}
+:root[data-os="windows"] .nx{display:grid}
+.nx:hover{background:#C42B1C;color:#fff}
+.nm{display:none;width:12px;height:12px;border-radius:999px;flex:none;cursor:pointer;
+    background:color-mix(in oklab,var(--ink) 22%,transparent)}
+:root:not([data-os="windows"]) .nm{display:block}
+:root:not([data-os="windows"]) .nd{order:5}
+
+.ny{position:absolute;inset:0;padding:30px 8px 12px 14px;overflow:hidden;font-size:14px;line-height:1.70;
+    outline:none;cursor:text}
+.nt{font-size:15px;line-height:1.62;font-weight:var(--fw-strong);margin-bottom:4px}
+.nz{position:absolute;left:0;right:0;bottom:0;height:44px;pointer-events:none;z-index:2;
+    background:linear-gradient(to bottom,transparent,var(--paper) 78%)}
+.n[data-focus="false"] .nz{background:linear-gradient(to bottom,transparent,var(--dim) 78%)}
+.nl{position:absolute;left:0;right:0;bottom:0;height:32px;z-index:4;display:flex;align-items:center;gap:2px;
+    padding:0 8px 0 10px;opacity:0;transition:opacity 140ms;pointer-events:none}
+.n[data-focus="true"]:hover .nl{opacity:1;pointer-events:auto}
+.nl b{width:26px;height:26px;display:grid;place-items:center;border-radius:5px;font-size:12px;
+      color:var(--ink2);cursor:pointer;font-weight:400}
+.nl b:hover{background:color-mix(in oklab,var(--ink) 8%,transparent)}
+.nl .c{margin-left:auto;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums}
+/* 折叠胶囊：只剩标题栏，标题移进栏内 */
+.n[data-fold] .ny,.n[data-fold] .nz,.n[data-fold] .nl{display:none}
+.n[data-fold] .cap{display:block}
+.cap{display:none;font-size:13px;line-height:28px;color:var(--ink);white-space:nowrap;overflow:hidden;
+     text-overflow:ellipsis;max-width:150px;font-weight:var(--fw-medium)}
+
+/* ══ 停靠侧栏 / 便笺墙 ══ */
+.screen[data-form="dock"] .layer{left:auto;width:268px;background:color-mix(in srgb,var(--canvas) 88%,transparent);
+     backdrop-filter:blur(16px);border-left:1px solid var(--bd);overflow-y:auto;padding:12px 12px 56px}
+.screen[data-form="wall"] .layer{padding:20px 20px 60px;overflow-y:auto;
+     background:color-mix(in srgb,var(--canvas) 92%,transparent);backdrop-filter:blur(20px)}
+.screen[data-form="dock"] .n,.screen[data-form="wall"] .n{position:relative!important;
+     left:auto!important;top:auto!important;margin-bottom:10px}
+.screen[data-form="dock"] .n{width:100%!important;height:auto!important;min-height:74px}
+.screen[data-form="dock"] .ny{position:relative;inset:auto;padding:28px 12px 10px 14px;max-height:120px}
+.screen[data-form="dock"] .nz,.screen[data-form="dock"] .nl{display:none}
+.screen[data-form="wall"] .layer{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));
+     gap:12px;align-content:start}
+.screen[data-form="wall"] .n{width:auto!important;height:150px!important;margin:0}
+.screen[data-form="wall"] .nb{cursor:default}
+
+/* ══ 任务栏 / 程序坞 ══ */
+.tb{position:absolute;left:0;right:0;bottom:0;height:44px;z-index:20;display:flex;align-items:center;
+    gap:8px;padding:0 12px;background:color-mix(in srgb,#0B0D12 62%,transparent);backdrop-filter:blur(18px);
+    border-top:1px solid rgba(255,255,255,.10)}
+:root:not([data-os="windows"]) .tb{left:50%;transform:translateX(-50%);right:auto;bottom:8px;height:52px;
+    border-radius:16px;border:1px solid rgba(255,255,255,.16);padding:0 10px;gap:6px}
+.tbtn{display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:6px;border:0;
+    font:inherit;font-size:12px;color:#EDEDEA;background:rgba(255,255,255,.10);cursor:pointer;white-space:nowrap}
+.tbtn:hover{background:rgba(255,255,255,.20)}
+.tbtn[data-on]{background:rgba(255,255,255,.28)}
+:root:not([data-os="windows"]) .tbtn{height:38px;border-radius:11px}
+.tsp{flex:1}
+.tray{display:flex;align-items:center;gap:9px;color:rgba(237,237,234,.82);font-size:11.5px;
+    font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.trayico{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;cursor:pointer;
+    background:rgba(255,255,255,.12);font-size:11px}
+.trayico:hover{background:rgba(255,255,255,.24)}
+.mb{position:absolute;top:0;left:0;right:0;height:26px;z-index:20;display:none;align-items:center;gap:16px;
+    padding:0 14px;background:color-mix(in srgb,#0B0D12 48%,transparent);backdrop-filter:blur(18px);
+    color:rgba(237,237,234,.9);font-size:12px}
+:root:not([data-os="windows"]) .mb{display:flex}
+.mb .sp{flex:1}
+
+/* ══ 右键菜单 ══ */
+.menu{position:absolute;z-index:60;min-width:176px;padding:5px;border-radius:8px;background:var(--overlay);
+      border:1px solid var(--bd);box-shadow:0 1px 1px -.5px rgba(24,24,20,.10),0 8px 22px -8px rgba(24,24,20,.22);
+      display:none;font-size:13px}
+.menu[data-open]{display:block}
+.menu .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:5px 6px 8px}
+.menu .swatches i{width:100%;aspect-ratio:1;border-radius:999px;cursor:pointer;display:block;
+      box-shadow:0 0 0 1px rgba(0,0,0,.10) inset}
+.menu .swatches i:hover{transform:scale(1.16)}
+.menu hr{border:0;border-top:1px solid var(--bd-sub);margin:3px 0}
+.menu button{display:flex;width:100%;align-items:center;gap:8px;padding:5px 9px;border:0;background:none;
+      font:inherit;font-size:13px;color:var(--t1);border-radius:5px;cursor:pointer;text-align:left}
+.menu button:hover{background:var(--hover)}
+.menu button .k{margin-left:auto;font-family:var(--f-mono);font-size:10.5px;color:var(--t3)}
+.menu button.danger{color:#C0362C} .dark .menu button.danger{color:#F0736A}
+
+.foot{padding:16px 20px 40px;max-width:900px;color:var(--t2);font-size:13.5px;line-height:1.75}
+.foot h3{font-size:15px;color:var(--t1);margin:22px 0 7px;font-weight:var(--fw-strong)}
+.foot b{color:var(--t1);font-weight:var(--fw-strong)}
+.foot table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+.foot th,.foot td{padding:7px 10px;border-bottom:1px solid var(--bd-sub);text-align:left;vertical-align:top}
+.foot th{color:var(--t1);font-size:11.5px;font-weight:var(--fw-strong);background:var(--s3)}
+.foot code{background:var(--s3);border:1px solid var(--bd-sub);border-radius:3px;padding:0 4px;font-size:11.5px}
+@media (max-width:720px){ .screen{height:520px} .bar{padding:9px 14px} }
+</style>
+
+<div class="bar">
+  <h1>便笺试用间</h1>
+  <span class="lab">形态</span>
+  <span class="seg" id="form">
+    <button data-v="desktop" aria-pressed="true">桌面散落</button>
+    <button data-v="dock" aria-pressed="false">停靠侧栏</button>
+    <button data-v="wall" aria-pressed="false">便笺墙</button>
+  </span>
+  <span class="lab">层级</span>
+  <span class="seg" id="pin">
+    <button data-v="normal" aria-pressed="true">普通</button>
+    <button data-v="top" aria-pressed="false">置顶</button>
+    <button data-v="desktop" aria-pressed="false">贴桌面</button>
+  </span>
+  <span class="sp"></span>
+  <span class="lab">壁纸</span>
+  <span class="seg" id="wp">
+    <button data-v="light" aria-pressed="true">浅</button>
+    <button data-v="dark" aria-pressed="false">深</button>
+    <button data-v="busy" aria-pressed="false">花哨</button>
+  </span>
+  <span class="seg" id="os">
+    <button data-v="windows" aria-pressed="true">Windows</button>
+    <button data-v="macos" aria-pressed="false">macOS</button>
+  </span>
+  <span class="seg" id="th">
+    <button data-v="" aria-pressed="true">跟随</button>
+    <button data-v="light" aria-pressed="false">亮</button>
+    <button data-v="dark" aria-pressed="false">暗</button>
+  </span>
+</div>
+<div class="hint">
+  <b>双击空白桌面</b>新建 · <b>拖顶栏</b>移动 · <b>双击顶栏</b>折叠成胶囊 · <b>右键便笺</b>换色/置顶/删除 ·
+  <b>点击</b>切换聚焦（看「退半步」）· 正文可直接编辑 · 试试把「层级」切到<b>贴桌面</b> —— 左侧绿色那张会<b>沉到桌面图标之下</b>，这正是需求 4 里「后者」的语义
+</div>
+
+<div class="screen" id="screen" data-form="desktop" data-pin="normal">
+  <div class="wall" data-wp="light" id="wallbg"></div>
+  <div class="icons">
+    <div class="icon"><i></i>此电脑</div>
+    <div class="icon"><i></i>回收站</div>
+    <div class="icon"><i></i>项目</div>
+    <div class="icon"><i></i>设计稿</div>
+    <div class="icon"><i></i>截图</div>
+  </div>
+  <div class="layer" id="layer"></div>
+
+  <div class="mb"><b style="font-weight:600">bianfa</b><span>文件</span><span>编辑</span><span>便笺</span><span>窗口</span><span class="sp"></span><span class="mono" id="clock2">14:22</span></div>
+  <div class="tb">
+    <button class="tbtn" id="mk">＋ 新建便笺</button>
+    <button class="tbtn" id="allshow">显示全部</button>
+    <button class="tbtn" id="allhide">隐藏全部</button>
+    <span class="tsp"></span>
+    <span class="tray">
+      <span class="trayico" id="trayai" title="AI 助手">✦</span>
+      <span class="trayico" id="traysync" title="同步状态">⟳</span>
+      <span class="mono" id="clock">14:22</span>
+    </span>
+  </div>
+
+  <div class="menu" id="menu">
+    <div class="swatches" id="sw"></div>
+    <hr>
+    <button data-a="pin">置顶此便笺<span class="k" id="kpin">Ctrl P</span></button>
+    <button data-a="fold">折叠为胶囊<span class="k">双击顶栏</span></button>
+    <button data-a="dup">复制</button>
+    <hr>
+    <button data-a="del" class="danger">删除<span class="k" id="kdel">Ctrl ⇧ Del</span></button>
+  </div>
+</div>
+
+<div class="foot">
+  <h3>关于「多种形态」，我的判断</h3>
+  <p>上面三个形态<b>用的是同一个组件、同一份状态</b>，切换时没有新建任何窗口 —— 这正是它们便宜的原因。真正贵的是需要<b>新窗口类或新 OS 集成</b>的那些。</p>
+  <table>
+    <tr><th>形态</th><th>成本</th><th>建议</th></tr>
+    <tr><td>桌面散落 / 停靠侧栏 / 便笺墙</td><td>同一窗口换布局，靠 container query</td><td><b>v1 就做</b></td></tr>
+    <tr><td>折叠胶囊</td><td>同一窗口改高度，动效章已有</td><td><b>v1 就做</b></td></tr>
+    <tr><td>置顶三档</td><td>两平台各一行 API</td><td><b>v1 就做</b>，零风险</td></tr>
+    <tr><td>贴桌面（沉到图标之下）</td><td>要写 native，未文档化，随系统更新可能失效</td><td>D1–D3 生死判定，做不出就降级</td></tr>
+    <tr><td>侧边停靠 AppBar（真正抢占屏幕空间）</td><td>Windows 有 <code>SHAppBarMessage</code>，<b>macOS 没有等价物</b></td><td>推后，双平台天然不对等</td></tr>
+    <tr><td>自由画布</td><td>拖拽/缩放/层叠/多选/视口虚拟化/坐标同步</td><td>4–6 周，推到 v1.2</td></tr>
+    <tr><td>独立 AI 窗</td><td>第五个要管理的窗口类型</td><td><b>不做</b>（第 13 章已否决）</td></tr>
+  </table>
+  <p><b>一个容易被忽略的代价：</b>每多一个真正的窗口类型，就多一整套「位置记忆 / 多显示器 / DPI 变化 / 关闭语义 / 快捷键作用域 / 崩溃恢复」。这不是 UI 工作量，是状态机工作量，而且它只在用户换了显示器、改了缩放、或者程序崩溃之后才暴露 —— 那时候修的成本是现在的十倍。</p>
+  <p><b>还有一条产品层面的：</b>便笺用户的心智是「双击就写」。形态给太多，第一屏就要做选择题，会稀释掉这个品类唯一的优势。建议默认只给「桌面散落」，其余藏在托盘菜单里让愿意折腾的人自己找。</p>
+  <p style="color:var(--t3);font-size:12.5px;margin-top:18px">注：这是浏览器里的模拟。真实产品里每张便笺是<b>独立的操作系统窗口</b>（各自的 webview），不是一个页面里的 div —— 所以才有 20 窗口内存要压在 350MB 以内、<code>skipTaskbar</code> 要开、窗口 chrome 要按平台分叉这些约束。</p>
+</div>
+
+<script>
+(function(){
+  var R=document.documentElement, screen=document.getElementById('screen'),
+      layer=document.getElementById('layer'), menu=document.getElementById('menu');
+  R.setAttribute('data-os','windows');
+
+  var COLORS=[["graphite","石墨","#77756C"],["rose","玫瑰","#BF3B74"],["coral","珊瑚","#C63D34"],
+    ["amber","琥珀","#9A682D"],["citron","柠檬","#7C7733"],["fern","竹绿","#458649"],
+    ["teal","松石","#49807B"],["azure","天青","#327EA1"],["violet","紫罗兰","#735DD3"],
+    ["fuchsia","品红","#A846A7"]];
+
+  var SEED=[
+    {c:"citron",x:110,y:70,w:220,h:220,pin:true,t:"周三 14:00 产品评审",
+     b:"· 确认 OKLCH 色板 v2.3\n· 找林要设计稿终稿\n· 明天前回邮件"},
+    {c:"azure",x:372,y:118,w:220,h:220,t:"服务器续费",
+     b:"Hostinger KVM 4 到期 11/20。\n注意续费价 $28.99 不是促销价 $12.99。"},
+    {c:"coral",x:634,y:76,w:180,h:140,t:"取快递",b:"丰巢 8-2211\n取件码 4471"},
+    {c:"fern",x:34,y:286,w:300,h:200,t:"周报草稿",
+     b:"贴桌面 spike 跑通了，Windows 侧 z-order 沉底可行，中文输入法正常。\nmacOS 侧下周验。"},
+    {c:"violet",x:492,y:372,w:200,h:160,t:"买菜",b:"西红柿 2 斤\n香菜（少放）\n老抽"},
+    {c:"rose",x:736,y:268,w:200,h:170,t:"妈生日",b:"10 月 12 日\n订蛋糕，别忘了"}
+  ];
+
+  var uid=0, notes=[], zTop=10, active=null;
+
+  function seg(id,fn){
+    var w=document.getElementById(id);
+    w.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(w.querySelectorAll('button'),function(x){
+        x.setAttribute('aria-pressed', x===b?'true':'false');});
+      fn(b.dataset.v);
+    });
+  }
+
+  function el(tag,cls,html){var d=document.createElement(tag); if(cls)d.className=cls;
+    if(html!=null)d.innerHTML=html; return d;}
+
+  function build(n){
+    var d=el('div','n new');
+    d.dataset.c=n.c; d.dataset.focus='false'; d.dataset.id=n.id;
+    d.style.cssText='left:'+n.x+'px;top:'+n.y+'px;width:'+n.w+'px;height:'+n.h+'px;z-index:'+(++zTop);
+    if(n.pin) d.dataset.pinned='1';
+    d.innerHTML=
+      '<div class="nb"><span class="nm"></span><span class="nd"></span>'
+      +'<span class="cap"></span><span class="nf"></span>'
+      +'<span class="na"><b data-a="pin" title="置顶">⇧</b><b data-a="menu" title="更多">⋯</b></span>'
+      +'<span class="ns"></span><button class="nx" data-a="close">✕</button></div>'
+      +'<div class="ny" contenteditable="true" spellcheck="false">'
+        +'<div class="nt"></div><div class="bd"></div></div>'
+      +'<div class="nz"></div>'
+      +'<div class="nl"><b data-a="color">◉</b><b data-a="pin">⇧</b><b>✦</b><b data-a="menu">⋯</b>'
+        +'<span class="c"></span></div>';
+    d.querySelector('.nt').textContent=n.t;
+    d.querySelector('.bd').innerText=n.b;
+    d.querySelector('.cap').textContent=n.t;
+    sync(d);
+    layer.appendChild(d);
+    setTimeout(function(){d.classList.remove('new');},400);
+    return d;
+  }
+
+  function sync(d){
+    var txt=(d.querySelector('.ny')||{}).innerText||'';
+    var cn=txt.replace(/\s/g,'').length;
+    var c=d.querySelector('.c'); if(c) c.textContent=cn+' 字';
+    var p=d.querySelector('[data-a="pin"]');
+    if(p) d.dataset.pinned?p.setAttribute('data-on',''):p.removeAttribute('data-on');
+  }
+
+  function focus(d){
+    [].forEach.call(layer.querySelectorAll('.n'),function(x){x.dataset.focus = x===d?'true':'false';});
+    if(d && screen.dataset.form==='desktop'){ d.style.zIndex = ++zTop; }
+    active=d;
+  }
+
+  SEED.forEach(function(s){ s.id=++uid; notes.push(s); build(s); });
+  focus(layer.querySelector('.n'));
+
+  // ── 拖动（只动 transform 之外的 left/top，模拟真实窗口移动）──
+  var drag=null;
+  layer.addEventListener('pointerdown',function(e){
+    var d=e.target.closest('.n'); if(!d) return;
+    focus(d);
+    if(e.target.closest('[data-a]')||e.target.closest('.ny')) return;
+    if(!e.target.closest('.nb')) return;
+    if(screen.dataset.form!=='desktop') return;
+    drag={d:d,ox:e.clientX-d.offsetLeft,oy:e.clientY-d.offsetTop};
+    d.dataset.drag='1'; d.setPointerCapture(e.pointerId);
+  });
+  layer.addEventListener('pointermove',function(e){
+    if(!drag) return;
+    var r=screen.getBoundingClientRect();
+    var x=Math.max(0,Math.min(r.width-drag.d.offsetWidth, e.clientX-drag.ox));
+    var y=Math.max(0,Math.min(r.height-drag.d.offsetHeight-44, e.clientY-drag.oy));
+    drag.d.style.left=x+'px'; drag.d.style.top=y+'px';
+  });
+  layer.addEventListener('pointerup',function(){ if(drag){delete drag.d.dataset.drag; drag=null;} });
+
+  // ── 双击顶栏 = 折叠胶囊 ──
+  layer.addEventListener('dblclick',function(e){
+    var d=e.target.closest('.n'); if(!d||!e.target.closest('.nb')) return;
+    e.stopPropagation();
+    if(d.dataset.fold){ delete d.dataset.fold; d.style.height=d.dataset.h+'px'; }
+    else { d.dataset.fold='1'; d.dataset.h=d.offsetHeight; d.style.height='28px'; }
+  });
+
+  // ── 双击空白桌面 = 新建 ──
+  screen.addEventListener('dblclick',function(e){
+    if(e.target.closest('.n')||e.target.closest('.tb')||e.target.closest('.menu')) return;
+    if(screen.dataset.form!=='desktop') return;
+    var r=screen.getBoundingClientRect();
+    mk(e.clientX-r.left-110, e.clientY-r.top-24);
+  });
+
+  function mk(x,y){
+    var pal=COLORS[(uid)%COLORS.length][0];
+    var n={id:++uid,c:pal,x:Math.max(0,x||60),y:Math.max(0,y||60),w:220,h:220,t:'',b:''};
+    notes.push(n);
+    var d=build(n);
+    focus(d);
+    var body=d.querySelector('.nt'); body.focus();
+    var rg=document.createRange(); rg.selectNodeContents(body);
+    var sel=getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+    return d;
+  }
+  document.getElementById('mk').addEventListener('click',function(){ mk(); });
+
+  // ── 右键菜单 ──
+  var swrap=document.getElementById('sw');
+  COLORS.forEach(function(c){
+    var i=el('i'); i.style.background=c[2]; i.title=c[1]; i.dataset.c=c[0];
+    swrap.appendChild(i);
+  });
+  var menuTarget=null;
+  function openMenu(d,x,y){
+    menuTarget=d;
+    var r=screen.getBoundingClientRect();
+    menu.setAttribute('data-open','');
+    menu.style.left=Math.min(x-r.left, r.width-196)+'px';
+    menu.style.top=Math.min(y-r.top, r.height-240)+'px';
+  }
+  function closeMenu(){ menu.removeAttribute('data-open'); menuTarget=null; }
+  layer.addEventListener('contextmenu',function(e){
+    var d=e.target.closest('.n'); if(!d) return;
+    e.preventDefault(); focus(d); openMenu(d,e.clientX,e.clientY);
+  });
+  layer.addEventListener('click',function(e){
+    var a=e.target.closest('[data-a]'); if(!a) return;
+    var d=e.target.closest('.n');
+    if(a.dataset.a==='menu'||a.dataset.a==='color'){
+      var r=a.getBoundingClientRect(); openMenu(d,r.left,r.bottom+6);
+    } else if(a.dataset.a==='pin'){
+      d.dataset.pinned ? delete d.dataset.pinned : d.dataset.pinned='1'; sync(d);
+    } else if(a.dataset.a==='close'){ kill(d); }
+  });
+  document.addEventListener('pointerdown',function(e){
+    if(!e.target.closest('.menu')&&!e.target.closest('[data-a]')) closeMenu();
+  });
+  menu.addEventListener('click',function(e){
+    var sw=e.target.closest('[data-c]');
+    if(sw&&menuTarget){ menuTarget.dataset.c=sw.dataset.c; closeMenu(); return; }
+    var b=e.target.closest('button'); if(!b||!menuTarget) return;
+    var a=b.dataset.a, d=menuTarget;
+    if(a==='pin'){ d.dataset.pinned?delete d.dataset.pinned:d.dataset.pinned='1'; sync(d); }
+    if(a==='fold'){ if(d.dataset.fold){delete d.dataset.fold; d.style.height=d.dataset.h+'px';}
+                    else {d.dataset.fold='1'; d.dataset.h=d.offsetHeight; d.style.height='28px';} }
+    if(a==='dup'){ var n={id:++uid,c:d.dataset.c,x:d.offsetLeft+24,y:d.offsetTop+24,
+      w:d.offsetWidth,h:d.offsetHeight,t:d.querySelector('.nt').textContent,
+      b:d.querySelector('.bd').innerText}; notes.push(n); focus(build(n)); }
+    if(a==='del'){ kill(d); }
+    closeMenu();
+  });
+
+  function kill(d){
+    d.classList.add('bye');
+    setTimeout(function(){ d.remove(); },200);
+  }
+
+  layer.addEventListener('input',function(e){
+    var d=e.target.closest('.n'); if(!d) return;
+    sync(d);
+    var cap=d.querySelector('.cap'), t=d.querySelector('.nt');
+    if(cap&&t) cap.textContent=t.textContent;
+  });
+
+  document.getElementById('allhide').addEventListener('click',function(){
+    [].forEach.call(layer.querySelectorAll('.n'),function(d){ d.style.display='none'; });
+  });
+  document.getElementById('allshow').addEventListener('click',function(){
+    [].forEach.call(layer.querySelectorAll('.n'),function(d){ d.style.display=''; });
+  });
+
+  seg('form',function(v){ screen.dataset.form=v; closeMenu(); });
+  seg('pin', function(v){ screen.dataset.pin=v; });
+  seg('wp',  function(v){ document.getElementById('wallbg').dataset.wp=v; });
+  seg('os',  function(v){
+    R.setAttribute('data-os',v);
+    document.getElementById('kpin').textContent = v==='windows'?'Ctrl P':'⌘ P';
+    document.getElementById('kdel').textContent = v==='windows'?'Ctrl ⇧ Del':'⌘ ⇧ ⌫';
+  });
+  seg('th',function(v){
+    v?R.setAttribute('data-theme',v):R.removeAttribute('data-theme');
+    var dk = v==='dark' || (v!=='light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.body.classList.toggle('dark', dk);
+  });
+  function initTheme(){
+    document.body.classList.toggle('dark', matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',initTheme);
+  initTheme();
+})();
+</script>

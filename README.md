@@ -6,7 +6,9 @@
 >
 > 📖 方案网页版（带导航与全文检索）：<https://claude.ai/code/artifact/80ca7d60-b272-4c48-9683-059536e49413>
 >
-> 🎨 前端样机（可交互，Windows/macOS 与亮暗切换）：<https://claude.ai/code/artifact/7ebec0a6-172f-4593-b7f5-595a16ce0ca7>
+> 🖥️ 桌面模拟（可拖动、新建、换色）：<https://claude.ai/code/artifact/ea202d44-5f88-47fb-80b7-84531a020429>
+>
+> 🎨 设计规范样本册（1:1 尺寸、色板、中文排版）：<https://claude.ai/code/artifact/7ebec0a6-172f-4593-b7f5-595a16ce0ca7>
 
 ---
 
