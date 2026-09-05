@@ -1,0 +1,54 @@
+# bianfa 黑盒探测 Worker 的 wrangler 配置
+# 作用：Cron 每分钟从 Cloudflare 边缘打 https://api.<REPLACE_ME:domain>/healthz；连续 FAIL_THRESHOLD 次失败推 Telegram，
+#       恢复时再推一次。监控与被监控对象不同机（第 9 章 8.8 的原则）。可选：顺带检查 Tunnel 健康 connector 数 < 2（8.8 第 7 条告警）。
+# 来源章节：第 9 章 8.8。
+# 2026-09-05 核实（cloudflare-docs production 分支 + workers-sdk main）：
+#   - Cron 语法五字段，支持 "* * * * *"，按 UTC 执行；Workers Free：Cron Trigger 5 个/账号、10 ms CPU/次（等网络不计 CPU）、
+#     100k 请求/天（1440 次/天的 cron 远低于此）。改 cron 后最多 15 分钟才全网生效。
+#   - KV Free：1,000 次写/天（不同键）、100k 读/天 → 本 Worker 只在状态变化时写 KV，稳态运行 0 写。
+#   - 本地测试：`wrangler dev --test-scheduled` 后
+#       curl "http://localhost:8787/cdn-cgi/local/scheduled?cron=*+*+*+*+*"
+#     （miniflare CorePaths.SCHEDULED 的当前路径；wrangler 帮助文本里的旧路径 /__scheduled 也仍可用）。
+#
+# 必须人工替换：
+#   <REPLACE_ME:domain>          根域
+#   <REPLACE_ME:kv-namespace-id> `npx wrangler kv namespace create STATE` 的输出
+# 部署前一次性操作（在 infra/cloudflare/healthcheck-worker/ 目录）：
+#   npm ci
+#   npx wrangler kv namespace create STATE
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN      # @BotFather 发的 token；与 infra/vps/notify.sh 的 TG_BOT_TOKEN 是同一个 bot
+#   npx wrangler secret put TELEGRAM_CHAT_ID        # 目标 chat/group id（负数 = 群）；与 notify.sh 的 TG_CHAT_ID 同一个群，告警集中一处
+#   # 可选：Tunnel connector 数告警——先在 [vars] 填 CF_ACCOUNT_ID / CF_TUNNEL_ID，再：
+#   npx wrangler secret put CF_API_TOKEN            # 账号级 API token，权限只给「Account → Cloudflare Tunnel → Read」
+#                                                   #   （fundamentals/api/reference/permissions：Cloudflare Tunnel Read = view Cloudflare Tunnels）
+#   npx wrangler deploy
+# 密钥一律走 `wrangler secret put`，绝不写进本文件或 [vars]。
+
+name = "bianfa-healthcheck"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = false          # 没有任何 HTTP 入口；只靠 Cron 触发
+preview_urls = false
+keep_vars = true
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["* * * * *"]        # 每分钟（UTC）。Cron Trigger 是 5 个/账号的免费额度里的 1 个
+
+[[kv_namespaces]]
+binding = "STATE"
+id = "<REPLACE_ME:kv-namespace-id>"
+
+[vars]
+SERVICE_NAME = "bianfa api"
+HEALTHZ_URL = "https://api.<REPLACE_ME:domain>/healthz"
+FAIL_THRESHOLD = "2"         # 连续失败 N 次才告警（第 9 章 8.8：失败 2 次推 Telegram）
+REQUEST_TIMEOUT_MS = "10000" # 单次探测超时；超时计为失败
+EXPECT_STATUS = "200"        # 期望的 HTTP 状态码
+EXPECT_BODY_CONTAINS = ""    # 可选：响应体必须包含的子串（例如 "ok"）；留空不检查
+# 可选：Tunnel connector 数检查（下面两项 + secret CF_API_TOKEN 三者都非空才启用）
+CF_ACCOUNT_ID = ""           # Cloudflare 账号 ID（dashboard 右侧栏）
+CF_TUNNEL_ID = ""            # bianfa-prod Tunnel 的 UUID（Zero Trust → Networks → Tunnels）
+MIN_TUNNEL_CONNECTORS = "2"  # 第 9 章 8.4：cloudflared ×2 副本 → 健康 connector < 2 即降级

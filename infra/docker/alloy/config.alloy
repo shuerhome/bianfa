@@ -1,0 +1,364 @@
+// =============================================================================
+// bianfa · Grafana Alloy 采集配置 → Grafana Cloud（Prometheus + Loki）
+// -----------------------------------------------------------------------------
+// 来源：第 9 章 8.8（监控不与被监控对象同机；采 node_exporter / postgres_exporter / cAdvisor；
+//       只推 api / sync-ws 的 warn+ 日志到 Loki；7 条告警）、8.10（按指标升级 KVM 4）。
+// 语法：Alloy 配置语言。组件名 / 属性名 / 元标签名已对照 grafana/alloy main 分支 docs/sources/reference（2026-09-05）：
+//       discovery.docker（含 match_first_network 默认 true → 多网络容器只出一个 target）、discovery.relabel、
+//       prometheus.exporter.{unix,postgres,cadvisor,redis}、prometheus.scrape、prometheus.relabel、prometheus.remote_write、
+//       loki.source.docker、loki.process（stage.json / stage.drop / stage.labels）、loki.write、stdlib sys.env() / array.concat()。
+//       已用 alloy v1.19.2 二进制 `alloy validate` 通过并 `alloy fmt` 格式化（属性/块名全部被校验；collector 取值在运行期校验，
+//       所以 enabled_collectors 只用 reference 列出的名字）。
+// 运行：grafana/alloy:v1.19.2，root + pid: host（见 docker-compose.yml 注释），挂载 / → /rootfs、/sys、
+//       /var/run/docker.sock、/var/lib/docker、/dev/disk。
+// 必须人工替换：无 —— 凭据全部走环境变量 sys.env()（GRAFANA_CLOUD_* / PG_EXPORTER_DSN / REDIS_PASSWORD / VPS_HOSTNAME）。
+//
+// 覆盖的 7 条告警（告警规则本身在 Grafana Cloud Alerting 里配，这里只保证指标存在）：
+//   1 /healthz 连续失败            → Cloudflare Worker Cron 黑盒探测（不在本机）；本机补充 up{job="cloudflared"}
+//   2 磁盘 > 80%                    → node_filesystem_avail_bytes / node_filesystem_size_bytes（mountpoint="/rootfs"）
+//   3 PgBouncer 等待连接 > 0 持续 1m → ⚠ Alloy 没有内建 pgbouncer exporter，见文末「已知缺口」
+//   4 pgBackRest 24h 无成功归档     → pg_stat_archiver_last_archive_age_seconds（pg-queries.yaml 自定义查询）
+//                                     + bianfa_backup_last_run_success（backup.sh 写的 textfile，见 unix exporter）
+//   5 WebSocket 活跃连接骤降 >50%   → 需 sync-ws 进程暴露 /metrics（契约：bianfa_ws_active_connections），下方 apps 抓取
+//   6 LLM 月度花费达预算 80%        → 需 api 进程暴露 /metrics（契约：bianfa_llm_cost_usd_total），下方 apps 抓取
+//   7 cloudflared 健康 connector <2 → cloudflared_tunnel_ha_connections（cloudflared :2000/metrics）
+// =============================================================================
+
+logging {
+	level  = "warn"
+	format = "logfmt"
+}
+
+// ---------------------------------------------------------------------------
+// 出口：Grafana Cloud
+// ---------------------------------------------------------------------------
+prometheus.remote_write "grafana_cloud" {
+	external_labels = {
+		host = sys.env("VPS_HOSTNAME"),
+		env  = "prod",
+	}
+
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_PROM_USER")
+			password = sys.env("GRAFANA_CLOUD_API_KEY")
+		}
+
+		// WAL 落在 /var/lib/alloy/data（named volume）；断网期间缓冲约 2h 样本
+		queue_config {
+			capacity             = 10000
+			max_shards           = 5
+			max_samples_per_send = 2000
+			batch_send_deadline  = "5s"
+		}
+	}
+}
+
+loki.write "grafana_cloud" {
+	external_labels = {
+		host = sys.env("VPS_HOSTNAME"),
+		env  = "prod",
+	}
+
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+			password = sys.env("GRAFANA_CLOUD_API_KEY")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 指标 · 出口前统一瘦身（Grafana Cloud Free 有活跃序列上限，先把 Go 运行时 / promhttp 噪音扔掉）
+// ---------------------------------------------------------------------------
+prometheus.relabel "trim" {
+	forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "^(go_.*|promhttp_.*|process_.*|scrape_.*)$"
+		action        = "drop"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 指标 · 宿主机（node_exporter）—— 容器 pid: host，/proc 即宿主机的；根文件系统挂在 /rootfs
+// 注意：网络计数器（node_network_*）取的是本容器 netns，不是宿主机；7 条告警都不依赖它。
+// textfile：infra/vps/backup.sh 在宿主机 /var/lib/node_exporter/textfile_collector 写 bianfa_backup_*.prom
+// （目录存在才写；bootstrap 后手工 `install -d -m 755 /var/lib/node_exporter/textfile_collector`）。
+// ---------------------------------------------------------------------------
+prometheus.exporter.unix "host" {
+	rootfs_path = "/rootfs"
+	procfs_path = "/proc"
+	sysfs_path  = "/sys"
+
+	set_collectors = ["cpu", "meminfo", "loadavg", "filesystem", "diskstats", "netdev", "uname", "time", "vmstat", "pressure", "textfile"]
+
+	filesystem {
+		// 只留真正的宿主机挂载点；排除容器 overlay / tmpfs / docker 卷内部
+		mount_points_exclude = "^/(rootfs/)?(dev|proc|run|sys|var/lib/docker/.+|var/lib/containers/.+)($|/)"
+		fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs)$"
+	}
+
+	textfile {
+		directory = "/rootfs/var/lib/node_exporter/textfile_collector"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 指标 · PostgreSQL（直连 postgres:5432，用 pg_monitor 只读角色，不经 PgBouncer）
+// enabled_collectors 只用 Alloy reference 列出的名字（replication_slot 是单数；没有 stat_archiver → 走 custom query）
+// ---------------------------------------------------------------------------
+prometheus.exporter.postgres "pg" {
+	data_source_names = [sys.env("PG_EXPORTER_DSN")]
+
+	custom_queries_config_path = "/etc/alloy/pg-queries.yaml"
+
+	autodiscovery {
+		enabled           = true
+		database_denylist = ["template0", "template1"]
+	}
+
+	enabled_collectors = ["database", "database_wraparound", "locks", "long_running_transactions", "replication_slot", "stat_activity_autovacuum", "stat_bgwriter", "stat_checkpointer", "stat_database", "stat_statements", "stat_user_tables", "statio_user_tables", "wal"]
+}
+
+// ---------------------------------------------------------------------------
+// 指标 · 容器（cAdvisor 内嵌）—— 每个容器的 CPU / 内存 / OOM / 重启
+// 关掉高基数指标集，容器标签只保留 compose 服务名（store_container_labels=false 时 allowlist 才生效）
+// ---------------------------------------------------------------------------
+prometheus.exporter.cadvisor "docker" {
+	docker_host                  = "unix:///var/run/docker.sock"
+	docker_only                  = true
+	storage_duration             = "2m"
+	store_container_labels       = false
+	allowlisted_container_labels = ["com.docker.compose.service"]
+	disabled_metrics             = ["advtcp", "cpu_topology", "cpuset", "hugetlb", "memory_numa", "percpu", "perf_event", "process", "referenced_memory", "resctrl", "sched", "tcp", "udp"]
+}
+
+// ---------------------------------------------------------------------------
+// 指标 · Redis（成本≈0；确认 evicted_keys / used_memory 的 allkeys-lru 行为符合 C8 预期）
+// ---------------------------------------------------------------------------
+prometheus.exporter.redis "cache" {
+	redis_addr     = "redis:6379"
+	redis_password = sys.env("REDIS_PASSWORD")
+}
+
+// 内建 exporter 统一 60s 抓一次
+prometheus.scrape "integrations" {
+	targets = array.concat(
+		prometheus.exporter.unix.host.targets,
+		prometheus.exporter.postgres.pg.targets,
+		prometheus.exporter.cadvisor.docker.targets,
+		prometheus.exporter.redis.cache.targets,
+	)
+	forward_to      = [prometheus.relabel.trim.receiver]
+	scrape_interval = "60s"
+	scrape_timeout  = "20s"
+}
+
+// ---------------------------------------------------------------------------
+// 容器发现（指标抓取 + 日志都用它）：通过 docker.sock，按 compose 项目标签过滤
+// match_first_network 默认 true：api / sync-ws 同时在 edge+data 两网，只出一个 target；alloy 两网都在，哪个都通
+// ---------------------------------------------------------------------------
+discovery.docker "compose" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "30s"
+
+	filter {
+		name   = "label"
+		values = ["com.docker.compose.project=bianfa"]
+	}
+}
+
+// cloudflared：TUNNEL_METRICS=0.0.0.0:2000（见 compose）→ cloudflared_tunnel_ha_connections 等（告警 #7）
+discovery.relabel "cloudflared" {
+	targets = discovery.docker.compose.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "cloudflared"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_network_ip"]
+		regex         = "(.+)"
+		target_label  = "__address__"
+		replacement   = "${1}:2000"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "instance"
+	}
+
+	rule {
+		target_label = "service"
+		replacement  = "cloudflared"
+	}
+}
+
+prometheus.scrape "cloudflared" {
+	targets         = discovery.relabel.cloudflared.output
+	forward_to      = [prometheus.relabel.trim.receiver]
+	scrape_interval = "30s"
+	scrape_timeout  = "10s"
+}
+
+// api / sync-ws 自有指标（契约：/metrics，Prometheus 文本格式；未实现前 up=0 只是噪音不是故障）
+discovery.relabel "apps" {
+	targets = discovery.docker.compose.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "api|sync-ws"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service", "__meta_docker_network_ip"]
+		separator     = ";"
+		regex         = "api;(.+)"
+		target_label  = "__address__"
+		replacement   = "${1}:3000"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service", "__meta_docker_network_ip"]
+		separator     = ";"
+		regex         = "sync-ws;(.+)"
+		target_label  = "__address__"
+		replacement   = "${1}:4000"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "instance"
+	}
+}
+
+prometheus.scrape "apps" {
+	targets         = discovery.relabel.apps.output
+	forward_to      = [prometheus.relabel.trim.receiver]
+	metrics_path    = "/metrics"
+	scrape_interval = "30s"
+	scrape_timeout  = "10s"
+}
+
+// ---------------------------------------------------------------------------
+// 日志 · Node 应用（api / sync-ws / worker，pino JSON）：只推 warn(40)+ 到 Loki（8.8）
+// ---------------------------------------------------------------------------
+discovery.relabel "logs_apps" {
+	targets = discovery.docker.compose.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "api|sync-ws|worker"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.source.docker "apps" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.relabel.logs_apps.output
+	labels        = {"source" = "app"}
+	relabel_rules = discovery.relabel.logs_apps.rules
+	forward_to    = [loki.process.apps.receiver]
+}
+
+loki.process "apps" {
+	forward_to = [loki.write.grafana_cloud.receiver]
+
+	// pino：{"level":30,"msg":...}。非 JSON 行（启动横幅等）解析不到 level → 不会被下面的 drop 命中，原样放行
+	stage.json {
+		expressions = {
+			level = "level",
+		}
+	}
+
+	// 10 trace / 20 debug / 30 info 全部丢弃，只留 40 warn / 50 error / 60 fatal
+	stage.drop {
+		source              = "level"
+		expression          = "^(10|20|30)$"
+		drop_counter_reason = "below_warn"
+	}
+
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 日志 · 基础设施容器（postgres / pgbouncer / redis / caddy / cloudflared）
+// postgres 已由 log_min_messages=warning 过滤；cloudflared loglevel=warn；只需去掉 pgbouncer 每分钟的 stats 行
+// ---------------------------------------------------------------------------
+discovery.relabel "logs_infra" {
+	targets = discovery.docker.compose.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "postgres|pgbouncer|redis|caddy|cloudflared"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.source.docker "infra" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.relabel.logs_infra.output
+	labels        = {"source" = "infra"}
+	relabel_rules = discovery.relabel.logs_infra.rules
+	forward_to    = [loki.process.infra.receiver]
+}
+
+loki.process "infra" {
+	forward_to = [loki.write.grafana_cloud.receiver]
+
+	stage.drop {
+		expression          = "LOG stats: "
+		drop_counter_reason = "pgbouncer_stats"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 已知缺口
+//   * 告警 #3（PgBouncer 等待连接）：Alloy 没有 prometheus.exporter.pgbouncer。可选方案：compose 加一个
+//     prometheuscommunity/pgbouncer-exporter 容器（[待核实] 当前 tag），再在上面 discovery.relabel 里加 keep 规则；
+//     M2 上线前先用 backup.sh 同款 textfile 方式手工跑 `SHOW POOLS` 也行。
+//   * cAdvisor 的 oom_event 需要 /dev/kmsg；compose 未挂载（read_only + cap_drop 下不想再开），OOM 用
+//     container_last_seen / 重启计数 + docker events 观察。
+// ---------------------------------------------------------------------------

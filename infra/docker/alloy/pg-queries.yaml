@@ -1,0 +1,35 @@
+# =============================================================================
+# bianfa · postgres_exporter 自定义查询（Alloy prometheus.exporter.postgres › custom_queries_config_path）
+# -----------------------------------------------------------------------------
+# 作用：Alloy v1.19 内嵌 exporter 的 enabled_collectors 可选列表里**没有** stat_archiver（已对照 Alloy reference，2026-09-05），
+#       而告警 #4「pgBackRest 24h 无成功归档」需要 pg_stat_archiver。用 postgres_exporter 的 queries.yaml 旧格式补上。
+# 格式：postgres_exporter 仓库 queries.yaml（<metric_prefix>: {query, master, metrics: [{col: {usage, description}}]}）。
+# 指标名 = <prefix>_<列名>：pg_stat_archiver_last_archive_age_seconds 等。
+# 必须人工替换：无。
+# =============================================================================
+pg_stat_archiver:
+  query: >
+    SELECT archived_count,
+           failed_count,
+           COALESCE(EXTRACT(EPOCH FROM (now() - last_archived_time)), 1e9)::float8 AS last_archive_age_seconds,
+           COALESCE(EXTRACT(EPOCH FROM (now() - last_failed_time)),   1e9)::float8 AS last_failed_age_seconds,
+           (last_failed_time IS NOT NULL
+            AND (last_archived_time IS NULL OR last_failed_time > last_archived_time))::int AS failing_now
+    FROM pg_stat_archiver
+  master: true
+  metrics:
+    - archived_count:
+        usage: "COUNTER"
+        description: "WAL 段成功归档累计数"
+    - failed_count:
+        usage: "COUNTER"
+        description: "archive_command 失败累计数"
+    - last_archive_age_seconds:
+        usage: "GAUGE"
+        description: "距最近一次成功归档的秒数（从未归档 = 1e9）；告警 #4 阈值 86400"
+    - last_failed_age_seconds:
+        usage: "GAUGE"
+        description: "距最近一次归档失败的秒数（从未失败 = 1e9）"
+    - failing_now:
+        usage: "GAUGE"
+        description: "1 = 最近一次失败晚于最近一次成功，即 archive_command 此刻正在失败"

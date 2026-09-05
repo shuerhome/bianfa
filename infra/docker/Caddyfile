@@ -1,0 +1,90 @@
+# =============================================================================
+# bianfa · Caddy 2.11.4 反向代理（仅 docker 内网 :80；TLS 在 Cloudflare 边缘终结）
+# -----------------------------------------------------------------------------
+# 来源：第 9 章 8.5（dynamic a / least_conn / lb_try_duration、接受 5 秒中断）、
+#       第 1 章 S2（LLM SSE 首 chunk < 100s，防 Cloudflare 524）、
+#       第 10 章 9.4.3（安全响应头由 API 自己设置，此处不重复；只删 Server 头）、
+#       infra/vps/break-glass.sh（把本文件第一处 `:80 {` 换成 `https://api.<domain> {` 复用全部路由）。
+# 必须人工替换：无。上游名 api / sync-ws 就是 compose 服务名，由 Docker 内置 DNS 解析。
+#
+# 为什么是 dynamic a 而不是 `reverse_proxy api:3000`：
+#   静态 upstream 只在启动时解析一次 DNS，api 重建后新副本的 IP 永远收不到流量；
+#   dynamic a 每 5s 重新解析 A 记录，拿到 2 个副本的全部 IP。
+# 为什么没有 health_uri：
+#   Caddy 文档明确「active health checks do not run for dynamic upstreams」（reverse_proxy.md › Dynamic upstreams，
+#   2026-09-05 核实）。写上去不报错但完全不生效。这里靠 passive 检查（fail_duration）+ lb_try_duration 重试兜底。
+# 为什么没有 auto_https off：
+#   它「只关闭自动证书管理与跳转」（options.md › auto_https），对 :80 站点本来无事，但 break-glass.sh 生成的
+#   https://api.<domain> 站点会因此拿不到证书。删掉它，:80 站点行为不变。
+# =============================================================================
+{
+	admin off # 不开 :2019 管理端口
+
+	servers {
+		# cloudflared 与 Caddy 同在 docker 内网：X-Forwarded-For / CF-Connecting-IP 可信。
+		# strict = 从右往左取第一个非可信 IP，防客户端在 XFF 左侧伪造地址（Cloudflare 是追加在右侧的）。
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+		# 不宣告 h3：break-glass 只映射 443/tcp，没有 443/udp
+		protocols h1 h2
+	}
+}
+
+:80 {
+	# 仅供 compose healthcheck；经 Tunnel 也能打到，但只回 "ok"，不泄露任何信息
+	handle /-/caddy-health {
+		respond "ok" 200
+	}
+
+	# ---- WebSocket → Hocuspocus（sync-ws:4000）--------------------------------
+	# Caddy 自动处理 Upgrade 并转为双向隧道。长连接不压缩。
+	# 用 dynamic a 而非静态名字：将来 `--scale sync-ws=2`（配 extension-redis）无需改配置。
+	handle /ws/* {
+		reverse_proxy {
+			dynamic a {
+				name sync-ws
+				port 4000
+				refresh 5s
+			}
+			fail_duration 10s
+			lb_try_duration 5s
+			flush_interval -1
+		}
+	}
+
+	# ---- LLM SSE（/api/llm/*）→ api ---------------------------------------------
+	# flush_interval -1 = 关闭响应缓冲，每写一块立刻 flush；同时客户端提前断开也不取消上游请求
+	# （ledger 要记录已产生的 output，见 S2 第 8 步）。不套 encode，避免压缩器缓冲吞掉 chunk。
+	handle /api/llm/* {
+		reverse_proxy {
+			dynamic a {
+				name api
+				port 3000
+				refresh 5s
+			}
+			lb_policy least_conn
+			fail_duration 10s
+			lb_try_duration 5s
+			flush_interval -1
+		}
+	}
+
+	# ---- 其余全部 → api（2 副本）---------------------------------------------------
+	handle {
+		encode zstd gzip
+		reverse_proxy {
+			dynamic a {
+				name api
+				port 3000
+				refresh 5s
+			}
+			lb_policy least_conn
+			fail_duration 10s # passive：连不上的副本 IP 标记 10s 不可用
+			lb_try_duration 5s # 部署重建的那几秒：新副本未就绪时 hold 住请求最多 5s 再失败
+		}
+	}
+
+	# 不暴露 "Server: Caddy"（带 - 的 header 操作自动推迟到响应写出时执行）
+	header -Server
+}

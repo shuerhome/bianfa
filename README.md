@@ -142,6 +142,17 @@ CRUD、关闭≠删除、无边框拖拽、7 色 + 深色、5 项富文本 + 待
 | [16 · 设计规范一致性裁定](docs/16-设计规范一致性裁定.md) | 跨章冲突扫描、全局快捷键总表 |
 | [18 · 设计规范终审裁决](docs/18-设计规范终审裁决.md) | **11 条未决冲突的终局裁定**（效力高于 12–16 章） |
 
+### 部署与运维（可直接执行）
+| | |
+|---|---|
+| [infra/README.md](infra/README.md) | **目录入口**：三条铁律、文件地图、44 个占位符清单、与裁定的已知偏差、待核实项 |
+| [infra/RUNBOOK.md](infra/RUNBOOK.md) | **运维手册**：30 天首次部署 → 日常发版 → 备份恢复演练 → 7 条告警 → 故障手册 → 密钥清单 |
+| [infra/docker/](infra/docker/) | compose（`docker compose config` 已通过）· Caddyfile · 自建 PG 镜像 · pgBackRest · Redis · Alloy |
+| [infra/vps/](infra/vps/) | bootstrap / deploy / backup / restore / break-glass 脚本（全部 shellcheck 通过）+ Tunnel 手册 |
+| [infra/cloudflare/](infra/cloudflare/) | DNS/WAF · R2 三桶与 token 矩阵 · Access SSH · 更新 Worker（灰度 + kill switch）· 健康探测 Worker |
+| [.github/workflows/](.github/workflows/) | backend（PR 测试 + main 部署）· desktop（签名发布）· restore-drill（每月恢复演练）· security |
+| [用户手册](docs/用户手册-安装与使用.md) | 给最终用户：安装、首次启动、登录同步、快捷键、更新、常见问题 |
+
 ### 补充
 | | |
 |---|---|

@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "id": "tauri-webview-presigned-put-get",
+      "allowed": {
+        "origins": ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["content-type", "content-md5", "x-amz-content-sha256", "x-amz-date"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

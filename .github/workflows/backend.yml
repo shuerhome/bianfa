@@ -1,0 +1,530 @@
+# =============================================================================
+# .github/workflows/backend.yml —— 服务端 CI/CD（api / sync / worker 三个进程，两个镜像）
+#
+# 来源章节
+#   - 第 9 章 8.5（裸 Compose + GitHub Actions over SSH、deploy.sh 内置回滚）、8.9（CI/CD）、
+#     8.10（没有 staging：集成测试在 Actions ephemeral 容器里跑）
+#   - 第 10 章 9.3.6（Actions 全部 pin 到 commit SHA、--ignore-scripts）、9.9 checklist #11
+#   - 第 1 章裁定 A2（Node 24.20.0）、C7（PostgreSQL 18.6）、C8（pg-boss；Redis 纯 ephemeral）、
+#     S3（PgBouncer transaction 模式 + 1 条直连专供 LISTEN）
+#   - infra/cloudflare/access-ssh.md §5、infra/vps/tunnel-setup.md §3.5、infra/vps/deploy.sh（部署契约以这三处为准）
+#
+# 触发条件
+#   - pull_request：pg-image → check（lint / typecheck / 单测）+ integration（迁移 → 集成测试 → e2e）。不接触任何部署密钥。
+#   - push main：以上全部 + build-images（推 ghcr.io，Trivy 阻断）+ deploy（cloudflared access ssh → deploy.sh）
+#   - workflow_dispatch（仅在 main 上有效）：deploy_tag 非空 = 用已存在的镜像 tag 重新部署 / 手动回滚，不重新构建
+#   - 不使用 pull_request_target：fork PR 的 GITHUB_TOKEN 只读，pg-image 在 fork PR 上只能复用已存在的镜像，不能推送
+#
+# 镜像 tag 约定：服务端镜像用 `sha-<40 位 commit>`（另打 :main 浮动 tag）。**不用 v*：v* 是桌面端发版 tag（desktop.yml 的触发器）**，
+#   两条流水线若共用同一 tag 命名空间会互相触发。RUNBOOK §4.1 里 `deploy.sh v1.2.3` 的示例在服务端语境下请读作 `deploy.sh sha-…`。
+#
+# 需要的 Secrets（按名字）
+#   仓库级（自动注入）
+#     GITHUB_TOKEN                 ghcr.io 推拉（packages: write / read）
+#   Environment "prod"（名字与 access-ssh.md §5 / RUNBOOK 密钥表一致）
+#     CF_ACCESS_CLIENT_ID          Cloudflare Access 服务令牌 Client ID（cloudflared 读 TUNNEL_SERVICE_TOKEN_ID，已核实 cloudflared 源码）
+#     CF_ACCESS_CLIENT_SECRET      同上 Client Secret（TUNNEL_SERVICE_TOKEN_SECRET）
+#     VPS_DEPLOY_SSH_KEY           deploy 用户专用 ed25519 私钥；VPS 侧 authorized_keys 用 forced command 锁死（见下方契约）
+#     TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID   可选；部署结果通知
+#
+# 需要的 Repository variables（Settings → Secrets and variables → Variables）
+#   GHCR_NAMESPACE      ghcr.io 命名空间，必须全小写：<REPLACE_ME:ghcr-namespace>
+#   VPS_SSH_HOST        Cloudflare Access 里 SSH 应用的主机名：<REPLACE_ME:ssh.domain>
+#   VPS_SSH_USER        VPS 上的部署用户，默认 deploy
+#   VPS_SSH_HOST_KEY    VPS 的 `cat /etc/ssh/ssh_host_ed25519_key.pub` 整行（换机 / restore.sh 后要更新）：<REPLACE_ME:vps-ssh-host-public-key>
+#   API_PUBLIC_HOST     对外 API 主机名（经 Cloudflare）：<REPLACE_ME:api.domain>
+#   CLOUDFLARED_VERSION 可选，默认 2026.8.3（与第 9 章 compose 里的 cloudflared 镜像同版；GitHub release tag 已核实存在）
+#   CLOUDFLARED_SHA256  可选；设置后校验下载的 cloudflared-linux-amd64（release 页 SHA256 自行抄录）
+#
+# Environment 保护规则建议
+#   prod
+#     - Deployment branches and tags：仅 main
+#     - Required reviewers：团队 ≥ 2 人时设 1 名；单人开发可不设，靠 PR 检查兜底
+#     - 只放部署通道的密钥；R2 / 备份 / 签名类密钥各有自己的 Environment（release / release-publish / backup），不要混放
+#   ghcr.io 包：private；VPS 用一枚 read:packages 的 PAT 做 docker login（deploy.sh 的 compose pull 依赖它，不在本文件内）
+#
+# 与第 9 / 11 章正文及 infra/ 文档不一致处的裁定
+#   - 集成测试的 PG 版本以 C7 = 18.6 为准（第 11 章测试表写的 Testcontainers + PG 17 不采用）；
+#     测试代码必须优先读环境变量 DATABASE_URL / DATABASE_DIRECT_URL / REDIS_URL，存在时不要自起容器
+#   - 自建 pg 镜像由本 workflow 构建并推 ghcr（bianfa-pg），prod compose 建议改 image: 引用而非 build:，
+#     restore-drill.yml 复用同一 :main —— 三处是同一个 digest
+#   - .env.prod 的渲染 / scp（8.5、RUNBOOK D14）不在本 workflow：应用密钥极少变化，不该随每次 main 合并重推，
+#     且 forced command 已把部署通道锁死为 deploy.sh；.env.prod 走 RUNBOOK 的一次性人工步骤
+#   - tunnel-setup.md §3.5 与 access-ssh.md §5 的 secret 命名不一致（VPS_DEPLOY_SSH_KEY vs DEPLOY_SSH_KEY；vars.VPS_SSH_HOST_KEY vs
+#     .github/known_hosts 文件）：本文件采用 tunnel-setup.md / RUNBOOK D14 的命名，known_hosts 由 vars 在运行时生成
+#
+# 必须由其他模块提供的契约（本文件不假设内部实现）
+#   - 根 package.json："packageManager": "pnpm@11.25.0"（pnpm/action-setup 从这里读版本）；turbo 在根 devDependencies
+#   - apps/server/package.json scripts：lint、typecheck、test、build、db:migrate、test:integration、test:e2e
+#   - apps/server 构建产物：dist/api.js（监听 $PORT=3000，GET /healthz）、dist/sync.js（监听 $PORT=4000）、dist/worker.js
+#   - apps/server 测试所需的非敏感配置（BETTER_AUTH_SECRET 等测试值）由 apps/server/.env.test 提供并进 git
+#   - apps/server/Dockerfile：build-arg SERVICE=api|sync 决定 CMD；USER 10001:10001；镜像内有 wget（compose healthcheck 用）
+#   - infra/docker/pg/Dockerfile（第 9 章 8.5：pgvector 0.8.6-pg18-trixie + pg_bigm + pgbackrest）
+#   - VPS（access-ssh.md §5）：deploy 用户 authorized_keys 为 command="/srv/bianfa/app/infra/vps/deploy-entry.sh",restrict …；
+#     deploy-entry.sh 只接受两种 SSH_ORIGINAL_COMMAND：
+#       `current`        → cat /srv/bianfa/.tag.current（可为空）
+#       `deploy <tag>`   → sudo -n /srv/bianfa/app/infra/vps/deploy.sh "<tag>"，<tag> 须匹配 ^(v[0-9][0-9A-Za-z.-]*|sha-[0-9a-f]{40})$
+#     其它一律 exit 64。sudoers 仅 `deploy ALL=(root) NOPASSWD: /srv/bianfa/app/infra/vps/deploy.sh`
+# =============================================================================
+name: backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_tag:
+        description: "重新部署 / 回滚：已存在于 ghcr 的镜像 tag（形如 sha-<40位>）。留空 = 正常构建后部署"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: 24.20.0                       # 第 1 章 A2
+  PG_IMAGE_REPO: ghcr.io/${{ vars.GHCR_NAMESPACE }}/bianfa-pg
+  # fork PR 的 GITHUB_TOKEN 只读：不能推镜像，只能复用已存在的
+  CAN_PUSH_IMAGES: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 自建 pg 镜像（第 9 章 8.5 的两个坑：pg_bigm 不在 pgvector 镜像里；pgbackrest 必须在 PG 进程所在容器内）
+  # 内容寻址 tag：infra/docker/pg/** 没变就不重建；main 上再打 :main 供 prod / restore-drill 引用
+  # ---------------------------------------------------------------------------
+  pg-image:
+    name: pg image (pgvector + pg_bigm + pgbackrest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 计算内容寻址 tag
+        id: tag
+        env:
+          HASH: ${{ hashFiles('infra/docker/pg/**') }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HASH" ]; then
+            echo "::error::infra/docker/pg 不存在或为空 —— 第 9 章 8.5 的自建 pg 镜像是集成测试与 prod 的前置"
+            exit 1
+          fi
+          case "$PG_IMAGE_REPO" in
+            *REPLACE_ME*|ghcr.io//*) echo "::error::vars.GHCR_NAMESPACE 未设置"; exit 1 ;;
+          esac
+          echo "image=${PG_IMAGE_REPO}:pg-${HASH:0:16}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 镜像已存在则跳过构建（fork PR 无推送权限：不存在即失败）
+        id: exists
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"; echo "已存在：$IMAGE"
+          elif [ "$CAN_PUSH_IMAGES" != "true" ]; then
+            echo "::error::$IMAGE 不存在，而 fork PR 无权推送。请维护者先在主仓库合并 infra/docker/pg 的改动。"
+            exit 1
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"; echo "需要构建：$IMAGE"
+          fi
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        if: steps.exists.outputs.yes != 'true'
+
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        if: steps.exists.outputs.yes != 'true'
+        with:
+          context: infra/docker/pg
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha,scope=pg
+          cache-to: type=gha,mode=max,scope=pg
+
+      - name: main：把内容 tag 同步为 :main
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+        run: docker buildx imagetools create -t "${PG_IMAGE_REPO}:main" "$IMAGE"
+
+  # ---------------------------------------------------------------------------
+  # lint + typecheck + 单测（turbo 按目录过滤，只跑服务端及其依赖的 packages）
+  # ---------------------------------------------------------------------------
+  check:
+    name: lint + typecheck + unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: 安装依赖（--ignore-scripts：checklist #11 要求整条链在此模式下可跑）
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: lint / typecheck / 单测
+        run: pnpm turbo run lint typecheck test --filter='./apps/server' --filter='./packages/*'
+
+  # ---------------------------------------------------------------------------
+  # 集成测试 = 第 9 章 8.10 的「没有 staging」替代：每次 PR 全新一套 PG18 + PgBouncer + Redis
+  # 连接拓扑与 prod 一致：业务经 PgBouncer transaction 模式；迁移与 LISTEN 走直连（S3 裁定）
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration (migrate + tests + e2e)
+    needs: [pg-image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    services:
+      postgres:
+        image: ${{ needs.pg-image.outputs.image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: bianfa
+          POSTGRES_PASSWORD: bianfa-ci
+          POSTGRES_DB: bianfa
+          POSTGRES_INITDB_ARGS: --data-checksums
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bianfa -d bianfa"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+          --shm-size 512m
+      pgbouncer:
+        # 第 9 章 8.5：tag 格式 vX.Y.Z-pN；digest 于 2026-09-05 自 Docker Hub API 取得（多架构索引 digest）
+        # AUTH_TYPE=scram-sha-256 时 edoburu 的 entrypoint 把明文密码写进 userlist（已核实 entrypoint.sh），
+        # 这是 PG18 默认 scram 下唯一能让 pgbouncer → server 认证通过的组合；md5 会失败。
+        image: edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+        env:
+          DATABASE_URL: postgres://bianfa:bianfa-ci@postgres:5432/bianfa
+          POOL_MODE: transaction
+          AUTH_TYPE: scram-sha-256
+          MAX_CLIENT_CONN: "500"
+          DEFAULT_POOL_SIZE: "25"
+          MAX_PREPARED_STATEMENTS: "200"
+        ports:
+          - 6432:5432
+      redis:
+        # C8：Redis 纯 ephemeral，只做 Hocuspocus 房间广播 + 限流计数；services 不能传 command，
+        # 默认 appendonly no / 无 maxmemory 与 prod 的 allkeys-lru 语义在测试里等价（不依赖持久化）
+        image: redis:8.10.1-alpine3.23@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://bianfa:bianfa-ci@localhost:6432/bianfa          # 经 PgBouncer（transaction）
+      DATABASE_DIRECT_URL: postgres://bianfa:bianfa-ci@localhost:5432/bianfa   # 直连：迁移 + LISTEN(authz_revoked)
+      REDIS_URL: redis://localhost:6379
+      PGPASSWORD: bianfa-ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: 让 PG 的 shared_preload_libraries 与 prod 一致，并断言自建镜像内容
+        # services 不能传 command / 挂配置文件（服务先于 checkout 启动），改 ALTER SYSTEM + 重启。
+        # 长期做法：在 infra/docker/pg 里加 docker-entrypoint-initdb.d 脚本做同样的 ALTER SYSTEM，这一步就退化为纯断言。
+        env:
+          PG_CID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$PG_CID" psql -U bianfa -d bianfa -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements,pg_bigm'"
+          docker restart "$PG_CID" >/dev/null
+          for _ in $(seq 1 40); do
+            if docker exec "$PG_CID" pg_isready -U bianfa -d bianfa >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec "$PG_CID" pg_isready -U bianfa -d bianfa
+          # 第 9 章 8.5：pgvector + pg_bigm 都在镜像里，且 pg_bigm 已预加载（否则 PG 起不来 / GUC 缺失）
+          n="$(docker exec "$PG_CID" psql -U bianfa -d bianfa -At -v ON_ERROR_STOP=1 \
+               -c "SELECT count(*) FROM pg_available_extensions WHERE name IN ('vector','pg_bigm','pg_stat_statements')")"
+          [ "$n" = "3" ] || { echo "::error::自建 pg 镜像缺扩展（期望 vector/pg_bigm/pg_stat_statements 三个，实际 $n）"; exit 1; }
+          docker exec "$PG_CID" psql -U bianfa -d bianfa -At -c "SHOW shared_preload_libraries" | grep -q pg_bigm
+          docker exec "$PG_CID" psql -U bianfa -d bianfa -At -c "SELECT version()" | grep -q 'PostgreSQL 18' \
+            || { echo "::error::不是 PostgreSQL 18（C7 裁定 18.6）"; exit 1; }
+          # 8.7 恢复演练依赖 pgbackrest 在 PG 容器内
+          docker exec "$PG_CID" pgbackrest version
+          # PgBouncer 服务没有 healthcheck（镜像内无 pg_isready）：等 6432 可连，并经它跑一条真查询
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/6432) 2>/dev/null; then break; fi
+            sleep 1
+          done
+          docker run --rm --network host -e PGPASSWORD "$(docker inspect --format '{{.Config.Image}}' "$PG_CID")" \
+            psql -h 127.0.0.1 -p 6432 -U bianfa -d bianfa -At -c "select 1" | grep -qx 1 \
+            || { echo "::error::经 PgBouncer(6432) 查询失败：AUTH_TYPE / userlist 配置有问题"; exit 1; }
+
+      - name: 迁移（直连，不经 PgBouncer）
+        env:
+          DATABASE_URL: ${{ env.DATABASE_DIRECT_URL }}
+        run: pnpm --filter ./apps/server run db:migrate
+
+      - name: 集成测试（权限矩阵、同步协议；连接经 PgBouncer transaction 模式）
+        run: pnpm --filter ./apps/server run test:integration
+
+      - name: 构建并以真实入口启动 api / sync / worker（与镜像 CMD 同一路径：dist/*.js）
+        run: |
+          set -euo pipefail
+          pnpm --filter './apps/server...' run build
+          for f in api sync worker; do
+            test -f "apps/server/dist/$f.js" || { echo "::error::缺少 apps/server/dist/$f.js（Dockerfile CMD 依赖此约定）"; exit 1; }
+          done
+          mkdir -p "$RUNNER_TEMP/logs"
+          ( cd apps/server && PORT=3000 nohup node dist/api.js    > "$RUNNER_TEMP/logs/api.log"    2>&1 & )
+          ( cd apps/server && PORT=4000 nohup node dist/sync.js   > "$RUNNER_TEMP/logs/sync.log"   2>&1 & )
+          ( cd apps/server &&           nohup node dist/worker.js > "$RUNNER_TEMP/logs/worker.log" 2>&1 & )
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/healthz >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/healthz
+
+      - name: e2e
+        env:
+          API_BASE_URL: http://127.0.0.1:3000
+          SYNC_WS_URL: ws://127.0.0.1:4000
+        run: pnpm --filter ./apps/server run test:e2e
+
+      - name: 失败时保存服务日志
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-logs
+          path: ${{ runner.temp }}/logs
+          retention-days: 5
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # main：构建 api / sync 两个镜像并推 ghcr.io；Trivy HIGH/CRITICAL 阻断部署
+  # 同一个 Dockerfile，build-arg SERVICE 决定 CMD；worker 复用 api 镜像（第 9 章 compose 原文）
+  # ---------------------------------------------------------------------------
+  build-images:
+    name: build & push bianfa-${{ matrix.service }}
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_tag == ''))
+    needs: [check, integration]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        service: [api, sync]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ghcr.io/${{ vars.GHCR_NAMESPACE }}/bianfa-${{ matrix.service }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=main
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          build-args: |
+            SERVICE=${{ matrix.service }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=server-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=server-${{ matrix.service }}
+      - name: 断言镜像以非 root 运行（第 10 章 9.4.5：USER 10001:10001）
+        env:
+          IMAGE: ghcr.io/${{ vars.GHCR_NAMESPACE }}/bianfa-${{ matrix.service }}:sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker pull -q "$IMAGE" >/dev/null
+          u="$(docker inspect --format '{{.Config.User}}' "$IMAGE")"
+          [ "$u" = "10001:10001" ] || [ "$u" = "10001" ] || { echo "::error::镜像 USER 是 '${u:-root}'，要求 10001:10001"; exit 1; }
+      - name: Trivy 扫描刚推送的镜像（HIGH/CRITICAL 阻断部署；security.yml 另有每周全量扫）
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ vars.GHCR_NAMESPACE }}/bianfa-${{ matrix.service }}:sha-${{ github.sha }}
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
+          format: table
+
+  # ---------------------------------------------------------------------------
+  # 部署：cloudflared access ssh（VPS 无公网入站端口，第 9 章 8.4）→ forced command → deploy.sh
+  # deploy.sh 自带「健康检查失败 → 回滚上一 tag → exit 1」；这里再加一层经 Cloudflare 的外部冒烟 + 回滚
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: deploy to VPS (Cloudflare Access SSH)
+    needs: [build-images]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (needs.build-images.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.deploy_tag != '')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: prod
+      url: https://${{ vars.API_PUBLIC_HOST }}/healthz
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
+    env:
+      DEPLOY_TAG: ${{ inputs.deploy_tag || format('sha-{0}', github.sha) }}
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: 校验 deploy_tag 形状（与 VPS 侧 deploy-entry.sh 的正则一致）
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DEPLOY_TAG" | grep -Eq '^(v[0-9][0-9A-Za-z.-]*|sha-[0-9a-f]{40})$'; then
+            echo "::error::非法的 tag：$DEPLOY_TAG"; exit 1
+          fi
+
+      - name: 安装 cloudflared（pin 版本；可选 sha256 校验）
+        env:
+          CLOUDFLARED_VERSION: ${{ vars.CLOUDFLARED_VERSION || '2026.8.3' }}
+          CLOUDFLARED_SHA256: ${{ vars.CLOUDFLARED_SHA256 }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o cloudflared \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64"
+          if [ -n "${CLOUDFLARED_SHA256:-}" ]; then
+            echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
+          else
+            echo "::notice::未设置 vars.CLOUDFLARED_SHA256，跳过 cloudflared 完整性校验"
+          fi
+          sudo install -m 0755 cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
+
+      - name: 配置 SSH（ProxyCommand 走 Access；严格校验 host key）
+        env:
+          SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ vars.VPS_SSH_HOST }}
+          SSH_USER: ${{ vars.VPS_SSH_USER || 'deploy' }}
+          SSH_HOST_KEY: ${{ vars.VPS_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          for v in SSH_KEY SSH_HOST SSH_HOST_KEY TUNNEL_SERVICE_TOKEN_ID TUNNEL_SERVICE_TOKEN_SECRET; do
+            [ -n "${!v:-}" ] || { echo "::error::缺少 $v（secrets: VPS_DEPLOY_SSH_KEY / CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET；vars: VPS_SSH_HOST / VPS_SSH_HOST_KEY）"; exit 1; }
+          done
+          case "$SSH_HOST$SSH_HOST_KEY" in *REPLACE_ME*) echo "::error::vars 里仍有 REPLACE_ME 占位符"; exit 1 ;; esac
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          # known_hosts 的主机名必须是 HostName（Access 的 ssh 主机名），不是 VPS IP
+          printf '%s %s\n' "$SSH_HOST" "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host bianfa-prod
+            HostName ${SSH_HOST}
+            User ${SSH_USER}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ProxyCommand cloudflared access ssh --hostname %h
+            ConnectTimeout 30
+            ServerAliveInterval 15
+            BatchMode yes
+            RequestTTY no
+          EOF
+
+      - name: 记录当前线上 tag（回滚目标；经 forced command 的 `current` 子命令）
+        id: prev
+        run: |
+          set -euo pipefail
+          PREV="$(ssh bianfa-prod current | tr -d '[:space:]')"
+          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "线上：${PREV:-<无>}  →  目标：${DEPLOY_TAG}"
+
+      - name: 执行 deploy.sh（脚本内置：健康检查失败自动回滚并 exit 1）
+        id: deploy
+        run: ssh bianfa-prod "deploy ${DEPLOY_TAG}"
+
+      - name: 冒烟：经 Cloudflare 打 /healthz（接受第 9 章 8.5 的 ~5 秒中断）
+        id: smoke
+        env:
+          API_PUBLIC_HOST: ${{ vars.API_PUBLIC_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$API_PUBLIC_HOST" || { echo "::error::缺少 vars.API_PUBLIC_HOST"; exit 1; }
+          for _ in $(seq 1 12); do
+            if curl -fsS --max-time 10 "https://${API_PUBLIC_HOST}/healthz"; then echo; echo "healthz OK"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::https://${API_PUBLIC_HOST}/healthz 60 秒内未恢复"
+          exit 1
+
+      - name: 冒烟失败 → 回滚到上一版
+        if: failure() && steps.deploy.outcome == 'success' && steps.prev.outputs.tag != ''
+        env:
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "::warning::外部冒烟失败，回滚到 ${PREV_TAG}"
+          ssh bianfa-prod "deploy ${PREV_TAG}"
+
+      - name: Telegram 通知（未配置则跳过）
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS: ${{ job.status }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "未配置 Telegram，跳过"; exit 0; fi
+          printf -v MSG '[bianfa backend] deploy %s\ntarget: %s\nprevious: %s\n%s' \
+            "$STATUS" "$DEPLOY_TAG" "${PREV_TAG:-<none>}" "$RUN_URL"
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "disable_web_page_preview=true" >/dev/null || echo "::warning::Telegram 发送失败"

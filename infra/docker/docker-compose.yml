@@ -1,0 +1,473 @@
+# =============================================================================
+# bianfa · 生产环境容器栈（Hostinger VPS KVM 2：8 GB / 2 vCPU / 100 GB，单机）
+# -----------------------------------------------------------------------------
+# 作用：用裸 Docker Compose 编排全部有状态层。Cloudflare 侧零状态（第 1 章 A3）。
+# 来源：第 9 章 8.4（拓扑）/ 8.5（编排）/ 8.6（PG）/ 8.10（内存账）；第 10 章 9.4.5（容器加固）；
+#       第 1 章裁定 C2 / C8 / S3 / S5；infra/vps/{deploy,backup,restore,break-glass}.sh 的调用约定。
+#
+# 使用方式（deploy.sh / backup.sh / cron 全部这样调，别手敲别的路径）：
+#   docker compose --project-directory /srv/bianfa/app/infra/docker --env-file /srv/bianfa/.env.prod up -d --wait --wait-timeout 120
+#   .env.prod 由 CI 从 GitHub Environment secrets 渲染后 scp 到位，root:root 0600，不进 git（模板 .env.prod.example）。
+#   compose 只自动读取 ./.env；本栈刻意不用这个名字，避免开发用 .env 被误当生产配置。
+#
+# 必须人工替换的值：本文件无。全部集中在 .env.prod（见 .env.prod.example 文件头）。
+#
+# 与各脚本的接口契约（改名要两边同步）：
+#   * 服务名 api / sync-ws / worker / postgres / pgbouncer / redis / caddy / cloudflared / alloy
+#     —— deploy.sh 的 SERVICES="api sync-ws worker"、backup.sh 的 PG_SERVICE=postgres、Caddyfile 的 dynamic a name 都依赖它们。
+#   * TAG 由 deploy.sh `export TAG=` 传入；cron / backup.sh 只带 --env-file 调 `compose exec`，那时 TAG 取 .env.prod 里的值，
+#     所以 .env.prod 必须始终有一个真实存在的 TAG（CI 渲染时写入当前发布 tag）。
+#   * pgBackRest 三个凭据直接用 pgBackRest 的环境变量名（PGBACKREST_REPO1_*），backup.sh 会按这三个名字检查 .env.prod。
+#
+# 与第 9 章正文不同之处（以第 1 章裁定为准）：
+#   * worker 跑 pg-boss（C8），队列在 Postgres 里 → worker 不依赖 Redis，也不拿 REDIS_URL。
+#   * Redis 无持久数据（C8）：allkeys-lru / appendonly no / 不挂 volume。
+#   * sync-ws（Hocuspocus）拿两条 DSN（S3）：DATABASE_URL 走 PgBouncer；DATABASE_URL_DIRECT 直连 PG，
+#     只用于 LISTEN authz_revoked 那一条连接。
+#   * 没有任何 ports: 映射（8.4：VPS 无公网入站端口，全部经 cloudflared ×2）。break-glass.sh 用 override 文件临时加 443。
+#   * 两个网络：edge（cloudflared / caddy / api / sync-ws）与 data（api / sync-ws / worker / pgbouncer / postgres / redis）。
+#     cloudflared 与 caddy 不在 data 网上，Tunnel 侧被攻破也摸不到数据库。alloy 两网都在（要抓 cloudflared 指标）。
+#   * 多副本是「同时重建」不是滚动，接受 5 秒中断（8.5），不装 docker-rollout。
+#   * PG18 官方镜像 PGDATA=/var/lib/postgresql/18/docker、VOLUME=/var/lib/postgresql（2026-09-05 核实 docker-library/postgres
+#     18/trixie/Dockerfile）。第 9 章 8.5 / 8.7 的 /var/lib/postgresql/data 是 PG17 及更早的布局，此处已修正。
+#   * 镜像 tag 均为 2026-09-05 用 Docker Hub v2 API 核实存在：cloudflare/cloudflared:2026.8.3、caddy:2.11.4-alpine、
+#     edoburu/pgbouncer:v1.25.2-p0、redis:8.10-alpine、grafana/alloy:v1.19.2、pgvector/pgvector:0.8.6-pg18-trixie。
+# =============================================================================
+name: bianfa
+
+# ---- 公共片段 ---------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+# 第 10 章 9.4.5 加固基线：只读根文件系统、丢全部 capability、禁提权。
+# 非 root 用户与 tmpfs 因各镜像不同，在服务里单独声明。
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging: *default-logging
+
+# Node 应用容器（api / sync-ws / worker）公共项。镜像内必须存在 uid 10001（Dockerfile: USER 10001:10001）。
+x-node-app: &node-app
+  <<: *hardened
+  user: "10001:10001"
+  init: true
+  tmpfs: [/tmp]
+
+# Node 应用公共环境变量（各服务在自己的 environment 里用 <<: *node-env-base 合并）
+x-node-env: &node-env-base
+  NODE_ENV: production
+  TZ: UTC
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  # ===========================================================================
+  # 边缘入口：Cloudflare Tunnel connector ×2（同一 tunnel 两个 connector，原生 HA）
+  # 公共主机名 → 服务 的映射在 Cloudflare Zero Trust 控制台（remote-managed tunnel）里配置：
+  #   api.<domain> → http://caddy:80 （WebSocket 同一入口 wss://api.<domain>/ws/…，见 tunnel-setup.md）
+  # ===========================================================================
+  cloudflared:
+    <<: *hardened
+    image: cloudflare/cloudflared:2026.8.3
+    # 镜像 ENTRYPOINT 已是 `cloudflared --no-autoupdate`（已核实上游 Dockerfile），这里只给子命令
+    command: ["tunnel", "run"]
+    user: "65532:65532"               # 镜像 = distroless nonroot，Dockerfile 里就是 USER 65532:65532（已核实）
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:?CF_TUNNEL_TOKEN 未设置}
+      # /ready 供 healthcheck；/metrics 供 alloy 采 cloudflared_tunnel_ha_connections（告警 #7：健康 connector < 2）
+      TUNNEL_METRICS: 0.0.0.0:2000
+      TUNNEL_LOGLEVEL: warn
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 96M
+    healthcheck:
+      # `cloudflared tunnel ready` 打 http://<metrics>/ready，有活跃连接才返回 0。
+      # 源码 readyCommand 要求 --metrics 显式 IsSet，所以这里不依赖环境变量，直接给 flag。
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      caddy:
+        condition: service_healthy
+    networks: [edge]
+
+  # ===========================================================================
+  # 反向代理：只在 docker 内网 :80，TLS 在 Cloudflare 边缘终结
+  # ===========================================================================
+  caddy:
+    <<: *hardened
+    image: caddy:2.11.4-alpine
+    user: "10001:10001"
+    # 非 root 绑 :80。Docker ≥ 20.10 默认已把容器内 ip_unprivileged_port_start 设为 0，
+    # 这里显式声明，防宿主机 daemon.json 改过默认值。
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    # 无 TLS → /data（证书）与 /config（autosave）无需持久化，直接 tmpfs。
+    # break-glass 模式下 ACME 证书也落在这个 tmpfs 里：容器重建会重新签发，LE 限速（每周 5 张同名证书）足够。
+    tmpfs: [/tmp, /data, /config]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/-/caddy-health"]   # alpine 自带 busybox wget
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks: [edge]
+
+  # ===========================================================================
+  # API：Hono + Better Auth + LLM 网关（同进程 SSE），2 副本
+  # 以下变量名是与 apps/api 的接口契约，改名需两边同步。
+  # ===========================================================================
+  api:
+    <<: *node-app
+    image: ${IMAGE_REGISTRY:-ghcr.io/shuerhome}/bianfa-api:${TAG:?TAG 未设置（部署镜像 tag）}
+    environment:
+      <<: *node-env-base
+      PORT: "3000"
+      # 对外根 URL 由 BIANFA_DOMAIN 推导（deploy.sh / break-glass.sh 也读同一个变量拼 api.<domain>）
+      PUBLIC_API_URL: https://api.${BIANFA_DOMAIN:?BIANFA_DOMAIN 未设置}
+      BETTER_AUTH_URL: https://api.${BIANFA_DOMAIN:?BIANFA_DOMAIN 未设置}
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN 未设置}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET 未设置}
+      SYNC_TOKEN_SECRET: ${SYNC_TOKEN_SECRET:?SYNC_TOKEN_SECRET 未设置}
+      # 全部业务查询走 PgBouncer（transaction 模式；node-postgres 需禁用 prepared statements，见 S3）
+      DATABASE_URL: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@pgbouncer:5432/${POSTGRES_DB:-bianfa}
+      # Redis 只做限流计数（第 10 章 9.4.3 滑动窗口 / 第 8 章令牌桶）
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}@redis:6379/0
+      # R2 attachments key（S5 第三把 key）：仅 API 与 worker 持有，用于签 presigned URL / GC，绝不下发客户端
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}
+      R2_ATTACHMENTS_BUCKET: ${R2_ATTACHMENTS_BUCKET:-bianfa-attachments}
+      R2_ATTACHMENTS_ACCESS_KEY_ID: ${R2_ATTACHMENTS_ACCESS_KEY_ID:?R2_ATTACHMENTS_ACCESS_KEY_ID 未设置}
+      R2_ATTACHMENTS_SECRET_ACCESS_KEY: ${R2_ATTACHMENTS_SECRET_ACCESS_KEY:?R2_ATTACHMENTS_SECRET_ACCESS_KEY 未设置}
+      # LLM 上游（第 8 章：四家走 AI SDK，Anthropic 直连；默认 BYOK，平台 key 可留空）
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AZURE_AI_API_KEY: ${AZURE_AI_API_KEY:-}
+      AZURE_AI_ENDPOINT: ${AZURE_AI_ENDPOINT:-}
+      # 事务邮件（第 6 章：必须托管发信）
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY 未设置}
+      MAIL_FROM: ${MAIL_FROM:?MAIL_FROM 未设置}
+      # 计费（M4 前可留空）
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Sentry（S6：sendDefaultPii=false 等在应用侧配置）
+      SENTRY_DSN: ${SENTRY_DSN_API:-}
+      SENTRY_ENVIRONMENT: production
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 768M
+    healthcheck:
+      # 不假设镜像里有 wget/curl；Node 24 自带 fetch。（deploy.sh 二次确认用的是容器内 wget —— 镜像里装了 wget 就两者都通，
+      # 没装则把 deploy.sh 那一行换成同样的 node -e。）
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 15s
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, data]
+
+  # ===========================================================================
+  # sync-ws：Hocuspocus 4.6.0 + extension-redis（C2），每便笺一房间
+  # 服务名 sync-ws 与 deploy.sh / RUNBOOK / 第 9 章一致；Caddyfile 用 dynamic a 解析它。
+  # ===========================================================================
+  sync-ws:
+    <<: *node-app
+    image: ${IMAGE_REGISTRY:-ghcr.io/shuerhome}/bianfa-sync:${TAG:?TAG 未设置（部署镜像 tag）}
+    environment:
+      <<: *node-env-base
+      PORT: "4000"
+      SYNC_TOKEN_SECRET: ${SYNC_TOKEN_SECRET:?SYNC_TOKEN_SECRET 未设置}
+      # 常规读写（onLoadDocument / onStoreDocument）走 PgBouncer
+      DATABASE_URL: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@pgbouncer:5432/${POSTGRES_DB:-bianfa}
+      # S3：唯一一条绕过 PgBouncer 的直连，专供 LISTEN authz_revoked（transaction 模式下 LISTEN 不可用）
+      DATABASE_URL_DIRECT: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@postgres:5432/${POSTGRES_DB:-bianfa}
+      # extension-redis 跨实例房间广播
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}@redis:6379/0
+      SENTRY_DSN: ${SENTRY_DSN_SYNC:-}
+      SENTRY_ENVIRONMENT: production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      # Hocuspocus 对任意未被 onRequest 拦截的 HTTP GET 回 200（Server.ts requestHandler，已核实）；应用实现了 /healthz 也兼容
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    # 第 5 章：unloadImmediately=false + 退出前 flush 挂起的 onStoreDocument，给足时间
+    stop_grace_period: 30s
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, data]
+
+  # ===========================================================================
+  # worker：pg-boss 12.30.0（C8）—— projector / 邮件 / 附件 GC / 结算
+  # 队列表在 Postgres 里，与业务写同事务；**不依赖 Redis，也不拿 REDIS_URL**。
+  # ===========================================================================
+  worker:
+    <<: *node-app
+    image: ${IMAGE_REGISTRY:-ghcr.io/shuerhome}/bianfa-api:${TAG:?TAG 未设置（部署镜像 tag）}
+    # 入口路径以 apps/api 的构建产物为准（与 api 同镜像，不同入口；镜像 WORKDIR 下必须有 dist/worker.js）
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *node-env-base
+      DATABASE_URL: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@pgbouncer:5432/${POSTGRES_DB:-bianfa}
+      # 附件 GC（S1 第 7 步 mark-and-sweep）要删 R2 对象 → 同一把 attachments key
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}
+      R2_ATTACHMENTS_BUCKET: ${R2_ATTACHMENTS_BUCKET:-bianfa-attachments}
+      R2_ATTACHMENTS_ACCESS_KEY_ID: ${R2_ATTACHMENTS_ACCESS_KEY_ID:?R2_ATTACHMENTS_ACCESS_KEY_ID 未设置}
+      R2_ATTACHMENTS_SECRET_ACCESS_KEY: ${R2_ATTACHMENTS_SECRET_ACCESS_KEY:?R2_ATTACHMENTS_SECRET_ACCESS_KEY 未设置}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY 未设置}
+      MAIL_FROM: ${MAIL_FROM:?MAIL_FROM 未设置}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN_API:-}
+      SENTRY_ENVIRONMENT: production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # 无 HTTP 端口，不做 healthcheck（deploy.sh 的 --wait 对无 healthcheck 的服务等到 running 即可）；
+    # 存活由 Loki 里的错误日志 + cAdvisor 的重启计数观察。pg-boss stop() 等待在跑的 job 结束，给足宽限。
+    stop_grace_period: 60s
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    networks: [data]
+
+  # ===========================================================================
+  # PgBouncer 1.25.2 · transaction 模式（第 9 章 8.6 三个雷：无 session SET、无跨语句 advisory lock、无 LISTEN）
+  # 环境变量名已对照 edoburu/docker-pgbouncer entrypoint.sh（2026-09-05）：DB_* / AUTH_TYPE / POOL_MODE / LISTEN_ADDR /
+  # MAX_CLIENT_CONN / DEFAULT_POOL_SIZE / MIN_POOL_SIZE / RESERVE_POOL_SIZE / RESERVE_POOL_TIMEOUT / MAX_PREPARED_STATEMENTS /
+  # SERVER_IDLE_TIMEOUT / QUERY_WAIT_TIMEOUT / IGNORE_STARTUP_PARAMETERS 全部存在。
+  # ===========================================================================
+  pgbouncer:
+    <<: *hardened
+    image: edoburu/pgbouncer:v1.25.2-p0
+    # 镜像 Dockerfile：alpine + postgresql-client（含 pg_isready），USER postgres，/etc/pgbouncer 等目录已 chown。
+    # entrypoint 启动时在 /etc/pgbouncer 生成 pgbouncer.ini + userlist.txt → 只读根文件系统下这些目录必须是 tmpfs
+    tmpfs: [/tmp, /etc/pgbouncer, /var/run/pgbouncer, /var/log/pgbouncer]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-bianfa}
+      DB_USER: ${PG_APP_USER:-bianfa_app}
+      DB_PASSWORD: ${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}
+      AUTH_TYPE: scram-sha-256          # 镜像默认 md5，必须显式改；scram 时 entrypoint 把明文写进 userlist.txt（tmpfs）
+      POOL_MODE: transaction
+      LISTEN_ADDR: 0.0.0.0              # 容器内地址；容器无 ports 映射，只在 data 网可达
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "25"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "3"
+      MAX_PREPARED_STATEMENTS: "200"    # 1.21+ 协议级 prepared statement 跟踪；应用侧仍按 S3 关闭驱动缓存
+      SERVER_IDLE_TIMEOUT: "300"
+      QUERY_WAIT_TIMEOUT: "30"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    healthcheck:
+      # 对 pgbouncer 发 startup 包即可判定存活（pg_isready 不做认证）
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "${PG_APP_USER:-bianfa_app}", "-d", "${POSTGRES_DB:-bianfa}"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+
+  # ===========================================================================
+  # PostgreSQL 18.6 + pgvector 0.8.6 + pg_bigm 1.2 + pgBackRest（自建镜像 ./pg/Dockerfile）
+  # 不监听宿主机任何端口；listen_addresses='*' 只在 docker data 网内可达，且被 pg_hba.conf 限定网段。
+  # ===========================================================================
+  postgres:
+    <<: *hardened
+    build:
+      context: ./pg
+      dockerfile: Dockerfile
+    image: bianfa-postgres:18.6-pgvector0.8.6-pgbigm1.2   # 本地构建产物名，不推远端；首次 `compose up` 自动 build
+    # 镜像内 postgres 用户 uid/gid=999（已核实 PG18 Dockerfile）；非 root 启动时官方 entrypoint 跳过 chown/gosu 直接 initdb
+    user: "999:999"
+    # 默认 SIGTERM 是 smart shutdown（等所有客户端断开）→ 会拖到宽限期被 SIGKILL 然后崩溃恢复；SIGINT = fast shutdown
+    stop_signal: SIGINT
+    stop_grace_period: 60s
+    shm_size: 1gb                      # dynamic_shared_memory_type=posix 走 /dev/shm（并行查询 DSM）
+    tmpfs:
+      - /tmp                           # 同时是 pgbackrest 的 lock-path (/tmp/pgbackrest)
+      - /var/run/postgresql            # unix socket（entrypoint 的 chmod 失败会被忽略，tmpfs 默认 1777 足够）
+      - /var/log/pgbackrest            # pgbackrest 文件日志（控制台日志走 stdout，丢了不心疼）
+    volumes:
+      - pgdata:/var/lib/postgresql     # PG18 镜像 VOLUME；实际 PGDATA=/var/lib/postgresql/18/docker
+      - pgbackrest_spool:/var/spool/pgbackrest
+      - ./pg/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./pg/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      - ./pg/initdb:/docker-entrypoint-initdb.d:ro   # 仅首次（PGDATA 为空）执行：建角色 + 扩展
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    environment:
+      # 超级用户固定叫 postgres：pg_hba 里 local peer 认证要求 OS 用户 postgres ↔ 角色 postgres 同名
+      # （entrypoint 初始化、pgbackrest、backup.sh 的 `exec -u postgres psql` 都靠这条）
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置}
+      POSTGRES_DB: ${POSTGRES_DB:-bianfa}
+      # PG18 initdb 默认 data checksums on；用内建 C.UTF-8 避免 glibc collation 版本漂移
+      POSTGRES_INITDB_ARGS: "--locale-provider=builtin --locale=C.UTF-8"
+      # 供 initdb/01-roles-and-extensions.sh 建应用角色与监控角色
+      PG_APP_USER: ${PG_APP_USER:-bianfa_app}
+      PG_APP_PASSWORD: ${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}
+      PG_EXPORTER_USER: ${PG_EXPORTER_USER:-bianfa_exporter}
+      PG_EXPORTER_PASSWORD: ${PG_EXPORTER_PASSWORD:?PG_EXPORTER_PASSWORD 未设置}
+      # pgBackRest 敏感项一律走环境变量（规则 PGBACKREST_<OPTION>，大写、- 换 _；已核实 reference.xml），不写进 pgbackrest.conf。
+      # archive_command 由 PG 进程执行，所以这些变量必须在 postgres 容器里；`compose exec postgres pgbackrest` 也继承。
+      # 变量名与 .env.prod 同名直通（backup.sh / restore.sh / RUNBOOK 都按这三个名字找）。
+      PGBACKREST_REPO1_S3_ENDPOINT: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}.r2.cloudflarestorage.com
+      PGBACKREST_REPO1_S3_KEY: ${PGBACKREST_REPO1_S3_KEY:?PGBACKREST_REPO1_S3_KEY 未设置}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${PGBACKREST_REPO1_S3_KEY_SECRET:?PGBACKREST_REPO1_S3_KEY_SECRET 未设置}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?PGBACKREST_REPO1_CIPHER_PASS 未设置}
+      TZ: UTC
+    deploy:
+      resources:
+        limits:
+          memory: 2560M                # shared_buffers 2GB + work_mem/maintenance + 后台进程（8.10：postgres 2.5G）
+    healthcheck:
+      # 走 TCP 回环而不是 socket：initdb 期间 entrypoint 起的临时实例只开 socket（listen_addresses=''），
+      # 用 socket 探测会在初始化尚未完成时就报 healthy。pg_hba.conf 为此放行了 127.0.0.1/32。
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "${POSTGRES_DB:-bianfa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s                # 首次 initdb + 建扩展需要时间
+    networks: [data]
+
+  # ===========================================================================
+  # Redis 8.10 · 纯 ephemeral（C8）：Hocuspocus 房间广播 + 限流计数，没有任何持久数据
+  # ===========================================================================
+  redis:
+    <<: *hardened
+    image: redis:8.10-alpine
+    user: "10001:10001"
+    # requirepass 不放命令行（ps 可见），写进 /tmp 的 include 文件再加载。$$ 是 compose 的 $ 转义。
+    command:
+      - sh
+      - -c
+      - |
+        umask 077
+        printf 'requirepass %s\n' "$$REDIS_PASSWORD" > /tmp/redis-secret.conf
+        exec redis-server /usr/local/etc/redis/redis.conf --include /tmp/redis-secret.conf
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}   # 仅供 healthcheck 的 redis-cli 使用
+    tmpfs: [/tmp]                      # redis.conf 里 dir /tmp；无 volume（不落盘）
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    deploy:
+      resources:
+        limits:
+          memory: 384M                 # maxmemory 256mb + 分配器碎片/客户端缓冲余量
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks: [data]
+
+  # ===========================================================================
+  # Grafana Alloy → Grafana Cloud（8.8：监控不与被监控对象同机；本机只跑采集端）
+  # 这是全栈唯一以 root 运行的容器：node_exporter 要读宿主 /proc（pid: host），cAdvisor 要读
+  # /var/lib/docker 与 docker.sock。仍保留 read_only + cap_drop ALL（只加回读文件所需的两项）。
+  # 镜像默认用户是 alloy(473)，此处显式覆盖为 root。
+  # ===========================================================================
+  alloy:
+    <<: *hardened
+    image: grafana/alloy:v1.19.2
+    # 镜像 ENTRYPOINT=/bin/alloy；flag 名已对照 reference/cli/run
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --disable-reporting
+    user: "0:0"
+    pid: host
+    cap_add: [DAC_READ_SEARCH, SYS_PTRACE]
+    tmpfs: [/tmp]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./alloy/pg-queries.yaml:/etc/alloy/pg-queries.yaml:ro
+      - alloy_data:/var/lib/alloy/data                  # remote_write WAL + docker 日志 positions，断网期间缓冲
+      - /:/rootfs:ro,rslave                             # node_exporter rootfs_path；textfile 目录 /var/lib/node_exporter/textfile_collector 也经它读
+      - /sys:/sys:ro                                    # node_exporter + cAdvisor cgroup
+      - /var/run/docker.sock:/var/run/docker.sock:ro    # discovery.docker / loki.source.docker / cAdvisor
+      - /var/lib/docker:/var/lib/docker:ro              # cAdvisor
+      - /dev/disk:/dev/disk:ro                          # cAdvisor 磁盘映射
+    environment:
+      GRAFANA_CLOUD_PROM_URL: ${GRAFANA_CLOUD_PROM_URL:?GRAFANA_CLOUD_PROM_URL 未设置}
+      GRAFANA_CLOUD_PROM_USER: ${GRAFANA_CLOUD_PROM_USER:?GRAFANA_CLOUD_PROM_USER 未设置}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?GRAFANA_CLOUD_LOKI_URL 未设置}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:?GRAFANA_CLOUD_LOKI_USER 未设置}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:?GRAFANA_CLOUD_API_KEY 未设置}
+      # postgres_exporter 用只读监控角色直连 PG（不经 PgBouncer）
+      PG_EXPORTER_DSN: postgresql://${PG_EXPORTER_USER:-bianfa_exporter}:${PG_EXPORTER_PASSWORD:?PG_EXPORTER_PASSWORD 未设置}@postgres:5432/${POSTGRES_DB:-bianfa}?sslmode=disable
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}
+      VPS_HOSTNAME: ${VPS_HOSTNAME:-bianfa-vps-1}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    # 镜像（ubuntu:noble 精简版）无 curl/wget，不做 healthcheck；Alloy 自身 up 指标在 Grafana Cloud 侧告警
+    networks: [edge, data]
+
+# ---- 网络 --------------------------------------------------------------------
+# 固定网段是为了 pg/pg_hba.conf 能精确放行 data 网段。两段都落在 bootstrap.sh 的 default-address-pools
+# （172.20.0.0/14 = 172.20–172.23）之外，避免与 docker 自动分配的池冲突；部署前用 `ip route` 确认宿主机没有 172.28.0.0/23 的路由。
+networks:
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+  data:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24
+
+# ---- 卷 ------------------------------------------------------------------------
+volumes:
+  pgdata:
+  pgbackrest_spool:
+  alloy_data:

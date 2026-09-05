@@ -1,0 +1,54 @@
+# bianfa 更新清单 Worker 的 wrangler 配置
+# 作用：把 src/index.ts 部署为 https://update.<REPLACE_ME:domain>/…，绑定 R2 桶 bianfa-releases 与 KV（灰度开关）。
+# 来源章节：第 3 章 2.4.3、第 9 章 8.4/8.9、第 10 章 9.3.5。
+# 2026-09-05 核实：wrangler 4.129.0（registry.npmjs.org，engines node>=22.0.0，自带 workerd 1.20260903.1 →
+#   compatibility_date 不能晚于 2026-09-03）；wrangler ≥3.91 同时支持 wrangler.toml 与 wrangler.jsonc
+#   （cloudflare-docs workers/wrangler/configuration.mdx，以下键名 workers_dev / preview_urls / keep_vars /
+#   observability.enabled / routes[].custom_domain / r2_buckets / kv_namespaces / vars 均对照该页核实）。
+#
+# 必须人工替换：
+#   <REPLACE_ME:domain>          你的根域（该域必须是同一 Cloudflare 账号下的 zone）
+#   <REPLACE_ME:kv-namespace-id> `npx wrangler kv namespace create ROLLOUT` 输出的 id
+# 部署前一次性操作（在 infra/cloudflare/update-worker/ 目录；wrangler 4 的 kv 命令默认操作本地模拟器，远端必须加 --remote）：
+#   npm ci
+#   npx wrangler login
+#   npx wrangler kv namespace create ROLLOUT                                   # 把输出的 id 填到下面
+#   npx wrangler kv key put --namespace-id <id> --remote ROLLOUT_PERCENT 0     # 先关死，再发第一版
+#   npx wrangler kv key put --namespace-id <id> --remote KILL_SWITCH 0
+#   npx wrangler deploy
+#   curl -i https://update.<REPLACE_ME:domain>/healthz                         # 200 ok
+#   curl -i https://update.<REPLACE_ME:domain>/windows/x86_64/0.0.1            # 桶里没有 latest.json 时应为 204 + x-bianfa-update: no-manifest
+# 回滚（任何机器、任何时候，最多 ~60 s 生效）：
+#   npx wrangler kv key put --namespace-id <id> --remote KILL_SWITCH 1
+
+name = "bianfa-update"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = false          # 不要 *.workers.dev 入口：更新清单只从自定义域下发，避免绕过 WAF
+preview_urls = false         # 同理不要版本预览 URL（默认跟随 workers_dev，这里显式写死）
+keep_vars = true             # 用 dashboard 改 vars 时不被下一次 deploy 覆盖
+
+[observability]
+enabled = true               # Workers Logs：`npx wrangler tail` 能看到每次 update_check 的结构化日志
+
+# 自定义域：wrangler 会自动创建 DNS 记录与证书，不需要手工加 CNAME（../dns-and-waf.md 第 1 节）
+[[routes]]
+pattern = "update.<REPLACE_ME:domain>"
+custom_domain = true
+
+# R2：安装包与 latest.json 所在桶。Worker binding 不需要 API token，也没有 S5 的「三把 key」问题。
+# 该桶不带法域（见 ../r2.md §1.2），所以这里不写 jurisdiction；若以后改成法域桶，必须加 jurisdiction = "eu"。
+[[r2_buckets]]
+binding = "RELEASES"
+bucket_name = "bianfa-releases"
+
+# KV：灰度与 kill switch。键名见 src/index.ts 顶部注释。
+[[kv_namespaces]]
+binding = "ROLLOUT"
+id = "<REPLACE_ME:kv-namespace-id>"
+
+[vars]
+DEFAULT_CHANNEL = "stable"
+ALLOWED_CHANNELS = "stable,beta"
+MANIFEST_PREFIX = "releases"   # → releases/{channel}/latest.json，与第 9 章 8.9 的 releases/{stable|beta}/{version}/ 同一前缀
+KV_CACHE_TTL = "60"            # 秒；KV cacheTtl 平台最小 30。越小回滚越快、KV 读越多（Free 100k 读/天）

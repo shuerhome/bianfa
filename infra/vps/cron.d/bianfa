@@ -1,0 +1,24 @@
+# /etc/cron.d/bianfa —— bianfa 生产 VPS 定时任务
+# 由 infra/vps/bootstrap.sh 安装：install -m 644 -o root -g root infra/vps/cron.d/bianfa /etc/cron.d/bianfa
+#   （/etc/cron.d 只接受 root 所有、非组/他人可写、文件名不含「.」的文件——本文件名 bianfa 满足。）
+# 来源：第 9 章 8.7（全量每周日 03:00、增量每日 03:00、check 失败推 Telegram）+ 8.5（镜像清理，否则 50 GB 盘三个月就满）。
+# 时间为服务器时区。bootstrap 把系统时区设为 UTC：03:00 UTC = 北京时间 11:00。
+#   想要北京时间 03:00 → 小时改 19（前一天 UTC 19:00），周日 full 那行的 dow 要改成 6、incr 那行改成 0-5。
+# 变量展开：cron 本身不展开命令里的 $VAR，但命令是经 SHELL=/bin/bash -c 执行的，bash 会展开下面定义的 BIANFA / LOGF。
+#   注意 cron 的「变量定义行」右侧不能再引用其它变量（LOGF 不能写成 $ROOT/log），所以两条都写成绝对路径。
+# 所有输出追加到 /srv/bianfa/log/cron.log（各脚本自己还写 backup.log 等），logrotate 每周轮转（bootstrap 已配）。
+# 必须人工替换：无。仓库不在 /srv/bianfa/app 时改下面的 BIANFA。
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+BIANFA=/srv/bianfa/app/infra/vps
+LOGF=/srv/bianfa/log/cron.log
+
+# 分  时  日  月  周(0=日)  用户  命令
+# 周一至周六 03:00 增量；周日 03:00 全量（backup 成功后脚本自己再跑 pgbackrest check，失败推 Telegram）
+0    3   *   *   1-6       root  $BIANFA/backup.sh incr  >> $LOGF 2>&1
+0    3   *   *   0         root  $BIANFA/backup.sh full  >> $LOGF 2>&1
+# 每日 15:00 单独 check：白天再验一次 WAL 归档链路，别等到第二天凌晨才发现 archive_command 坏了
+0    15  *   *   *         root  $BIANFA/backup.sh check >> $LOGF 2>&1
+# 每周一 04:30 清理 7 天内没被任何容器用过的镜像与构建缓存（deploy.sh 每次部署也会做；这是长期不部署时的兜底）
+30   4   *   *   1         root  docker image prune -af --filter "until=168h" >> $LOGF 2>&1; docker builder prune -f --filter "until=168h" >> $LOGF 2>&1
