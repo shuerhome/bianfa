@@ -33,15 +33,19 @@ RUN set -eux; \
         pgbackrest \
         ca-certificates; \
     # --- 构建期依赖：编译 pg_bigm
+    #     libicu-dev：PostgreSQL 18 起 tsearch/ts_locale.h → utils/pg_locale.h 在 USE_ICU 下 #include <unicode/ucol.h>
+    #     （已核实 REL_18_STABLE 源码），PGDG 包都是 ICU 构建，缺它 bigm_op.c 第一行 include 就 "compilation terminated"
+    #     （2026-09-06 首台机器实测）。pg_bigm 上游 CI 自己从源码编 PG、不带 ICU，所以他们没踩到。
     apt-get install -y --no-install-recommends \
         build-essential \
         "postgresql-server-dev-${PG_MAJOR}" \
+        libicu-dev \
         git; \
     git clone --depth 1 --branch "${PG_BIGM_TAG}" https://github.com/pgbigm/pg_bigm.git /tmp/pg_bigm; \
     make -C /tmp/pg_bigm USE_PGXS=1 PG_CONFIG="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config"; \
     make -C /tmp/pg_bigm USE_PGXS=1 PG_CONFIG="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config" install; \
     # --- 卸掉构建依赖（pgbackrest / ca-certificates 是手动安装的，不会被 autoremove）
-    apt-get purge -y --auto-remove build-essential "postgresql-server-dev-${PG_MAJOR}" git; \
+    apt-get purge -y --auto-remove build-essential "postgresql-server-dev-${PG_MAJOR}" libicu-dev git; \
     apt-mark unhold locales; \
     rm -rf /var/lib/apt/lists/* /tmp/pg_bigm; \
     # --- pgbackrest 运行目录预建并归 postgres：compose 用 named volume 挂 /var/spool/pgbackrest，
