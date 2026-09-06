@@ -1,8 +1,35 @@
-// 鉴权接缝（seam）：B1 代理实现 createAuth（Better Auth 1.7.3），B2 代理只依赖这里导出的类型与 requireBearer。
+// 鉴权接缝（seam）：createAuth（Better Auth 1.7.3 + oauth-provider + organization + device-authorization + two-factor），
+// B2 只依赖这里导出的类型、requireBearer、requireOrgRole 与 AuthRuntime。
 // 约定：/v1/* 只认 Bearer（cookie 显式拒绝）；本文件的导出签名固定，实现可换。
-import { type Context, Hono, type MiddlewareHandler } from "hono";
+import type { Context, Hono, MiddlewareHandler } from "hono";
+import { Redis } from "ioredis";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
+import { createMailProvider } from "../mail/index.js";
+import { hashPassword, probeArgon2, verifyPassword } from "../security/argon2.js";
+import {
+  configureRateLimit,
+  createMemoryRateLimitBackend,
+  createRedisRateLimitBackend,
+} from "../security/rate-limit.js";
+import { type BianfaAuth, buildAuth } from "./better-auth.js";
+import { type AuthEnv, loadAuthEnv } from "./env.js";
+import { createRedisSecondaryStorage } from "./redis.js";
+import { buildV1Routes } from "./routes.js";
+import type { ServiceDeps } from "./services/context.js";
+import { createBearerVerifier } from "./verify-bearer.js";
+
+export {
+  getMemberCached,
+  invalidateMemberCache,
+  invalidateOrgCache,
+  type MemberStatus,
+  type OrgContext,
+  type OrgRole,
+  type OrgVariables,
+  requireOrgRole,
+  roleAtLeast,
+} from "./org-guard.js";
 
 /** 一次已认证请求的主体（不含任何 token） */
 export interface AuthContext {
@@ -54,23 +81,104 @@ export function requireBearer(verify: BearerVerifier): MiddlewareHandler<{ Varia
   };
 }
 
-/**
- * 占位实现：B1 代理会用 Better Auth 替换本函数体（签名不变）。
- * 占位行为：/api/auth/* 一律 501；任何 Bearer 都视为无效（fail-closed）。
- */
-export async function createAuth(_deps: CreateAuthDeps): Promise<AuthRuntime> {
-  return {
-    handler: async () => Response.json({ error: "auth_not_configured" }, { status: 501 }),
-    verifyBearer: async () => null,
-    v1Routes: new Hono<{ Variables: AuthVariables }>(),
-    close: async () => {},
-  };
-}
-
 export interface CreateAuthDeps {
   env: NodeJS.ProcessEnv;
   db: Db;
   /** 限流计数与 Better Auth secondaryStorage；缺省 = 进程内存（仅测试/单副本） */
   redisUrl?: string;
   log: Logger;
+}
+
+/** createAuth 之外还暴露给测试 / 脚本用的内部对象 */
+export interface AuthInternals {
+  auth: BianfaAuth;
+  authEnv: AuthEnv;
+  services: ServiceDeps;
+  /** 密码哈希实际用的算法 */
+  passwordHasher: "argon2id" | "scrypt";
+}
+
+/**
+ * Better Auth 1.7.3 实例 + Bearer 校验 + /v1 子路由。
+ * 参数（deps.env）：BETTER_AUTH_URL / BETTER_AUTH_SECRET / APP_ORIGIN（test 缺省见 env.ts）、RESEND_API_KEY / MAIL_FROM、
+ * GOOGLE_* / APPLE_*（缺省关闭）、DATA_KEY_*（列加密，缺省关闭）；deps.redisUrl 缺省 → 内存限流 + 无 secondaryStorage。
+ */
+export async function createAuthWithInternals(deps: CreateAuthDeps): Promise<AuthRuntime & AuthInternals> {
+  const authEnv = loadAuthEnv(deps.env);
+  const log = deps.log.child({ name: "auth" });
+  const mail = createMailProvider({ env: deps.env, log });
+
+  let redis: Redis | undefined;
+  if (deps.redisUrl) {
+    redis = new Redis(deps.redisUrl, {
+      lazyConnect: false,
+      maxRetriesPerRequest: 2,
+      enableOfflineQueue: true,
+    });
+    redis.on("error", (err) => log.warn({ err: err.message }, "auth redis error"));
+    configureRateLimit(createRedisRateLimitBackend(redis));
+  } else {
+    configureRateLimit(createMemoryRateLimitBackend());
+  }
+
+  let passwordHasher: AuthInternals["passwordHasher"] = "argon2id";
+  let password: { hash: typeof hashPassword; verify: typeof verifyPassword } | undefined = {
+    hash: hashPassword,
+    verify: verifyPassword,
+  };
+  try {
+    await probeArgon2();
+  } catch (err) {
+    passwordHasher = "scrypt";
+    password = undefined;
+    log.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "@node-rs/argon2 unavailable, falling back to scrypt",
+    );
+  }
+
+  const auth = buildAuth({
+    env: authEnv,
+    db: deps.db,
+    mail,
+    log,
+    secondaryStorage: redis ? createRedisSecondaryStorage(redis) : undefined,
+    password,
+  });
+
+  const services: ServiceDeps = {
+    db: deps.db,
+    mail,
+    env: authEnv,
+    log,
+    revokeWebSessions: async (userId) => {
+      const ctx = await auth.$context;
+      await ctx.internalAdapter.deleteUserSessions(userId);
+    },
+  };
+
+  const verifyBearer = createBearerVerifier(deps.db, log);
+  const v1Routes = buildV1Routes(services, verifyBearer);
+
+  return {
+    auth,
+    authEnv,
+    services,
+    passwordHasher,
+    handler: (request) => auth.handler(request),
+    verifyBearer,
+    v1Routes,
+    close: async () => {
+      await mail.close();
+      if (redis) {
+        await redis.quit().catch(() => redis?.disconnect());
+      }
+    },
+  };
+}
+
+/** 接缝入口：签名固定（B2 只用这个） */
+export async function createAuth(deps: CreateAuthDeps): Promise<AuthRuntime> {
+  const { handler, verifyBearer, v1Routes, close } = await createAuthWithInternals(deps);
+  return { handler, verifyBearer, v1Routes, close };
 }
