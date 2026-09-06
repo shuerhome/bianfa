@@ -1,5 +1,6 @@
 // HTTP 应用装配（api.ts 与集成测试共用）：createApp(deps) → Hono。
 //   /healthz                 SELECT 1 经 PgBouncer ≤ 2 s → 200，否则 503（Redis 可选，不参与判定）
+//   /login /device /invite/* …  Web 面静态页（apps/web 产物；src/http/web-static.ts）+ GET /web-config.json
 //   /api/auth/*              Better Auth handler（B1）
 //   /v1/*                    仅 Bearer（cookie 显式拒绝）；匿名白名单：/v1/notice、/v1/telemetry、/v1/invites/:token/preview
 //     B2 路由：workspaces / notes / shares / pins / comments / attachments / notifications / claim / sync/token / me/export
@@ -22,6 +23,7 @@ import {
 } from "./http/middleware.js";
 import { createMemoryRateLimiter } from "./http/ratelimit.js";
 import { LIMITS } from "./http/validate.js";
+import { webRoutes } from "./http/web-static.js";
 import { accountRoutes } from "./routes/account.js";
 import { anonymousRoutes } from "./routes/anonymous.js";
 import { attachmentRoutes } from "./routes/attachments.js";
@@ -64,6 +66,8 @@ export function createApp(deps: AppDeps): Hono<RouteEnv> {
   const app = new Hono<RouteEnv>();
 
   app.use("*", requestIdMiddleware());
+  // Web 面（apps/web 产物 + /web-config.json）：必须早于 securityHeaders（它会覆盖页面 CSP），自带同一套安全头
+  app.route("/", webRoutes({ appOrigins: deps.env.APP_ORIGINS, production }));
   app.use("*", securityHeaders({ production }));
   app.use("*", corsMiddleware(deps.env.APP_ORIGINS));
   app.use("*", serverTime());

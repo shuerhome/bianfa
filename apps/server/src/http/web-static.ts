@@ -1,0 +1,122 @@
+// =============================================================================
+// Web 面静态托管（specs/04 §1.5 / §7.2）：apps/web（Vite 产物）由 api 进程在 APP_ORIGIN 同源托管，cookie 全程同源。
+// -----------------------------------------------------------------------------
+// * 目录：WEB_DIST_DIR 环境变量 > <apps/server>/public/web（scripts/build.mjs 把 apps/web/dist 复制到这里；Docker 同）。
+//   目录里没有 index.html → 整个中间件是空操作（开发 / 测试没构建 Web 也不影响 API）。
+// * /assets/*              → Vite 内容哈希文件：Cache-Control: public, max-age=31536000, immutable
+// * WEB_PAGE_PATHS（SPA 路由）→ index.html：Cache-Control: no-store + 页面 CSP（WEB_PAGE_CSP）
+// * 其它路径一律 next()：/api/auth/*、/v1/*、/healthz、/ws/*、/metrics 不受影响；只处理 GET / HEAD。
+// * 必须挂在 securityHeaders() **之前**：hono secureHeaders 在 next() 之后 set 头，会把页面 CSP 覆盖成 API 的
+//   default-src 'none'。所以本文件对自己产出的响应补齐同一套安全头（SECURITY_HEADERS + 生产 HSTS）。
+// * GET /web-config.json（web-config.ts）也挂在这里（同样早于 securityHeaders，自己带安全头）。
+// =============================================================================
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
+import { SECURITY_HEADERS } from "../security/headers.js";
+import { computeWebConfig, WEB_CONFIG_PATH } from "./web-config.js";
+
+/** 规格 04 §7.2 的 Web 页 CSP（同源托管 → connect-src / form-action 只需 'self'；favicon 是 data: URI） */
+export const WEB_PAGE_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; " +
+  "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'";
+
+export const HSTS = "max-age=63072000; includeSubDomains; preload";
+
+/** 与 apps/web/src/router.ts 的 matchRoute 一致；/invite/:token 单独用正则 */
+export const WEB_PAGE_PATHS = [
+  "/",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/change-email",
+  "/consent",
+  "/device",
+  "/account",
+] as const;
+
+const INVITE_RE = /^\/invite\/[A-Za-z0-9_-]{1,128}$/;
+const ASSETS_PREFIX = "/assets/";
+
+export function isWebPagePath(path: string): boolean {
+  const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  if ((WEB_PAGE_PATHS as readonly string[]).includes(p)) return true;
+  return INVITE_RE.test(p);
+}
+
+/** WEB_DIST_DIR > <apps/server>/public/web（dist/api.js → ../public/web；src/http/*.ts → ../../public/web） */
+export function resolveWebDistDir(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.WEB_DIST_DIR) return resolve(env.WEB_DIST_DIR);
+  const here = dirname(fileURLToPath(import.meta.url));
+  const fromDist = resolve(here, "../public/web");
+  const fromSrc = resolve(here, "../../public/web");
+  return existsSync(fromDist) ? fromDist : existsSync(fromSrc) ? fromSrc : fromDist;
+}
+
+export function applyWebSecurityHeaders(c: Context, opts: { production: boolean; csp: string | null }): void {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
+  if (opts.production) c.header("Strict-Transport-Security", HSTS);
+  if (opts.csp) c.header("Content-Security-Policy", opts.csp);
+  c.header("X-Robots-Tag", "noindex");
+}
+
+export interface WebStaticOptions {
+  /** 产物目录；缺省 resolveWebDistDir() */
+  dir?: string | undefined;
+  production?: boolean | undefined;
+}
+
+export function webStatic(opts: WebStaticOptions = {}): MiddlewareHandler {
+  const dir = opts.dir ?? resolveWebDistDir();
+  const production = opts.production ?? false;
+  if (!existsSync(resolve(dir, "index.html"))) {
+    return async (_c, next) => next();
+  }
+  const assets = serveStatic({
+    root: dir,
+    onFound: (_path, c) => {
+      c.header("Cache-Control", "public, max-age=31536000, immutable");
+      applyWebSecurityHeaders(c, { production, csp: null });
+    },
+  });
+  const index = serveStatic({
+    root: dir,
+    path: "index.html",
+    onFound: (_path, c) => {
+      c.header("Cache-Control", "no-store");
+      applyWebSecurityHeaders(c, { production, csp: WEB_PAGE_CSP });
+    },
+  });
+  return async (c, next) => {
+    if (c.req.method !== "GET" && c.req.method !== "HEAD") return next();
+    const path = c.req.path;
+    if (path.startsWith(ASSETS_PREFIX)) return assets(c, next);
+    if (isWebPagePath(path)) return index(c, next);
+    return next();
+  };
+}
+
+export interface WebRoutesOptions extends WebStaticOptions {
+  /** CORS 白名单里的第一个 origin = Web 面的 APP_ORIGIN（邮件链接 / loginPage 都用它） */
+  appOrigins: readonly string[];
+  /** 环境变量原文（GOOGLE_* / APPLE_* / DESKTOP_DOWNLOAD_URL）；缺省 process.env */
+  raw?: NodeJS.ProcessEnv | undefined;
+}
+
+/** app.ts 里一行挂载：app.route("/", webRoutes({...}))（放在 securityHeaders 之前） */
+export function webRoutes(opts: WebRoutesOptions): Hono {
+  const app = new Hono();
+  const production = opts.production ?? false;
+  const raw = opts.raw ?? process.env;
+  app.get(WEB_CONFIG_PATH, (c) => {
+    c.header("Cache-Control", "public, max-age=300");
+    applyWebSecurityHeaders(c, { production, csp: null });
+    return c.json(computeWebConfig(raw, opts.appOrigins));
+  });
+  app.use("*", webStatic({ dir: opts.dir, production }));
+  return app;
+}

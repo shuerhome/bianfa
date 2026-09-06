@@ -229,6 +229,8 @@ git tag v1.2.3 && git push origin v1.2.3
 #    （.env.prod 不在此链路里：首次 / 密钥变更时人工 `ssh bianfa-prod deploy-with-env <tag> < rendered.env.prod`，见 §7.6）
 ```
 
+Web 面（登录 / 注册 / 找回密码 / 邮箱验证 / OAuth 同意 / `/device` / `/invite/<token>` / 账号页）**没有单独的服务或 CDN**：`apps/web` 的产物在镜像构建期复制到 `apps/server/public/web`，由 api 进程在 `APP_ORIGIN`（= `https://api.<domain>`，`.env.prod` 里 `APP_ORIGIN` 的第一项）同源托管；`curl -sI https://api.<domain>/login` 应返回 `text/html` + `Cache-Control: no-store` + `Content-Security-Policy`。发版就是发 api，没有额外步骤。
+
 deploy.sh 自己做的事（不用你管）：拒绝含 `REPLACE_ME` 的 `.env.prod` → `compose config -q` → `pull`（失败则什么都不动）→ `up -d --no-deps --wait --wait-timeout 120 api sync-ws worker` → 容器内 `wget http://localhost:3000/healthz` 二次确认 → 外部 `https://api.<domain>/healthz`（失败只告警不回滚）→ 写 `.tag.current` → `docker image prune -af --filter until=168h`。**健康检查失败自动回滚到上一个 tag**，两次结果都推 Telegram。
 
 #### 4.1.2 手工部署 / 回滚

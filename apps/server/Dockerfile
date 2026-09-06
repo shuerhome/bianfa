@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# apps/server/Dockerfile —— 一包三入口（api / sync / worker），build context = 仓库根
+# apps/server/Dockerfile —— 一包五入口（api / sync / worker / migrate / auth-bootstrap）+ Web 面静态产物（public/web），build context = 仓库根
 # 契约（.github/workflows/backend.yml 头、infra/docker/docker-compose.yml）：
 #   ARG SERVICE=api|sync 决定 CMD；worker 复用 api 镜像并由 compose 覆盖 command: node dist/worker.js
 #   USER 10001:10001；镜像内有 wget；只写 /tmp；Node 24.20.0（A2）
@@ -12,16 +12,26 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/tokens/package.json packages/tokens/
+COPY packages/ui/package.json packages/ui/
 COPY apps/server/package.json apps/server/
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter ./apps/server... 
+COPY apps/web/package.json apps/web/
+# Web 面（apps/web）与 api 同镜像：api 进程同源托管其产物（apps/server/src/http/web-static.ts）
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter ./apps/server... --filter ./apps/web...
 
 FROM deps AS build
 COPY packages/shared packages/shared
+COPY packages/tokens packages/tokens
+COPY packages/ui packages/ui
+COPY apps/web apps/web
 COPY apps/server apps/server
 COPY tsconfig.base.json ./
-RUN pnpm --filter ./apps/server... run build \
+# 先构建 Web 面（tokens → ui → web），再构建 api（scripts/build.mjs 把 apps/web/dist 复制到 apps/server/public/web）
+RUN pnpm --filter ./apps/web... run build \
+ && pnpm --filter ./apps/server... run build \
  && pnpm --filter ./apps/server deploy --prod --legacy /out \
- && cp -r apps/server/dist /out/dist
+ && cp -r apps/server/dist /out/dist \
+ && cp -r apps/server/public /out/public
 
 FROM node:24.20.0-alpine3.22 AS runtime
 ARG SERVICE=api

@@ -1,0 +1,2 @@
+# Web 面产物由 scripts/build.mjs 从 apps/web/dist 复制而来（Docker / CI 构建期生成）
+public/web/

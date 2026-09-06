@@ -1,0 +1,40 @@
+{
+  "name": "@bianfa/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "bianfa Web 面（登录 / 注册 / 找回密码 / 邮箱验证 / OAuth 同意 / 设备码 / 邀请 / 账号）：由 api 进程在 APP_ORIGIN 同源静态托管",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.3",
+    "@bianfa/tokens": "workspace:*",
+    "@bianfa/ui": "workspace:*",
+    "better-auth": "1.7.3",
+    "i18next": "26.4.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-i18next": "17.0.13"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}
