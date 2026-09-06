@@ -184,6 +184,25 @@ flowchart TB
 
 ---
 
+
+### 2.1 应用上线（2026-09-06 更新：代码已齐，替换 D8 的「空壳镜像」）
+
+前置：D6–7 的数据层已 healthy，D9–10 备份与恢复演练已过。全部在 VPS 上以 `root`（或 ops）执行，`dc` 是 §1 的别名。
+
+| 步 | 动作 | 判据 |
+|---|---|---|
+| 1 | `git -C /srv/bianfa/app pull` 到含本节的提交 | `ls /srv/bianfa/app/infra/vps/{pg-roles,auth-bootstrap}.sh` 存在 |
+| 2 | 补 `.env.prod`：`PG_WORKER_PASSWORD`（`openssl rand -hex 32`）、`APP_ORIGIN=https://api.<domain>`（Web 登录/设备码/邀请页由 api 同源提供）、`BETTER_AUTH_SECRET` 与 `SYNC_TOKEN_SECRET`（各 `openssl rand -base64 48`）、`RESEND_API_KEY` + `MAIL_FROM`（没有就先填占位，邮件会落到 api 日志里的 console 邮件通道）、`R2_ATTACHMENTS_*`（按 `infra/cloudflare/r2.md` 建 `bianfa-attachments` 桶与只限该桶的 token；没有则附件功能返回 503 `attachments_disabled`，其它照常）；可选 `GOOGLE_CLIENT_ID/SECRET`、`APPLE_*` | `grep -c REPLACE_ME /srv/bianfa/.env.prod` 只剩 Grafana/Sentry/Stripe 这些可选项 |
+| 3 | `infra/vps/pg-roles.sh`：在已初始化的库上幂等创建/更新 `bianfa_worker`（BYPASSRLS，worker 专用）与 pgboss schema 双向默认权限；也用于以后改密码 | 输出三行角色表，`bianfa_worker` 的 `rolbypassrls = t` |
+| 4 | `dc up -d --force-recreate pgbouncer`（userlist 多了 worker 用户） | `dc ps pgbouncer` healthy |
+| 5 | 出镜像：合并到 `main` 后 `backend.yml` 自动构建并推 `ghcr.io/<GHCR_NAMESPACE>/bianfa-{api,sync}:sha-<40hex>`（需 GitHub `vars.GHCR_NAMESPACE`；`deploy` job 没配 Access SSH 会失败但不影响镜像）。VPS：`docker login ghcr.io -u <github用户> --password-stdin <<< "$GHCR_READ_PAT"`（read:packages 的 PAT，只在 VPS 输入） | `docker manifest inspect ghcr.io/<ns>/bianfa-api:sha-<hex>` 成功 |
+| 6 | `infra/vps/deploy.sh sha-<hex>`：拉镜像 → **`node dist/migrate.js` 以超级用户直连跑 drizzle 迁移（0000–0006）** → 滚动 api/sync-ws/worker → 容器内 `/healthz` → 外部 `/healthz`；失败自动回滚容器（schema 不回滚，迁移只增不删） | Telegram 收到成功通知；`dc ps` 三个应用服务 healthy |
+| 7 | `infra/vps/auth-bootstrap.sh`（一次）：创建桌面端 OAuth 公共客户端 `bianfa-desktop`（PKCE、回调 `http://127.0.0.1/cb`） | 日志 `oauth client created`；再跑一次是 `already present` |
+| 8 | 验证：`curl -fsS https://api.<domain>/healthz`、`curl -fsS https://api.<domain>/api/auth/ok`、`curl -s https://api.<domain>/login | head -c 300` 是 HTML、`curl -si -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGVzdA==' https://ws.<domain>/ws/v1 | head -1` 返回 `101`（之后等 Auth 帧） | 四条全过 |
+| 9 | 桌面端：`Settings → 账号 → 登录`（浏览器走 `/api/auth/oauth2/authorize` → `/login` → `/consent` → 回环 `127.0.0.1:<port>/cb`）；或「改用验证码登录」到 `https://api.<domain>/device` | 登录后 `/v1/me` 有 `personal_workspace_id`，托盘同步点变实心 |
+
+回滚：`deploy.sh <上一个 sha> --skip-migrate`。迁移失败（步骤 6 exit 3）时容器未动，修好再跑。
+
 ## 3. 约定
 
 - **一切变更走 git。** VPS 上不手改 compose / Caddyfile / cron；改了 `git -C /srv/bianfa/app status` 会脏，deploy.sh 之前必须干净。

@@ -39,14 +39,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./notify.sh
 source "$SCRIPT_DIR/notify.sh"
 
-usage() { echo "用法: $0 <TAG> [--services \"api sync-ws worker\"] [--no-prune] [--env-from FILE]"; }
+usage() { echo "用法: $0 <TAG> [--services \"api sync-ws worker\"] [--no-prune] [--skip-migrate] [--env-from FILE]"; }
 
 TAG_NEW="${1:-}"; shift || true
-NO_PRUNE=0; ENV_FROM=""
+NO_PRUNE=0; ENV_FROM=""; SKIP_MIGRATE=0
 while (( $# )); do
   case "$1" in
     --services) SERVICES="$2"; shift 2 ;;
     --no-prune) NO_PRUNE=1; shift ;;
+    --skip-migrate) SKIP_MIGRATE=1; shift ;;
     --env-from) ENV_FROM="$2"; shift 2 ;;
     -h|--help)  usage; exit 0 ;;
     *) usage >&2; exit 64 ;;
@@ -119,6 +120,22 @@ if ! compose pull --quiet $SERVICES >>"$LOG" 2>&1; then
   logline "镜像拉取失败，未改动任何容器"
   notify_fail "deploy ${TAG_NEW} 中止：镜像拉取失败（ghcr 不可达或 tag 不存在） / aborted: image pull failed (ghcr unreachable or tag missing)" "$(tail -n 15 "$LOG")"
   exit 2
+fi
+
+# 1b) 数据库迁移（drizzle，幂等）：用刚拉下来的 api 镜像里的 dist/migrate.js，以超级用户直连 postgres（不经 PgBouncer）。
+#     失败即中止——此时旧容器仍在跑，无需回滚。迁移与代码同一镜像 tag，回滚代码不回滚 schema（迁移只增不删，规格 01）。
+#     --skip-migrate 仅供演练/回滚旧 tag 时使用。
+if [[ "$SKIP_MIGRATE" != 1 ]] && grep -qx api <<<"$SERVICES"; then
+  PGPW=$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '"')
+  PGDB=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '"'); PGDB="${PGDB:-bianfa}"
+  logline "migrate: node dist/migrate.js（超级用户直连 postgres:5432/${PGDB}）"
+  if ! compose run --rm --no-deps -T \
+        -e MIGRATE_DATABASE_URL="postgres://postgres:${PGPW}@postgres:5432/${PGDB}" \
+        api node dist/migrate.js >>"$LOG" 2>&1; then
+    logline "迁移失败，未改动任何容器"
+    notify_fail "deploy ${TAG_NEW} 中止：数据库迁移失败（见 deploy.log） / aborted: database migration failed (see deploy.log)" "$(tail -n 25 "$LOG")"
+    exit 3
+  fi
 fi
 
 rollback() {
