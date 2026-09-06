@@ -32,16 +32,20 @@ export interface ImageAttrs {
 
 export interface ImageOptions {
   HTMLAttributes: Record<string, unknown>;
+}
+
+/** image 节点的 Markdown 行为；Tiptap 的 parseMarkdown/renderMarkdown 拿不到 options，所以用闭包注入 */
+export interface ImageMarkdownOptions {
   /**
    * Markdown 序列化时 `![alt](…)` 的路径；默认 `bianfa://att/<id>`。
    * 导出 zip 时传 `(id) => "attachments/<hash>.<ext>"`。
    */
-  markdownPath: (attachmentId: string) => string;
+  markdownPath?: (attachmentId: string) => string;
   /**
    * Markdown 解析时把 `![alt](src)` 的 src 解析成 attachmentId；返回 null 表示不识别，
    * 该图片退化为字面文本 `![alt](src)`。默认只识别 `bianfa://att/<id>`。
    */
-  resolveMarkdownSrc: (src: string, alt: string) => string | null;
+  resolveMarkdownSrc?: (src: string, alt: string) => string | null;
 }
 
 const toPositiveInt = (value: string | null): number | null => {
@@ -54,77 +58,94 @@ type AttrElement = {
   getAttribute(name: string): string | null;
 };
 
-export const Image = Node.create<ImageOptions>({
-  name: "image",
-  group: "block",
-  atom: true,
-  draggable: true,
-  selectable: true,
+const escapeAlt = (alt: string): string => alt.replace(/[[\]]/g, "\\$&");
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-      markdownPath: attachmentSrc,
-      resolveMarkdownSrc: (src) => attachmentIdFromSrc(src),
-    };
-  },
+export function createImageExtension(markdown: ImageMarkdownOptions = {}) {
+  const markdownPath = markdown.markdownPath ?? attachmentSrc;
+  const resolveMarkdownSrc = markdown.resolveMarkdownSrc ?? ((src: string) => attachmentIdFromSrc(src));
 
-  addAttributes() {
-    return {
-      attachmentId: {
-        default: null,
-        rendered: false,
-        parseHTML: (element: AttrElement) =>
-          element.getAttribute("data-attachment-id") ?? attachmentIdFromSrc(element.getAttribute("src")),
-      },
-      w: { default: null, rendered: false, parseHTML: (el: AttrElement) => toPositiveInt(el.getAttribute("width")) },
-      h: { default: null, rendered: false, parseHTML: (el: AttrElement) => toPositiveInt(el.getAttribute("height")) },
-      blurhash: { default: null, rendered: false, parseHTML: (el: AttrElement) => el.getAttribute("data-blurhash") },
-      alt: { default: null, rendered: false, parseHTML: (el: AttrElement) => el.getAttribute("alt") },
-    };
-  },
+  return Node.create<ImageOptions>({
+    name: "image",
+    group: "block",
+    atom: true,
+    draggable: true,
+    selectable: true,
 
-  parseHTML() {
-    return [{ tag: "img[data-attachment-id]" }, { tag: `img[src^="${ATTACHMENT_SRC_PREFIX}"]` }];
-  },
+    addOptions() {
+      return { HTMLAttributes: {} };
+    },
 
-  renderHTML({ node }) {
-    const attrs = node.attrs as ImageAttrs;
-    const rendered: Record<string, string | number> = {};
-    if (attrs.attachmentId) {
-      rendered.src = attachmentSrc(attrs.attachmentId);
-      rendered["data-attachment-id"] = attrs.attachmentId;
-    }
-    if (attrs.w) rendered.width = attrs.w;
-    if (attrs.h) rendered.height = attrs.h;
-    if (attrs.blurhash) rendered["data-blurhash"] = attrs.blurhash;
-    if (attrs.alt !== null && attrs.alt !== undefined) rendered.alt = attrs.alt;
-    return ["img", mergeAttributes(this.options.HTMLAttributes, rendered)];
-  },
+    addAttributes() {
+      return {
+        attachmentId: {
+          default: null,
+          rendered: false,
+          parseHTML: (element: AttrElement) =>
+            element.getAttribute("data-attachment-id") ?? attachmentIdFromSrc(element.getAttribute("src")),
+        },
+        w: {
+          default: null,
+          rendered: false,
+          parseHTML: (el: AttrElement) => toPositiveInt(el.getAttribute("width")),
+        },
+        h: {
+          default: null,
+          rendered: false,
+          parseHTML: (el: AttrElement) => toPositiveInt(el.getAttribute("height")),
+        },
+        blurhash: {
+          default: null,
+          rendered: false,
+          parseHTML: (el: AttrElement) => el.getAttribute("data-blurhash"),
+        },
+        alt: { default: null, rendered: false, parseHTML: (el: AttrElement) => el.getAttribute("alt") },
+      };
+    },
 
-  // 纯文本投影里 image 为空串（规格 02 §3 projector）
-  renderText() {
-    return "";
-  },
+    parseHTML() {
+      return [{ tag: "img[data-attachment-id]" }, { tag: `img[src^="${ATTACHMENT_SRC_PREFIX}"]` }];
+    },
 
-  parseMarkdown(token: MarkdownToken, helpers: MarkdownParseHelpers) {
-    const src = typeof token.href === "string" ? token.href : "";
-    const alt = typeof token.text === "string" ? token.text : "";
-    const attachmentId = src ? this.options.resolveMarkdownSrc(src, alt) : null;
-    if (!attachmentId) return helpers.createTextNode(token.raw ?? `![${alt}](${src})`);
-    return helpers.createNode("image", {
-      attachmentId,
-      w: null,
-      h: null,
-      blurhash: null,
-      alt: alt || null,
-    } satisfies ImageAttrs);
-  },
+    renderHTML({ node }) {
+      const attrs = node.attrs as ImageAttrs;
+      const rendered: Record<string, string | number> = {};
+      if (attrs.attachmentId) {
+        rendered.src = attachmentSrc(attrs.attachmentId);
+        rendered["data-attachment-id"] = attrs.attachmentId;
+      }
+      if (attrs.w) rendered.width = attrs.w;
+      if (attrs.h) rendered.height = attrs.h;
+      if (attrs.blurhash) rendered["data-blurhash"] = attrs.blurhash;
+      if (attrs.alt !== null && attrs.alt !== undefined) rendered.alt = attrs.alt;
+      return ["img", mergeAttributes(this.options.HTMLAttributes, rendered)];
+    },
 
-  renderMarkdown(node: JSONContent) {
-    const attrs = (node.attrs ?? {}) as Partial<ImageAttrs>;
-    if (!attrs.attachmentId) return "";
-    const alt = (attrs.alt ?? "").replace(/[[\]]/g, "\\$&");
-    return `![${alt}](${this.options.markdownPath(attrs.attachmentId)})`;
-  },
-});
+    // 纯文本投影里 image 为空串（规格 02 §3 projector）
+    renderText() {
+      return "";
+    },
+
+    parseMarkdown(token: MarkdownToken, helpers: MarkdownParseHelpers) {
+      const src = typeof token.href === "string" ? token.href : "";
+      const alt = typeof token.text === "string" ? token.text : "";
+      const attachmentId = src ? resolveMarkdownSrc(src, alt) : null;
+      if (!attachmentId) return helpers.createTextNode(token.raw ?? `![${alt}](${src})`);
+      return helpers.createNode("image", {
+        attachmentId,
+        w: null,
+        h: null,
+        blurhash: null,
+        alt: alt || null,
+      } satisfies ImageAttrs);
+    },
+
+    renderMarkdown(node: JSONContent) {
+      const attrs = (node.attrs ?? {}) as Partial<ImageAttrs>;
+      if (!attrs.attachmentId) return "";
+      return `![${escapeAlt(attrs.alt ?? "")}](${markdownPath(attrs.attachmentId)})`;
+    },
+  });
+}
+
+/** 默认配置的 image 节点（Markdown 路径 = `bianfa://att/<id>`） */
+export const Image = createImageExtension();

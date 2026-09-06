@@ -3,6 +3,8 @@
 // `[t](url)` `![alt](attachments/<hash>.<ext>)` `#` ``` 。
 import { MarkdownManager } from "@tiptap/markdown";
 import { Node as PMNode } from "@tiptap/pm/model";
+import { escapeBlockSyntaxLine } from "./editor/block-escape.js";
+import type { ImageMarkdownOptions } from "./editor/image.js";
 import { createEditorExtensions, getSchemaV1 } from "./editor/schema.js";
 import { EMPTY_PM_DOC, type PMJson } from "./projector.js";
 
@@ -19,15 +21,7 @@ export interface MarkdownImportOptions {
   resolveImage?: (src: string, alt: string) => string | null;
 }
 
-interface ManagerOptions {
-  markdownPath?: (attachmentId: string) => string;
-  resolveMarkdownSrc?: (src: string, alt: string) => string | null;
-}
-
-function createManager(options: ManagerOptions): MarkdownManager {
-  const image: ManagerOptions = {};
-  if (options.markdownPath) image.markdownPath = options.markdownPath;
-  if (options.resolveMarkdownSrc) image.resolveMarkdownSrc = options.resolveMarkdownSrc;
+function createManager(image: ImageMarkdownOptions): MarkdownManager {
   return new MarkdownManager({
     extensions: createEditorExtensions({ collaboration: false, image }),
     indentation: { style: "space", size: 2 },
@@ -83,7 +77,16 @@ export function normalizePmJson(json: PMJson): PMJson {
       let run: PMJson[] = [];
       const flush = () => {
         const cleaned = normalizeInline(run);
-        if (cleaned.length > 0) out.push({ ...node, content: cleaned });
+        const first = cleaned[0];
+        if (out.length > 0 && first?.type === "text" && typeof first.text === "string") {
+          cleaned[0] = { ...first, text: first.text.replace(/^\s+/, "") };
+        }
+        if (cleaned.filter((n) => !(n.type === "text" && (n.text ?? "") === "")).length > 0) {
+          out.push({
+            ...node,
+            content: cleaned.filter((n) => !(n.type === "text" && (n.text ?? "") === "")),
+          });
+        }
         run = [];
       };
       for (const child of inline) {
@@ -107,6 +110,7 @@ export function normalizePmJson(json: PMJson): PMJson {
 
 /** Markdown → PM JSON（schema v1 校验，非法结构抛错） */
 export function markdownToPmJson(markdown: string, options: MarkdownImportOptions = {}): PMJson {
+  if (markdown.trim().length === 0) return { ...EMPTY_PM_DOC, content: [] };
   const manager = options.resolveImage
     ? createManager({ resolveMarkdownSrc: options.resolveImage })
     : getDefaultManager();
@@ -114,15 +118,6 @@ export function markdownToPmJson(markdown: string, options: MarkdownImportOption
   if (parsed.content?.length === 0) return { ...EMPTY_PM_DOC, content: [] };
   PMNode.fromJSON(getSchemaV1(), parsed).check();
   return parsed;
-}
-
-/** 一行文字里可能被当成块级语法的前缀，转义成字面量（导入纯文本行时用） */
-export function escapeBlockSyntax(line: string): string {
-  return line
-    .replace(/^(\s*)([-+*#>|])/, "$1\\$2")
-    .replace(/^(\s*\d+)([.)])(\s)/, "$1\\$2$3")
-    .replace(/^(\s*)(```|~~~)/, "$1\\$2")
-    .replace(/^(\s*)(---+|\*\*\*+|___+)\s*$/, "$1\\$2");
 }
 
 /**
@@ -137,7 +132,7 @@ export function inlineLinesToPmJson(text: string, options: MarkdownImportOptions
       content.push({ type: "paragraph" });
       continue;
     }
-    const parsed = markdownToPmJson(escapeBlockSyntax(line), options);
+    const parsed = markdownToPmJson(escapeBlockSyntaxLine(line), options);
     const blocks = parsed.content ?? [];
     if (blocks.length === 0) content.push({ type: "paragraph", content: [{ type: "text", text: line }] });
     else content.push(...blocks);

@@ -136,6 +136,10 @@ export function plumNoteToDocInit(note: PlumExportNote, options: PlumImportOptio
 /** 单条导出记录 → 新 Y.Doc（origin 'import'）；noteId 由调用方生成（UUIDv7） */
 export function plumNoteToNoteDoc(note: PlumExportNote, noteId: string, options: PlumImportOptions = {}) {
   const init = plumNoteToDocInit(note, options);
-  const doc = prosemirrorJsonToNoteDoc(init.content, { noteId, meta: init.meta, ext: init.ext }, Origins.import);
+  const doc = prosemirrorJsonToNoteDoc(
+    init.content,
+    { noteId, meta: init.meta, ext: init.ext },
+    Origins.import,
+  );
   return { doc, init };
 }

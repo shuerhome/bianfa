@@ -193,7 +193,11 @@ export function diffUpdateV2(update: Uint8Array, stateVector: Uint8Array): Uint8
 }
 
 /** 从一组 updateV2（快照 + 增量，按顺序）重建 Y.Doc；用于 projector / 导出 / 版本回放 */
-export function openNoteDoc(noteId: string, updates: readonly Uint8Array[], origin: unknown = Origins.remote): Y.Doc {
+export function openNoteDoc(
+  noteId: string,
+  updates: readonly Uint8Array[],
+  origin: unknown = Origins.remote,
+): Y.Doc {
   const doc = new Y.Doc({ guid: noteId, gc: true });
   doc.transact(() => {
     for (const update of updates) Y.applyUpdateV2(doc, update, origin);

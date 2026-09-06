@@ -20,10 +20,10 @@ export {
   BODY_FIELD,
   createNoteDoc,
   diffUpdateV2,
-  encodeStateV2,
-  encodeStateVector,
   EXT_IMPORT_KEY,
   EXT_MAP,
+  encodeStateV2,
+  encodeStateVector,
   getBody,
   getExtMap,
   getMetaMap,
@@ -36,9 +36,9 @@ export {
   type NoteMetaPatch,
   noteMetaPatchSchema,
   noteMetaSchema,
-  openNoteDoc,
   type Origin,
   Origins,
+  openNoteDoc,
   readImportExt,
   readMeta,
   writeImportExt,
@@ -46,17 +46,34 @@ export {
   ZMode,
   zModeSchema,
 } from "./doc.js";
-
+export {
+  EXCERPT_MAX_CHARS,
+  NOTE_PERMS,
+  type NoteListItem,
+  type NotePerm,
+  noteListItemSchema,
+  notePermSchema,
+  type Platform,
+  permAtLeast,
+  permRank,
+  platformSchema,
+  TITLE_MAX_CHARS,
+  type WorkspaceKind,
+  workspaceKindSchema,
+} from "./dto.js";
+export { escapeBlockSyntax, escapeBlockSyntaxLine } from "./editor/block-escape.js";
 export {
   ATTACHMENT_SRC_PREFIX,
   attachmentIdFromSrc,
   attachmentSrc,
   createEditorExtensions,
+  createImageExtension,
   type EditorExtensionsOptions,
   generateTaskItemId,
   getSchemaV1,
   Image,
   type ImageAttrs,
+  type ImageMarkdownOptions,
   isAllowedLinkHref,
   isRemoteTransaction,
   LINK_PROTOCOLS,
@@ -64,7 +81,30 @@ export {
   TASK_ITEM_ID_ATTR,
   TASK_ITEM_ID_LENGTH,
 } from "./editor/schema.js";
-
+export {
+  type PlumDocInit,
+  type PlumExportAttachment,
+  type PlumExportFile,
+  type PlumExportNote,
+  type PlumExportWindow,
+  type PlumImportOptions,
+  parsePlumExportFile,
+  plumExportAttachmentSchema,
+  plumExportFileSchema,
+  plumExportNoteSchema,
+  plumExportWindowSchema,
+  plumNoteToDocInit,
+  plumNoteToNoteDoc,
+  plumTimeToMs,
+} from "./import/plum.js";
+export {
+  inlineLinesToPmJson,
+  type MarkdownExportOptions,
+  type MarkdownImportOptions,
+  markdownToPmJson,
+  normalizePmJson,
+  pmJsonToMarkdown,
+} from "./markdown.js";
 export {
   bodyToPmNode,
   type ChecklistItem,
@@ -81,50 +121,5 @@ export {
   setBodyFromPmJson,
   titleFromText,
 } from "./projector.js";
-
-export {
-  escapeBlockSyntax,
-  inlineLinesToPmJson,
-  type MarkdownExportOptions,
-  type MarkdownImportOptions,
-  markdownToPmJson,
-  normalizePmJson,
-  pmJsonToMarkdown,
-} from "./markdown.js";
-
-export { escapeLikePattern, toBigramQuery, toBigramShingles } from "./search/bigram.js";
-
 export { isInRollout, murmur3_32, ROLLOUT_KEY_INFIX, rolloutBucket } from "./rollout.js";
-
-export {
-  parsePlumExportFile,
-  type PlumDocInit,
-  type PlumExportAttachment,
-  type PlumExportFile,
-  type PlumExportNote,
-  type PlumExportWindow,
-  type PlumImportOptions,
-  plumExportAttachmentSchema,
-  plumExportFileSchema,
-  plumExportNoteSchema,
-  plumExportWindowSchema,
-  plumNoteToDocInit,
-  plumNoteToNoteDoc,
-  plumTimeToMs,
-} from "./import/plum.js";
-
-export {
-  EXCERPT_MAX_CHARS,
-  NOTE_PERMS,
-  type NoteListItem,
-  type NotePerm,
-  noteListItemSchema,
-  notePermSchema,
-  type Platform,
-  permAtLeast,
-  permRank,
-  platformSchema,
-  TITLE_MAX_CHARS,
-  type WorkspaceKind,
-  workspaceKindSchema,
-} from "./dto.js";
+export { escapeLikePattern, toBigramQuery, toBigramShingles } from "./search/bigram.js";

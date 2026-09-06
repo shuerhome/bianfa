@@ -10,12 +10,7 @@ function utf8Bytes(str: string): Uint8Array {
     else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
     else if (cp < 0x10000) out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
     else
-      out.push(
-        0xf0 | (cp >> 18),
-        0x80 | ((cp >> 12) & 0x3f),
-        0x80 | ((cp >> 6) & 0x3f),
-        0x80 | (cp & 0x3f),
-      );
+      out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
   }
   return Uint8Array.from(out);
 }
@@ -33,7 +28,10 @@ export function murmur3_32(input: string | Uint8Array, seed = 0): number {
   for (let i = 0; i < nblocks; i += 1) {
     const o = i * 4;
     let k1 =
-      ((bytes[o] ?? 0) | ((bytes[o + 1] ?? 0) << 8) | ((bytes[o + 2] ?? 0) << 16) | ((bytes[o + 3] ?? 0) << 24)) >>>
+      ((bytes[o] ?? 0) |
+        ((bytes[o + 1] ?? 0) << 8) |
+        ((bytes[o + 2] ?? 0) << 16) |
+        ((bytes[o + 3] ?? 0) << 24)) >>>
       0;
     k1 = Math.imul(k1, C1);
     k1 = (k1 << 15) | (k1 >>> 17);
@@ -44,23 +42,16 @@ export function murmur3_32(input: string | Uint8Array, seed = 0): number {
   }
 
   const tail = nblocks * 4;
-  let k1 = 0;
-  switch (len & 3) {
-    case 3:
-      k1 ^= (bytes[tail + 2] ?? 0) << 16;
-    // fallthrough
-    case 2:
-      k1 ^= (bytes[tail + 1] ?? 0) << 8;
-    // fallthrough
-    case 1:
-      k1 ^= bytes[tail] ?? 0;
-      k1 = Math.imul(k1, C1);
-      k1 = (k1 << 15) | (k1 >>> 17);
-      k1 = Math.imul(k1, C2);
-      h1 ^= k1;
-      break;
-    default:
-      break;
+  const rem = len & 3;
+  if (rem > 0) {
+    let k1 = 0;
+    if (rem >= 3) k1 ^= (bytes[tail + 2] ?? 0) << 16;
+    if (rem >= 2) k1 ^= (bytes[tail + 1] ?? 0) << 8;
+    k1 ^= bytes[tail] ?? 0;
+    k1 = Math.imul(k1, C1);
+    k1 = (k1 << 15) | (k1 >>> 17);
+    k1 = Math.imul(k1, C2);
+    h1 ^= k1;
   }
 
   h1 ^= len;

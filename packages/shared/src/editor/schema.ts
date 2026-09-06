@@ -1,8 +1,16 @@
 // Tiptap 3 schema v1（规格 02 §4）。必须能在 Node 里 headless 使用：本文件只组装扩展与 schema，
 // 不创建 Editor、不触碰 DOM。桌面端在此基础上追加 Collaboration（document, field: BODY_FIELD）等
 // 需要 Y.Doc / 视图的扩展。
-import { getSchema, type MarkdownParseHelpers, type MarkdownToken } from "@tiptap/core";
+import {
+  getSchema,
+  type JSONContent,
+  type MarkdownParseHelpers,
+  type MarkdownRendererHelpers,
+  type MarkdownToken,
+  type RenderContext,
+} from "@tiptap/core";
 import { Link } from "@tiptap/extension-link";
+import { Paragraph } from "@tiptap/extension-paragraph";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { TaskList } from "@tiptap/extension-task-list";
 import { Underline } from "@tiptap/extension-underline";
@@ -12,10 +20,19 @@ import type { Transaction } from "@tiptap/pm/state";
 import { StarterKit } from "@tiptap/starter-kit";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
 import { nanoid } from "nanoid";
-import { Image, type ImageOptions } from "./image.js";
+import { escapeBlockSyntax } from "./block-escape.js";
+import { createImageExtension, type ImageMarkdownOptions } from "./image.js";
 
+export {
+  ATTACHMENT_SRC_PREFIX,
+  attachmentIdFromSrc,
+  attachmentSrc,
+  createImageExtension,
+  Image,
+  type ImageAttrs,
+  type ImageMarkdownOptions,
+} from "./image.js";
 export { SCHEMA_VERSION } from "./version.js";
-export { ATTACHMENT_SRC_PREFIX, attachmentIdFromSrc, attachmentSrc, Image, type ImageAttrs } from "./image.js";
 
 /** taskItem.attrs.id 的生成器：nanoid(10)（规格 02 §1.6 / §3） */
 export const TASK_ITEM_ID_ATTR = "id";
@@ -74,6 +91,20 @@ const UnderlineHtml = Underline.extend({
   },
 });
 
+/**
+ * 段落序列化后逐行转义行首块级语法（`- ` / `# ` / `1. ` / `>` / 围栏 / 分隔线），
+ * 否则「以 `- ` 开头的普通段落」导出再导入会变成列表。其余行为继承 Tiptap Paragraph。
+ */
+type RenderMarkdownFn = (node: JSONContent, helpers: MarkdownRendererHelpers, ctx: RenderContext) => string;
+const ParagraphSafe = Paragraph.extend({
+  renderMarkdown(node, helpers, ctx) {
+    // MarkdownManager 调用时 this 只带 { parent }（getExtensionField 未传 context），类型上没有声明
+    const parent = (this as unknown as { parent?: RenderMarkdownFn | null }).parent;
+    const rendered = parent ? parent(node, helpers, ctx) : "";
+    return escapeBlockSyntax(rendered);
+  },
+});
+
 export interface EditorExtensionsOptions {
   /**
    * true（默认）：协同模式——关闭 StarterKit 的 undoRedo（由 Y.UndoManager 接管），
@@ -81,7 +112,7 @@ export interface EditorExtensionsOptions {
    */
   collaboration?: boolean;
   /** 透传给 image 节点：Markdown 导出路径与导入解析 */
-  image?: Partial<Pick<ImageOptions, "markdownPath" | "resolveMarkdownSrc">>;
+  image?: ImageMarkdownOptions;
 }
 
 /**
@@ -95,10 +126,12 @@ export function createEditorExtensions(options: EditorExtensionsOptions = {}) {
       heading: { levels: [1, 2, 3] },
       // 协同下用 Y.UndoManager（y-tiptap 的 yUndoPlugin），StarterKit 自带的历史必须关
       undoRedo: collaboration ? false : {},
-      // 下面三项我们单独配置，避免重复注册
+      // 下面四项我们单独配置，避免重复注册
+      paragraph: false,
       underline: false,
       link: false,
     }),
+    ParagraphSafe,
     UnderlineHtml,
     Link.configure({
       openOnClick: false,
@@ -110,7 +143,7 @@ export function createEditorExtensions(options: EditorExtensionsOptions = {}) {
     }),
     TaskList,
     TaskItem.configure({ nested: true }),
-    Image.configure(options.image ?? {}),
+    createImageExtension(options.image),
     UniqueID.configure({
       attributeName: TASK_ITEM_ID_ATTR,
       types: ["taskItem"],

@@ -3,8 +3,8 @@
 //   body → content(PM JSON)、contentText（块间 \n，taskItem 前缀 `[ ] `/`[x] `，image 为空串）、
 //          checklistItems、attachmentIds；meta → NoteMeta。
 import type { JSONContent } from "@tiptap/core";
-import { Node as PMNode } from "@tiptap/pm/model";
 import { generateUniqueIds } from "@tiptap/extension-unique-id";
+import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYXmlFragment, yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
 import type * as Y from "yjs";
 import { createNoteDoc, getBody, type NoteDocInit, type NoteMeta, Origins, readMeta } from "./doc.js";
@@ -67,7 +67,8 @@ function blockLines(node: PMNode, acc: BodyProjection, seenIds: Set<string>): st
   const name = node.type.name;
   if (name === "image") {
     const id = node.attrs.attachmentId;
-    if (typeof id === "string" && id.length > 0 && !acc.attachmentIds.includes(id)) acc.attachmentIds.push(id);
+    if (typeof id === "string" && id.length > 0 && !acc.attachmentIds.includes(id))
+      acc.attachmentIds.push(id);
     return [""];
   }
   if (node.isTextblock) return [inlineText(node)];
@@ -76,6 +77,14 @@ function blockLines(node: PMNode, acc: BodyProjection, seenIds: Set<string>): st
   if (name === "taskItem") {
     const checked = node.attrs.checked === true;
     const prefix = checked ? "[x] " : "[ ] ";
+    // 先占位再递归，保证父项的 ordinal 在嵌套子项之前（文档序）
+    const id = node.attrs[TASK_ITEM_ID_ATTR];
+    let entry: ChecklistItem | null = null;
+    if (typeof id === "string" && id.length > 0 && !seenIds.has(id)) {
+      seenIds.add(id);
+      entry = { blockId: id, text: "", checked, ordinal: acc.checklistItems.length };
+      acc.checklistItems.push(entry);
+    }
     const ownLines: string[] = [];
     const nestedLines: string[] = [];
     node.forEach((child) => {
@@ -84,11 +93,7 @@ function blockLines(node: PMNode, acc: BodyProjection, seenIds: Set<string>): st
       else nestedLines.push(...lines);
     });
     const ownText = ownLines.join("\n");
-    const id = node.attrs[TASK_ITEM_ID_ATTR];
-    if (typeof id === "string" && id.length > 0 && !seenIds.has(id)) {
-      seenIds.add(id);
-      acc.checklistItems.push({ blockId: id, text: ownText, checked, ordinal: acc.checklistItems.length });
-    }
+    if (entry) entry.text = ownText;
     return [`${prefix}${ownText}`, ...nestedLines];
   }
 
