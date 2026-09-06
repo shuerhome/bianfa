@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788688371666,
+      "tag": "0000_extensions_roles_sequence",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788688395044,
+      "tag": "0001_core_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788688395593,
+      "tag": "0002_rls_defaults_grants",
+      "breakpoints": true
+    }
+  ]
+}

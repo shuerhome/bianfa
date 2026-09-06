@@ -1,0 +1,28 @@
+{
+  "name": "@bianfa/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "bianfa 设计 token 源（tokens.json）与生成物：tokens.css / tokens.ts / tokens.rs",
+  "exports": {
+    ".": {
+      "types": "./dist/tokens.d.ts",
+      "import": "./dist/tokens.js"
+    },
+    "./tokens.css": "./dist/tokens.css",
+    "./tokens.json": "./src/tokens.json",
+    "./tokens.rs": "./dist/tokens.rs"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@bianfa/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "bianfa 无头 UI 原语（Button/Popover/Menu/Dialog/Switch/Select/Tabs/Tooltip/Toast）、Lucide SVG sprite 与 Tailwind 4 token 别名",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./theme.css": "./src/styles/theme.css",
+    "./ui.css": "./src/styles/ui.css"
+  },
+  "files": ["dist", "src/styles"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:icons": "node scripts/build-icons.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@bianfa/tokens": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "lucide-static": "1.40.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
