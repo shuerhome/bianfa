@@ -36,7 +36,6 @@ export interface JobQueue {
 export function createPgBossQueue(connectionString: string, log: Logger): JobQueue {
   let boss: PgBoss | undefined;
   let starting: Promise<PgBoss> | undefined;
-  const created = new Set<string>();
 
   async function get(): Promise<PgBoss> {
     if (boss) return boss;
@@ -46,6 +45,9 @@ export function createPgBossQueue(connectionString: string, log: Logger): JobQue
           connectionString,
           schema: PGBOSS_SCHEMA,
           max: 2,
+          // pgboss 里的对象一律由 worker（bianfa_worker）创建并拥有：pg-boss 的 create_queue 会建分区表，
+          // 分区必须由父表 owner 建，api（bianfa_app）若先建了表，worker 就会 permission denied（首台机器实测）。
+          migrate: false,
           supervise: false,
           schedule: false,
           application_name: "bianfa-api",
@@ -64,10 +66,7 @@ export function createPgBossQueue(connectionString: string, log: Logger): JobQue
   return {
     async send(name, data, opts = {}) {
       const b = await get();
-      if (!created.has(name)) {
-        await b.createQueue(name);
-        created.add(name);
-      }
+      // 队列由 worker 启动时创建（jobs/index.ts registerJobs）；worker 未起过时这里会抛 queue 不存在，由调用方按 503 处理
       return b.send(name, data, opts);
     },
     async close() {

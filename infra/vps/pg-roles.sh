@@ -46,10 +46,27 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUN
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_user", :"wrk_user";
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :"app_user", :"wrk_user";
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO :"app_user", :"wrk_user";
--- pg-boss：schema 归 app 角色（api 入队、sync-ws 入队），worker 在里面建表并消费；两向默认权限
-CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION :"app_user";
+-- pg-boss：schema 与其中全部对象统一归 worker 角色（pg-boss 的 create_queue 建分区表，分区必须由父表 owner 建；
+-- 混合属主会让 worker permission denied，首台机器实测）。api / sync-ws 只入队（migrate:false），靠默认权限拿 DML。
+CREATE SCHEMA IF NOT EXISTS pgboss;
+ALTER SCHEMA pgboss OWNER TO :"wrk_user";
 GRANT USAGE, CREATE ON SCHEMA pgboss TO :"wrk_user";
 GRANT USAGE ON SCHEMA pgboss TO :"app_user";
+-- 已存在的 pgboss 对象（可能由 api 先建）全部改归 worker；psql 变量在 DO 块里不展开，经 GUC 传入
+SELECT set_config('bianfa.wrk', :'wrk_user', false);
+DO $$
+DECLARE r record; w text := current_setting('bianfa.wrk');
+BEGIN
+  FOR r IN SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'pgboss' AND c.relkind IN ('r','p','S','v','m') LOOP
+    EXECUTE format('ALTER %s pgboss.%I OWNER TO %I',
+      CASE r.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' ELSE 'TABLE' END, r.relname, w);
+  END LOOP;
+  FOR r IN SELECT p.oid::regprocedure AS sig, p.prokind FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'pgboss' LOOP
+    EXECUTE format('ALTER %s %s OWNER TO %I', CASE r.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END, r.sig, w);
+  END LOOP;
+END $$;
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON TABLES TO :"wrk_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON SEQUENCES TO :"wrk_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON FUNCTIONS TO :"wrk_user";

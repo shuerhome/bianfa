@@ -48,8 +48,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO :"app_user";
 
--- ---- pg-boss（C8）：它会自己 CREATE SCHEMA IF NOT EXISTS pgboss 并建表；schema 归应用角色，不必给它 CREATE ON DATABASE ----
-CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION :"app_user";
 
 -- ---- worker 角色：仅 worker 进程（projector / 附件 GC / 邮件 / 结算）使用，同样经 PgBouncer ----
 -- BYPASSRLS：RLS 只对 api / sync-ws 的 bianfa_app 生效（规格 02 §9-16）；仍非 owner、无 DDL，DML 靠下面的默认权限。
@@ -68,7 +66,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO :"wrk_user";
 -- pg-boss 的 schema 归应用角色；worker 也会在里面建表（pg-boss start() 自迁移），api 要能入队、worker 要能消费：
 -- 两个角色在 pgboss 内建的对象互相授予 ALL（默认权限按创建者绑定，所以要两个方向各写一遍）。
+-- ---- pg-boss（C8）：schema 与全部对象归 worker 角色（分区表要求同一 owner）；api / sync-ws 只入队 ----
+CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION :"wrk_user";
 GRANT USAGE, CREATE ON SCHEMA pgboss TO :"wrk_user";
+GRANT USAGE ON SCHEMA pgboss TO :"app_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON TABLES TO :"wrk_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON SEQUENCES TO :"wrk_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"app_user" IN SCHEMA pgboss GRANT ALL ON FUNCTIONS TO :"wrk_user";

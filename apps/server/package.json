@@ -13,7 +13,7 @@
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate": "tsx src/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "db:generate:custom": "drizzle-kit generate --custom",
     "auth:bootstrap": "tsx scripts/auth-bootstrap-client.ts"

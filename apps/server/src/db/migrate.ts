@@ -7,12 +7,11 @@
 // 迁移文件：apps/server/drizzle/（drizzle-kit generate 产出 + 手写 custom migration），整目录进 git。
 // 日志 JSON（pino）。
 // =============================================================================
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
-import { loadBaseEnv } from "../config.js";
-import { createLogger, type Logger } from "../log.js";
+import type { Logger } from "../log.js";
 
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
@@ -70,20 +69,5 @@ export function describeDsn(dsn: string): string {
   }
 }
 
-async function main(): Promise<void> {
-  const env = loadBaseEnv();
-  const logger = createLogger({ name: "db:migrate" }, env.LOG_LEVEL);
-  logger.info({ target: describeDsn(env.DATABASE_URL), migrationsDir: MIGRATIONS_DIR }, "running migrations");
-  try {
-    await runMigrations(env.DATABASE_URL, { logger });
-  } catch (err) {
-    logger.error(
-      { err: err instanceof Error ? { message: err.message, stack: err.stack } : err },
-      "migration failed",
-    );
-    process.exitCode = 1;
-  }
-}
-
-const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) await main();
+// CLI 入口在 src/migrate.ts（dist/migrate.js）：本模块被打包进同一文件时，这里若再按 argv 判断 isMain 会先于真正入口执行
+// （首台机器实测：以 DATABASE_URL 走 PgBouncer 跑了一次并置 exitCode=1，deploy.sh 误判迁移失败）。
