@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Rust / Tauri
+target/
+
+# 本地环境与密钥（永不入库）
+.env
+.env.*
+!.env.prod.example
+!.env.test
+
+# 编辑器与系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
