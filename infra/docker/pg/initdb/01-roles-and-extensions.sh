@@ -57,6 +57,7 @@ CREATE ROLE :"wrk_user" LOGIN PASSWORD :'wrk_pw'
 ALTER ROLE :"wrk_user" SET statement_timeout = '60s';   -- worker 不得单条语句超 60s，长任务分批（规格 01 §5）
 ALTER ROLE :"wrk_user" SET lock_timeout = '5s';
 GRANT CONNECT, TEMPORARY ON DATABASE :"dbname" TO :"wrk_user";
+GRANT CREATE ON DATABASE :"dbname" TO :"wrk_user";   -- pg-boss 的 CREATE SCHEMA IF NOT EXISTS 先查库级 CREATE 权限
 GRANT USAGE ON SCHEMA public TO :"wrk_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"wrk_user";

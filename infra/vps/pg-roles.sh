@@ -35,6 +35,9 @@ ALTER ROLE :"exp_user" LOGIN PASSWORD :'exp_pw';
 ALTER ROLE :"app_user" SET statement_timeout = '60s'; ALTER ROLE :"app_user" SET lock_timeout = '5s';
 ALTER ROLE :"wrk_user" SET statement_timeout = '60s'; ALTER ROLE :"wrk_user" SET lock_timeout = '5s';
 GRANT CONNECT, TEMPORARY ON DATABASE :"dbname" TO :"app_user", :"wrk_user";
+-- pg-boss 12 启动时执行 CREATE SCHEMA IF NOT EXISTS pgboss：PG 先查库级 CREATE 权限再看 schema 是否存在，
+-- 缺了就报 "permission denied for database"（首台机器实测），所以 worker 角色要有库级 CREATE
+GRANT CREATE ON DATABASE :"dbname" TO :"wrk_user";
 GRANT CONNECT ON DATABASE :"dbname" TO :"exp_user";
 GRANT USAGE ON SCHEMA public TO :"app_user", :"wrk_user";
 GRANT pg_monitor TO :"exp_user";
