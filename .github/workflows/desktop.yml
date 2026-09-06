@@ -206,6 +206,17 @@ jobs:
           workspaces: ${{ env.TAURI_DIR }}
           cache-on-failure: true
 
+      - name: Windows：给 vendored OpenSSL 指定 Strawberry Perl（Git 自带的 MSYS perl 缺 Locale::Maketext::Simple，Configure 会失败）
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $perl = "C:\Strawberry\perl\bin\perl.exe"
+          if (-not (Test-Path $perl)) {
+            choco install strawberryperl --no-progress -y | Out-Null
+          }
+          if (-not (Test-Path $perl)) { Write-Host "::error::找不到 Strawberry Perl"; exit 1 }
+          & $perl -v | Select-Object -First 2
+          "OPENSSL_SRC_PERL=$perl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: 安装依赖（--ignore-scripts）
         run: pnpm install --frozen-lockfile --ignore-scripts
 
