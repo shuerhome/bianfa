@@ -101,6 +101,8 @@ pub fn run() {
             commands::auth::api_request,
             // attachments / import / export / updater / notices
             commands::files::attachment_import,
+            commands::files::attachment_upload,
+            commands::files::attachments_pending_upload,
             commands::files::attachment_local_url,
             commands::files::import_scan,
             commands::files::import_preview,

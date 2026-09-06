@@ -5,6 +5,7 @@
 //   远端通路：hostDoc updateV2（origin ≠ local-db）→ note_append_update(origin 'remote', projection) → db:changed。
 //   收缩守卫：应用远端事务前后比较 body.toString()；命中 → note_version_save + 便笺级 error 状态。
 //   房间：note:<ws>:<id>；信号房 inbox:<ws>（stateless bump / authz.revoked）。
+//   附件：db:changed(tables 含 attachments) / 登录 / 重连 → attachment_upload（Rust 走 presign → PUT → commit）。
 import {
   applyUpdateV2,
   createNoteDoc,
@@ -19,6 +20,8 @@ import * as Y from "yjs";
 import { fetchNotesSince } from "../api/notes.js";
 import { buildProjection } from "../editor/projection.js";
 import {
+  attachmentsPendingUpload,
+  attachmentUpload,
   authStatus,
   noteAppendUpdate,
   noteCreate,
@@ -84,6 +87,9 @@ export class SyncHost {
   private unlisten: Array<() => void> = [];
   private discoveryVersion = 0;
   private started = false;
+  /** 附件上传串行队列（同一时刻只跑一个 presign/PUT/commit） */
+  private uploadChain: Promise<void> = Promise.resolve();
+  private uploadQueued = new Set<string>();
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -129,6 +135,7 @@ export class SyncHost {
     this.ensureInbox(auth.personalWorkspaceId);
     await this.refreshTargets();
     void this.discover(auth.personalWorkspaceId);
+    void this.uploadPendingAttachments();
     if (this.timers.length === 0) {
       this.timers.push(window.setInterval(() => this.tick(), 10_000));
       this.timers.push(window.setInterval(() => this.ping(), PING_MS));
@@ -158,6 +165,7 @@ export class SyncHost {
       this.status.setGlobal(this.paused ? "error" : "syncing");
       for (const e of this.entries.values()) this.recomputeNoteState(e);
       if (this.auth?.personalWorkspaceId) void this.discover(this.auth.personalWorkspaceId);
+      void this.uploadPendingAttachments();
     } else if (status === WebSocketStatus.Disconnected) {
       this.status.setGlobal("offline", this.paused ? "needs-auth" : undefined);
     }
@@ -186,7 +194,7 @@ export class SyncHost {
     else if (msg.t === "authz.revoked" && msg.note_id) void this.onRevoked(msg.note_id);
   }
 
-  /** 便笺发现（specs/03 §2.6）：union，绝不本地删除 */
+  /** 便笺发现（specs/03 §2.6）：union，绝不本地删除；since_version 水位 + has_more 翻页 */
   private discovering = false;
   private async discover(workspaceId: string): Promise<void> {
     if (this.discovering || this.paused || !this.auth?.loggedIn) return;
@@ -196,6 +204,8 @@ export class SyncHost {
       for (let page = 0; page < 20; page += 1) {
         const res = await fetchNotesSince(workspaceId, since);
         for (const n of res.notes) {
+          // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
+          if (n.purgedAt !== null) continue;
           const local = await noteGet(n.id).catch((err) =>
             isIpcError(err) && err.code === "not_found" ? null : err,
           );
@@ -220,8 +230,8 @@ export class SyncHost {
           }
           await this.ensureProvider(n.id, { pending: true });
         }
-        since = res.nextVersion ?? since;
-        if (res.notes.length < 500) break;
+        since = res.nextVersion;
+        if (!res.hasMore) break;
       }
       this.discoveryVersion = since;
     } catch (err) {
@@ -424,6 +434,11 @@ export class SyncHost {
   private onDbChanged(p: DbChangedPayload): void {
     if (!this.auth?.loggedIn) return;
     if (p.tables.includes("note_window_state") || p.tables.includes("sync_state")) void this.refreshTargets();
+    if (p.tables.includes("attachments")) {
+      // attachment_import：ids 是附件 id，不是便笺 id
+      for (const id of p.ids) this.enqueueUpload(id);
+      return;
+    }
     if (p.origin === "remote" || p.origin === "system") return;
     for (const id of p.ids) {
       const entry = this.entries.get(id);
@@ -457,6 +472,30 @@ export class SyncHost {
       this.recomputeNoteState(entry);
     });
     await entry.chain;
+  }
+
+  /** 登录 / 重连后补传所有 upload_state='local' 的附件 */
+  private async uploadPendingAttachments(): Promise<void> {
+    if (!this.auth?.loggedIn || this.paused) return;
+    const ids = await attachmentsPendingUpload().catch(() => [] as string[]);
+    for (const id of ids) this.enqueueUpload(id);
+  }
+
+  private enqueueUpload(id: string): void {
+    if (this.uploadQueued.has(id)) return;
+    this.uploadQueued.add(id);
+    this.uploadChain = this.uploadChain
+      .then(async () => {
+        if (!this.auth?.loggedIn || this.paused) return;
+        const r = await attachmentUpload(id);
+        if (r.status === "disabled") this.status.setGlobal("syncing", "attachments-disabled");
+      })
+      .catch((err) => {
+        // quota_exceeded / insufficient_permission / 网络：留在 local，下次登录或重连再试
+        const code = isIpcError(err) ? err.code : "unknown";
+        if (code === "upgrade_required") this.pause("upgrade-required");
+      })
+      .finally(() => this.uploadQueued.delete(id));
   }
 
   private dropProvider(noteId: string): void {

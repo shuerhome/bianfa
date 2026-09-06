@@ -1,12 +1,16 @@
 //! Attachments (05 §7, 02 §8): files land in `attachments/<id>.<ext>`, hashed with BLAKE3
-//! for de-duplication, served to the WebView through the `bianfa-att` custom protocol.
+//! for de-duplication, served to the WebView through the `bianfa-att` custom protocol, and
+//! uploaded (when signed in) with the server's two-phase `presign → PUT → commit` (04 §6.4).
 
 use super::state::AppState;
+use super::{auth, events};
+use crate::api::{self, ApiErrorBody, CommitResponse, PresignResponse};
 use crate::db::attachments as db_att;
 use crate::error::{IpcError, IpcResult};
-use crate::model::{AttachmentInfo, AttachmentRow};
+use crate::model::{AttachmentInfo, AttachmentRow, AttachmentUploadResult};
 use crate::util::{b64_decode, now_ms, uuid_v7};
 use std::borrow::Cow;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, UriSchemeContext};
 
 pub const SCHEME: &str = "bianfa-att";
@@ -144,7 +148,14 @@ pub fn import(
     let state = app.state::<AppState>();
 
     if let Some(existing) = state.with_db(|c| db_att::find_by_hash(c, &hash_bytes))? {
-        state.with_tx(|tx| db_att::link(tx, note_id, &existing.id))?;
+        let existing_id = existing.id.clone();
+        events::mutate(
+            app,
+            "local",
+            &["attachments", "note_attachments"],
+            vec![existing_id.clone()],
+            |tx| db_att::link(tx, note_id, &existing_id),
+        )?;
         return Ok(AttachmentInfo {
             id: existing.id,
             hash: hash.to_hex().to_string(),
@@ -173,10 +184,17 @@ pub fn import(
         upload_state: "local".into(),
         created_at: now_ms(),
     };
-    state.with_tx(|tx| {
-        db_att::insert(tx, &row)?;
-        db_att::link(tx, note_id, &id)
-    })?;
+    // `db:changed { tables: ["attachments"], ids: [<attachment id>] }` lets the sync host upload it.
+    events::mutate(
+        app,
+        "local",
+        &["attachments", "note_attachments"],
+        vec![id.clone()],
+        |tx| {
+            db_att::insert(tx, &row)?;
+            db_att::link(tx, note_id, &id)
+        },
+    )?;
     Ok(AttachmentInfo {
         id,
         hash: hash.to_hex().to_string(),
@@ -221,4 +239,154 @@ pub fn protocol_handler(
         Ok(bytes) => response(200, &row.mime, bytes),
         Err(_) => response(404, "text/plain", b"missing file".to_vec()),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Upload (presign → PUT to R2 → commit)
+// ---------------------------------------------------------------------------------------------
+
+pub const UPLOAD_STATE_LOCAL: &str = "local";
+pub const UPLOAD_STATE_COMMITTED: &str = "committed";
+const PUT_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn result(id: &str, remote: Option<String>, status: &str) -> AttachmentUploadResult {
+    AttachmentUploadResult {
+        attachment_id: id.to_string(),
+        remote_attachment_id: remote,
+        status: status.to_string(),
+    }
+}
+
+fn server_error(prefix: &str, status: u16, body: &str) -> IpcError {
+    let parsed = ApiErrorBody::parse(body);
+    let code = parsed.code(status);
+    IpcError::new(&code, format!("{prefix} failed ({status}): {code}")).with_details(
+        serde_json::json!({ "status": status, "requestId": parsed.request_id, "extra": parsed.extra }),
+    )
+}
+
+/// Ids of attachments the server has not acknowledged yet (`attachments_pending_upload`).
+pub fn pending(app: &AppHandle) -> IpcResult<Vec<String>> {
+    app.state::<AppState>()
+        .with_db(|c| db_att::pending_upload(c, &api::UPLOAD_MIMES))
+}
+
+/// Uploads one local attachment. Not signed in → `local`; non-image → `unsupported`;
+/// R2 not configured on the server (503) → `disabled`; quota / permission failures are errors
+/// whose `code` is the server's error code (`quota_exceeded`, `insufficient_permission`, …).
+pub async fn upload(app: &AppHandle, id: &str) -> IpcResult<AttachmentUploadResult> {
+    let state = app.state::<AppState>();
+    let auth_status = state.auth.status();
+    if !auth_status.logged_in {
+        return Ok(result(id, None, UPLOAD_STATE_LOCAL));
+    }
+    let row = state
+        .with_db(|c| db_att::get(c, id))?
+        .ok_or_else(|| IpcError::not_found(format!("attachment {id} not found")))?;
+    if row.upload_state == UPLOAD_STATE_COMMITTED {
+        return Ok(result(id, Some(id.to_string()), UPLOAD_STATE_COMMITTED));
+    }
+    if !api::UPLOAD_MIMES.contains(&row.mime.as_str()) {
+        return Ok(result(id, None, "unsupported"));
+    }
+    let owner = state.with_db(|c| db_att::note_for(c, id))?;
+    let workspace_id = owner
+        .and_then(|(_, ws)| ws)
+        .or(auth_status.personal_workspace_id)
+        .ok_or_else(|| IpcError::auth("no workspace to upload into (claim pending)"))?;
+    let path = state
+        .paths
+        .data_dir
+        .join(row.local_path.trim_start_matches('/'));
+    let bytes = std::fs::read(&path)?;
+    if bytes.len() as i64 != row.byte_size {
+        return Err(IpcError::io(format!(
+            "attachment {id} size mismatch on disk ({} vs {})",
+            bytes.len(),
+            row.byte_size
+        )));
+    }
+
+    let mut presign_body = serde_json::json!({
+        "attachment_id": id,
+        "workspace_id": workspace_id,
+        "hash": hex::encode(&row.content_hash),
+        "size": bytes.len(),
+        "mime": row.mime,
+    });
+    if let Some(w) = row.width {
+        presign_body["width"] = w.into();
+    }
+    if let Some(h) = row.height {
+        presign_body["height"] = h.into();
+    }
+    if let Some(b) = &row.blurhash {
+        presign_body["blurhash"] = serde_json::Value::String(b.clone());
+    }
+    let r = auth::api_request(
+        app,
+        "POST",
+        api::paths::ATTACHMENT_PRESIGN,
+        Some(presign_body),
+        Some(30_000),
+    )
+    .await?;
+    if r.status == 503 {
+        return Ok(result(id, None, "disabled"));
+    }
+    if r.status != 200 {
+        return Err(server_error("presign", r.status, &r.body_text));
+    }
+    let presign: PresignResponse = serde_json::from_str(&r.body_text)?;
+    if presign.exists {
+        // Same bytes already committed in this workspace (possibly under another id).
+        state.with_tx(|tx| db_att::set_upload_state(tx, id, UPLOAD_STATE_COMMITTED))?;
+        return Ok(result(
+            id,
+            Some(presign.attachment_id),
+            UPLOAD_STATE_COMMITTED,
+        ));
+    }
+    let upload_url = presign
+        .upload_url
+        .clone()
+        .ok_or_else(|| IpcError::invalid("presign response without upload_url"))?;
+    let method = reqwest::Method::from_bytes(
+        presign
+            .method
+            .as_deref()
+            .unwrap_or("PUT")
+            .to_ascii_uppercase()
+            .as_bytes(),
+    )
+    .map_err(|_| IpcError::invalid("presign response with bad method"))?;
+    let mut put = state.http.request(method, &upload_url).timeout(PUT_TIMEOUT);
+    for (k, v) in &presign.headers {
+        // reqwest derives Content-Length from the body; a duplicate header would be rejected.
+        if !k.eq_ignore_ascii_case("content-length") {
+            put = put.header(k.as_str(), v.as_str());
+        }
+    }
+    let put_resp = put.body(bytes).send().await?;
+    if !put_resp.status().is_success() {
+        return Err(IpcError::network(format!(
+            "object upload failed ({})",
+            put_resp.status()
+        )));
+    }
+
+    let r = auth::api_request(
+        app,
+        "POST",
+        api::paths::ATTACHMENT_COMMIT,
+        Some(serde_json::json!({ "attachment_id": id })),
+        Some(30_000),
+    )
+    .await?;
+    if r.status != 200 {
+        return Err(server_error("commit", r.status, &r.body_text));
+    }
+    let committed: CommitResponse = serde_json::from_str(&r.body_text)?;
+    state.with_tx(|tx| db_att::set_upload_state(tx, id, UPLOAD_STATE_COMMITTED))?;
+    Ok(result(id, Some(committed.attachment_id), &committed.status))
 }

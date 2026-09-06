@@ -69,3 +69,96 @@ pub fn link(conn: &Connection, note_id: &str, attachment_id: &str) -> IpcResult<
     )?;
     Ok(())
 }
+
+/// `local` (never uploaded) → `committed` (server acknowledged) — see `app::attachments::upload`.
+pub fn set_upload_state(conn: &Connection, id: &str, state: &str) -> IpcResult<()> {
+    conn.execute(
+        "UPDATE attachments SET upload_state = ?2 WHERE id = ?1",
+        params![id, state],
+    )?;
+    Ok(())
+}
+
+/// Attachments still waiting for upload, oldest first (only kinds the server accepts).
+pub fn pending_upload(conn: &Connection, mimes: &[&str]) -> IpcResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, mime FROM attachments WHERE upload_state = 'local' ORDER BY created_at, id",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut out = Vec::new();
+    for (id, mime) in rows.flatten() {
+        if mimes.contains(&mime.as_str()) {
+            out.push(id);
+        }
+    }
+    Ok(out)
+}
+
+/// The (most recently edited) note referencing the attachment and that note's workspace —
+/// `POST /v1/attachments/presign` needs a `workspace_id`.
+pub fn note_for(
+    conn: &Connection,
+    attachment_id: &str,
+) -> IpcResult<Option<(String, Option<String>)>> {
+    Ok(conn
+        .query_row(
+            "SELECT n.id, n.workspace_id FROM note_attachments na JOIN notes n ON n.id = na.note_id
+             WHERE na.attachment_id = ?1 ORDER BY n.updated_at DESC LIMIT 1",
+            [attachment_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{Db, TEST_KEY};
+
+    fn att(id: &str, mime: &str, created_at: i64) -> AttachmentRow {
+        AttachmentRow {
+            id: id.into(),
+            content_hash: vec![1; 32],
+            byte_size: 3,
+            mime: mime.into(),
+            width: Some(1),
+            height: Some(1),
+            blurhash: None,
+            local_path: format!("attachments/{id}.bin"),
+            upload_state: "local".into(),
+            created_at,
+        }
+    }
+
+    #[test]
+    fn pending_upload_state_and_note_lookup() {
+        let db = Db::open_in_memory(TEST_KEY).unwrap();
+        let c = db.conn();
+        insert(c, &att("a-png", "image/png", 2)).unwrap();
+        insert(c, &att("a-pdf", "application/pdf", 1)).unwrap();
+        insert(c, &att("a-old", "image/webp", 0)).unwrap();
+        assert_eq!(
+            pending_upload(c, &["image/png", "image/webp"]).unwrap(),
+            vec!["a-old".to_string(), "a-png".to_string()]
+        );
+        set_upload_state(c, "a-old", "committed").unwrap();
+        assert_eq!(
+            pending_upload(c, &["image/png", "image/webp"]).unwrap(),
+            vec!["a-png".to_string()]
+        );
+        assert_eq!(get(c, "a-old").unwrap().unwrap().upload_state, "committed");
+
+        assert!(note_for(c, "a-png").unwrap().is_none());
+        c.execute(
+            "INSERT INTO notes (id, workspace_id, head_seq, created_at, updated_at) VALUES ('n1', NULL, 1, 1, 1), ('n2', 'ws-team', 1, 1, 5)",
+            [],
+        )
+        .unwrap();
+        link(c, "n1", "a-png").unwrap();
+        link(c, "n2", "a-png").unwrap();
+        assert_eq!(
+            note_for(c, "a-png").unwrap(),
+            Some(("n2".to_string(), Some("ws-team".to_string())))
+        );
+    }
+}

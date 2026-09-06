@@ -28,6 +28,8 @@ export const queryKeys = {
   settings: ["settings"] as const,
   appInfo: ["appInfo"] as const,
   auth: ["auth"] as const,
+  me: ["account", "me"] as const,
+  devices: ["account", "devices"] as const,
   importScan: ["import", "scan"] as const,
   syncErrors: ["sync", "errors"] as const,
   pendingSync: ["sync", "pending"] as const,

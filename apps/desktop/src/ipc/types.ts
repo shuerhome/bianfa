@@ -115,6 +115,8 @@ export interface AuthStatus {
   deviceId: string;
   personalWorkspaceId: string | null;
   activeOrganizationId: string | null;
+  /** GET /v1/me 的有效计划（free / pro / team）；尚未拉到时 null */
+  plan: string | null;
 }
 
 export interface ApiResponse {
@@ -134,9 +136,18 @@ export interface AttachmentInfo {
   hash: string;
   mime: string;
   byteSize: number;
-  width: number;
-  height: number;
-  blurhash: string;
+  width: number | null;
+  height: number | null;
+  blurhash: string | null;
+}
+
+/** attachment_upload（Rust：presign → PUT R2 → commit） */
+export interface AttachmentUploadResult {
+  /** 本地 id（便笺正文里引用的那个） */
+  attachmentId: string;
+  /** 服务端 id；只有工作区级去重命中时与本地 id 不同 */
+  remoteAttachmentId: string | null;
+  status: "committed" | "local" | "unsupported" | "disabled";
 }
 
 export interface ImportSource {
@@ -171,6 +182,20 @@ export interface ImportCommitResult {
   skipped: number;
 }
 
+/**
+ * import_preview 里的一条便笺：= Python 导出器（@bianfa/shared plumExportNoteSchema）的 snake_case 形状，
+ * Rust 额外附带 created_at_ms / updated_at_ms（ISO 已解析；null = 缺失或超出 1990–2100）。
+ */
+export type ImportPreviewNote = import("@bianfa/shared").PlumExportNote & {
+  created_at_ms?: number | null;
+  updated_at_ms?: number | null;
+};
+
+export interface ImportPreview {
+  notes: ImportPreviewNote[];
+  archivedTo: string;
+}
+
 export interface ExportFile {
   relPath: string;
   contentB64: string;
@@ -182,17 +207,22 @@ export interface UpdateCheckResult {
   notes?: string;
 }
 
-export type NoticeSeverity = "info" | "warn" | "block";
+/** `block` 关闭网络功能（更新 / 同步 / 登录），其余只是提示 */
+export type NoticeAction = "notice" | "block";
 
+/** Rust notices.rs 验签后下发的公告（camelCase；服务端只转发签名信封，不解析） */
 export interface Notice {
   id: string;
-  min_version_affected: string;
-  max_version_affected: string;
+  issuedAt: string | number | null;
+  expiresAt: string | number | null;
+  action: NoticeAction | string;
+  /** 空 = 全平台 */
+  platforms: string[];
+  /** semver 范围；null / "*" = 全部版本 */
+  affectedVersions: string | null;
   title: string;
   body: string;
-  download_url: string;
-  severity: NoticeSeverity;
-  issued_at: string;
+  url: string | null;
 }
 
 export type SyncErrCode = "forbidden" | "too_large" | "quota" | "gone";
@@ -225,7 +255,8 @@ export interface ThemeChangedPayload {
 export type LoginPhase = "waiting" | "timeout-soon" | "device-fallback" | "failed" | "done";
 export interface LoginProgressPayload {
   phase: LoginPhase;
-  message?: string;
+  /** failed 时的双语说明（如 device_limit_reached）；Rust 未给出时为 null */
+  message?: string | null;
 }
 export interface UpdateAvailablePayload {
   version: string;

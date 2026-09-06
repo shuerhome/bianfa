@@ -13,7 +13,7 @@ import {
   updateCheck,
 } from "../../ipc/commands.js";
 import { useTauriEvent } from "../../ipc/events.js";
-import type { NoteListItem } from "../../ipc/types.js";
+import type { NoteListItem, Notice } from "../../ipc/types.js";
 import { closeNote, createNote, openNote, restoreNote, trashNote } from "../../lib/note-actions.js";
 import { queryKeys } from "../../lib/query.js";
 import { globalNewNoteLabel, shortcutLabel, useHotkeys } from "../../lib/shortcuts.js";
@@ -36,9 +36,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
   const contextAnchor = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [paletteQuery, setPaletteQuery] = useState("");
-  const [notice, setNotice] = useState<{ id: string; title: string; body: string; severity: string } | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<Notice | null>(null);
   useDbInvalidation();
 
   const notes = useNotes(s.filter, s.query, s.sort);
@@ -193,7 +191,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
       ) : null}
       {notice ? (
         <div
-          className={`bf-banner ${notice.severity === "block" ? "bf-banner--danger" : "bf-banner--warning"}`}
+          className={`bf-banner ${notice.action === "block" ? "bf-banner--danger" : "bf-banner--warning"}`}
           role="alert"
         >
           <strong>{notice.title}</strong>

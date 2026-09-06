@@ -5,7 +5,9 @@ use crate::app::{attachments, events, notices, updater, windows};
 use crate::db::{imports, notes, window_state};
 use crate::error::{IpcError, IpcResult};
 use crate::import::{self, ImportPreview, ImportSource};
-use crate::model::{AttachmentInfo, ImportCommitItem, ImportCommitResult, Notice};
+use crate::model::{
+    AttachmentInfo, AttachmentUploadResult, ImportCommitItem, ImportCommitResult, Notice,
+};
 use crate::util::b64_decode;
 use std::path::{Component, Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
@@ -30,6 +32,22 @@ pub async fn attachment_import(
     })
     .await
     .map_err(|e| IpcError::internal(e.to_string()))?
+}
+
+/// Extra (not in 07): presign → PUT → commit for one local attachment (needs a signed-in
+/// account; the WebView has no network of its own).
+#[tauri::command]
+pub async fn attachment_upload(app: AppHandle, id: String) -> IpcResult<AttachmentUploadResult> {
+    if id.is_empty() || id.contains('/') || id.contains("..") {
+        return Err(IpcError::invalid("bad attachment id"));
+    }
+    attachments::upload(&app, &id).await
+}
+
+/// Extra (not in 07): attachment ids with `upload_state = 'local'` (sync host retries them).
+#[tauri::command]
+pub fn attachments_pending_upload(app: AppHandle) -> IpcResult<Vec<String>> {
+    attachments::pending(&app)
 }
 
 #[tauri::command]

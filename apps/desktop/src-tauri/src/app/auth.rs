@@ -1,15 +1,23 @@
 //! Desktop login (04 §2): loopback + PKCE as the main path, device authorization as the
 //! fallback, refresh with a single-flight lock, and the `api_request` proxy. Tokens never reach
 //! the WebView: the refresh token lives in the keyring, the access token only in memory.
+//!
+//! Every grant (authorization_code / device_code / refresh_token) is redeemed at
+//! `POST /api/auth/oauth2/token` with the extra `device_id / device_name / platform /
+//! app_version` fields; the server answers 403 `device_limit_reached` on the Free plan's
+//! device cap. After any token issuance: `POST /v1/claim` (idempotent) → `GET /v1/me`.
 
 use super::events;
 use super::keys::{self, SecretStore};
 use super::state::AppState;
 use super::windows;
+use crate::api::{
+    self, ClaimResponse, DeviceCodeResponse, MeResponse, OAuthError, SyncTokenResponse,
+    TokenResponse,
+};
 use crate::error::{IpcError, IpcResult};
 use crate::model::{ApiResponse, AuthStatus, AuthUser};
 use crate::util::{b64url_encode, now_ms, random_bytes};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -19,19 +27,11 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
-/// Server paths (04 §6.1–6.2). Centralised so `specs/08-api.md` can change them in one place.
-pub mod paths {
-    pub const AUTHORIZE: &str = "/api/auth/oauth2/authorize";
-    pub const TOKEN: &str = "/api/auth/oauth2/token";
-    pub const REVOKE: &str = "/api/auth/oauth2/revoke";
-    pub const DEVICE_CODE: &str = "/api/auth/device/code";
-    pub const DEVICE_TOKEN: &str = "/api/auth/device/token";
-    pub const ME: &str = "/v1/me";
-    pub const SYNC_TOKEN: &str = "/v1/sync/token";
-}
+pub use crate::api::paths;
+pub use crate::api::{CLIENT_ID, SCOPE};
 
-pub const CLIENT_ID: &str = "bianfa-desktop";
-pub const SCOPE: &str = "openid profile email offline_access";
+/// Error code surfaced to the WebView when the Free plan's device cap is hit.
+pub const DEVICE_LIMIT_CODE: &str = "device_limit_reached";
 /// 20 s "copy link", 60 s device-code hint, 120 s hard timeout (04 §2.2 ruling).
 pub const LOGIN_HINT_AFTER: Duration = Duration::from_secs(20);
 pub const LOGIN_FALLBACK_AFTER: Duration = Duration::from_secs(60);
@@ -45,6 +45,7 @@ struct Inner {
     user: Option<AuthUser>,
     personal_workspace_id: Option<String>,
     active_organization_id: Option<String>,
+    plan: Option<String>,
 }
 
 pub struct AuthState {
@@ -54,29 +55,18 @@ pub struct AuthState {
     cancel: Mutex<Option<Arc<AtomicBool>>>,
 }
 
+/// `profile.json`: the last `/v1/me` snapshot (no tokens) so the UI has a name before the
+/// startup refresh completes, plus whether `/v1/claim` already ran for this account.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 struct Profile {
     user: Option<AuthUser>,
     personal_workspace_id: Option<String>,
     active_organization_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    #[serde(default)]
-    expires_in: Option<i64>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct OAuthError {
-    #[serde(default)]
-    error: String,
-    #[serde(default)]
-    error_description: Option<String>,
+    plan: Option<String>,
+    /// `local_user_id` (= install id) that was claimed, and for which server user.
+    claimed_local_user_id: Option<String>,
+    claimed_user_id: Option<String>,
 }
 
 impl AuthState {
@@ -101,6 +91,7 @@ impl AuthState {
             device_id: self.device_id.clone(),
             personal_workspace_id: g.personal_workspace_id.clone(),
             active_organization_id: g.active_organization_id.clone(),
+            plan: g.plan.clone(),
         }
     }
 
@@ -170,6 +161,7 @@ pub fn init(app: &AppHandle) {
         i.user = profile.user.clone();
         i.personal_workspace_id = profile.personal_workspace_id.clone();
         i.active_organization_id = profile.active_organization_id.clone();
+        i.plan = profile.plan.clone();
     });
     if has_refresh {
         let _ = windows::ensure_sync_window(app);
@@ -177,7 +169,9 @@ pub fn init(app: &AppHandle) {
         tauri::async_runtime::spawn(async move {
             match ensure_access_token(&app).await {
                 Ok(Some(_)) => {
-                    let _ = fetch_me(&app).await;
+                    if let Err(e) = claim_and_fetch_me(&app).await {
+                        log::warn!("startup profile refresh failed: {e}");
+                    }
                     events::emit(
                         &app,
                         events::AUTH_CHANGED,
@@ -196,7 +190,10 @@ fn device_fields(app: &AppHandle) -> Vec<(&'static str, String)> {
     vec![
         ("device_id", state.auth.device_id().to_string()),
         ("device_name", device_name()),
-        ("platform", std::env::consts::OS.to_string()),
+        (
+            "platform",
+            api::platform_name(std::env::consts::OS).to_string(),
+        ),
         ("app_version", app.package_info().version.to_string()),
     ]
 }
@@ -240,76 +237,161 @@ pub async fn ensure_access_token(app: &AppHandle) -> IpcResult<Option<String>> {
         ("client_id", CLIENT_ID.into()),
     ];
     form.extend(device_fields(app));
+    match token_request(app, &form).await? {
+        Ok(tokens) => {
+            let access = tokens.access_token.clone();
+            store_tokens(app, tokens).await?;
+            Ok(Some(access))
+        }
+        Err((status, err)) if status == 400 && err.is("invalid_grant") => {
+            // Refresh family is dead: drop the credential, keep local data untouched (04 §2.4).
+            log::warn!("refresh token rejected (invalid_grant); local mode until next login");
+            state.secrets.delete(keys::REFRESH_TOKEN)?;
+            state.auth.write(|i| {
+                i.access_token = None;
+                i.logged_in = false;
+            });
+            events::emit(app, events::AUTH_CHANGED, state.auth.status());
+            Err(IpcError::auth(
+                "会话已过期，请重新登录 · session expired; please sign in again",
+            ))
+        }
+        Err((status, err)) => Err(IpcError::auth(format!(
+            "token refresh failed ({status}): {}",
+            err.error_description.unwrap_or(err.error)
+        ))),
+    }
+}
+
+/// One `POST /api/auth/oauth2/token` (form-encoded, like the server tests). `Ok(Err(..))` is
+/// an OAuth-level failure the caller interprets; `Err` is transport / parse failure.
+async fn token_request(
+    app: &AppHandle,
+    form: &[(&str, String)],
+) -> IpcResult<Result<TokenResponse, (u16, OAuthError)>> {
+    let state = app.state::<AppState>();
     let resp = state
         .http
         .post(format!("{}{}", api_base(app), paths::TOKEN))
-        .form(&form)
+        .form(form)
+        .timeout(Duration::from_secs(30))
         .send()
         .await?;
-    let status = resp.status();
+    let status = resp.status().as_u16();
     let text = resp.text().await?;
-    if status.is_success() {
-        let tokens: TokenResponse = serde_json::from_str(&text)?;
-        let access = tokens.access_token.clone();
-        store_tokens(app, tokens).await?;
-        return Ok(Some(access));
+    if (200..300).contains(&status) {
+        return Ok(Ok(serde_json::from_str(&text)?));
     }
-    let err: OAuthError = serde_json::from_str(&text).unwrap_or_default();
-    if status.as_u16() == 400 && err.error == "invalid_grant" {
-        // Refresh family is dead: drop the credential, keep local data untouched (04 §2.4).
-        log::warn!("refresh token rejected (invalid_grant); local mode until next login");
-        state.secrets.delete(keys::REFRESH_TOKEN)?;
-        state.auth.write(|i| {
-            i.access_token = None;
-            i.logged_in = false;
-        });
-        events::emit(app, events::AUTH_CHANGED, state.auth.status());
-        return Err(IpcError::auth("session expired; please sign in again"));
-    }
-    Err(IpcError::auth(format!(
-        "token refresh failed ({status}): {}",
-        err.error_description.unwrap_or(err.error)
-    )))
+    Ok(Err((status, OAuthError::parse(&text))))
 }
 
-async fn fetch_me(app: &AppHandle) -> IpcResult<()> {
+/// Maps a rejected code / device-code exchange to the error the login UI shows.
+fn login_failure(status: u16, err: &OAuthError) -> IpcError {
+    let message = err.message(status);
+    if err.is(DEVICE_LIMIT_CODE) {
+        IpcError::new(DEVICE_LIMIT_CODE, message)
+            .with_details(serde_json::json!({ "limit": err.limit.unwrap_or(2), "status": status }))
+    } else {
+        IpcError::auth(message)
+            .with_details(serde_json::json!({ "error": err.error, "status": status }))
+    }
+}
+
+/// `POST /v1/claim { local_user_id }` (idempotent; binds this installation's local user id to
+/// the account and guarantees the personal workspace). Remembered in `profile.json` so the
+/// startup path does not repeat it.
+async fn claim(app: &AppHandle) -> IpcResult<ClaimResponse> {
+    let install_id = app.state::<AppState>().install_id.clone();
+    let r = api_request(
+        app,
+        "POST",
+        paths::CLAIM,
+        Some(serde_json::json!({ "local_user_id": install_id })),
+        Some(15_000),
+    )
+    .await?;
+    if r.status != 200 {
+        let body = api::ApiErrorBody::parse(&r.body_text);
+        return Err(IpcError::new(
+            &body.code(r.status),
+            format!("/v1/claim returned {}", r.status),
+        ));
+    }
+    let claimed: ClaimResponse = serde_json::from_str(&r.body_text)?;
+    app.state::<AppState>().auth.write(|i| {
+        i.personal_workspace_id = Some(claimed.personal_workspace_id.clone());
+        i.logged_in = true;
+    });
+    Ok(claimed)
+}
+
+/// `GET /v1/me` → `AuthStatus` (+ `profile.json`).
+async fn fetch_me(app: &AppHandle) -> IpcResult<MeResponse> {
     let r = api_request(app, "GET", paths::ME, None, Some(15_000)).await?;
     if r.status != 200 {
         return Err(IpcError::auth(format!("/v1/me returned {}", r.status)));
     }
-    let v: serde_json::Value = serde_json::from_str(&r.body_text)?;
-    let user_v = v.get("user").cloned().unwrap_or_else(|| v.clone());
-    let user = AuthUser {
-        id: user_v["id"].as_str().unwrap_or_default().to_string(),
-        email: user_v["email"].as_str().unwrap_or_default().to_string(),
-        name: user_v["name"].as_str().map(|s| s.to_string()),
-        image: user_v["image"].as_str().map(|s| s.to_string()),
-    };
-    let profile = Profile {
-        user: Some(user),
-        personal_workspace_id: v["personal_workspace_id"]
-            .as_str()
-            .or(v["personalWorkspaceId"].as_str())
-            .map(|s| s.to_string()),
-        active_organization_id: v["active_organization_id"]
-            .as_str()
-            .or(v["activeOrganizationId"].as_str())
-            .map(|s| s.to_string()),
-    };
-    save_profile(app, &profile);
-    app.state::<AppState>().auth.write(|i| {
-        i.user = profile.user.clone();
-        i.personal_workspace_id = profile.personal_workspace_id.clone();
-        i.active_organization_id = profile.active_organization_id.clone();
+    let me: MeResponse = serde_json::from_str(&r.body_text)?;
+    let state = app.state::<AppState>();
+    let status = me.to_status(state.auth.device_id());
+    state.auth.write(|i| {
+        i.user = status.user.clone();
+        i.personal_workspace_id = status.personal_workspace_id.clone();
+        i.active_organization_id = status.active_organization_id.clone();
+        i.plan = status.plan.clone();
         i.logged_in = true;
     });
+    Ok(me)
+}
+
+/// claim (once per account) → `/v1/me`; persists the profile snapshot.
+async fn claim_and_fetch_me(app: &AppHandle) -> IpcResult<()> {
+    let install_id = app.state::<AppState>().install_id.clone();
+    let mut profile = load_profile(app);
+    let mut claimed_now = false;
+    if profile.claimed_local_user_id.as_deref() != Some(install_id.as_str()) {
+        match claim(app).await {
+            Ok(c) => {
+                claimed_now = true;
+                log::info!(
+                    "claim ok (personal workspace {}, claimed_before={})",
+                    c.personal_workspace_id,
+                    c.claimed_before
+                );
+            }
+            // `claimed_by_other` (409) is permanent for this install id; everything else is retried
+            // on the next login / startup.
+            Err(e) if e.code == "claimed_by_other" => {
+                log::warn!("local user id already claimed by another account");
+                claimed_now = true;
+            }
+            Err(e) => log::warn!("claim failed (will retry): {e}"),
+        }
+    }
+    let me = fetch_me(app).await?;
+    let status = app.state::<AppState>().auth.status();
+    let same_user = profile.claimed_user_id.as_deref() == Some(me.user.id.as_str());
+    if claimed_now || same_user {
+        profile.claimed_local_user_id = Some(install_id);
+        profile.claimed_user_id = Some(me.user.id.clone());
+    } else {
+        profile.claimed_local_user_id = None;
+        profile.claimed_user_id = None;
+    }
+    profile.user = status.user;
+    profile.personal_workspace_id = status.personal_workspace_id;
+    profile.active_organization_id = status.active_organization_id;
+    profile.plan = status.plan;
+    save_profile(app, &profile);
     Ok(())
 }
 
 async fn finish_login(app: &AppHandle, tokens: TokenResponse) -> IpcResult<()> {
     store_tokens(app, tokens).await?;
-    if let Err(e) = fetch_me(app).await {
-        log::warn!("fetch /v1/me after login: {e}");
+    // A different account than last time: forget the old claim marker before claiming.
+    let _ = std::fs::remove_file(profile_path(app));
+    if let Err(e) = claim_and_fetch_me(app).await {
+        log::warn!("claim + /v1/me after login: {e}");
     }
     let state = app.state::<AppState>();
     events::emit(app, events::AUTH_CHANGED, state.auth.status());
@@ -505,20 +587,10 @@ pub fn login_start(app: &AppHandle) -> IpcResult<LoginStart> {
                 ];
                 form.extend(device_fields(&app2));
                 let res: IpcResult<()> = async {
-                    let st = app2.state::<AppState>();
-                    let resp = st
-                        .http
-                        .post(format!("{}{}", api_base(&app2), paths::TOKEN))
-                        .form(&form)
-                        .send()
-                        .await?;
-                    let status = resp.status();
-                    let text = resp.text().await?;
-                    if !status.is_success() {
-                        return Err(IpcError::auth(format!("token exchange failed ({status})")));
+                    match token_request(&app2, &form).await? {
+                        Ok(tokens) => finish_login(&app2, tokens).await,
+                        Err((status, err)) => Err(login_failure(status, &err)),
                     }
-                    let tokens: TokenResponse = serde_json::from_str(&text)?;
-                    finish_login(&app2, tokens).await
                 }
                 .await;
                 if let Err(e) = res {
@@ -549,27 +621,6 @@ pub struct DeviceStart {
     pub expires_in: i64,
 }
 
-#[derive(Debug, Deserialize)]
-struct DeviceCodeResponse {
-    device_code: String,
-    user_code: String,
-    #[serde(default)]
-    verification_uri: Option<String>,
-    #[serde(default)]
-    verification_uri_complete: Option<String>,
-    #[serde(default = "default_device_expiry")]
-    expires_in: i64,
-    #[serde(default = "default_interval")]
-    interval: i64,
-}
-
-fn default_device_expiry() -> i64 {
-    1800
-}
-fn default_interval() -> i64 {
-    5
-}
-
 pub async fn login_device_start(app: &AppHandle) -> IpcResult<DeviceStart> {
     let state = app.state::<AppState>();
     if state.network_blocked.load(Ordering::Relaxed) {
@@ -581,13 +632,16 @@ pub async fn login_device_start(app: &AppHandle) -> IpcResult<DeviceStart> {
         .http
         .post(format!("{}{}", api_base(app), paths::DEVICE_CODE))
         .json(&serde_json::json!({ "client_id": CLIENT_ID, "scope": SCOPE }))
+        .timeout(Duration::from_secs(30))
         .send()
         .await?;
-    let status = resp.status();
+    let status = resp.status().as_u16();
     let text = resp.text().await?;
-    if !status.is_success() {
+    if !(200..300).contains(&status) {
+        let err = OAuthError::parse(&text);
         return Err(IpcError::auth(format!(
-            "device code request failed ({status})"
+            "device code request failed ({status}): {}",
+            err.error_description.unwrap_or(err.error)
         )));
     }
     let dc: DeviceCodeResponse = serde_json::from_str(&text)?;
@@ -607,55 +661,42 @@ pub async fn login_device_start(app: &AppHandle) -> IpcResult<DeviceStart> {
                 return;
             }
             if started.elapsed() > expires {
-                events::login_progress(&app2, "failed", Some("device code expired".into()));
+                let expired = OAuthError {
+                    error: "expired_token".into(),
+                    ..OAuthError::default()
+                };
+                events::login_progress(&app2, "failed", Some(expired.message(400)));
                 return;
             }
-            let st = app2.state::<AppState>();
-            let mut body = serde_json::json!({
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                "device_code": device_code,
-                "client_id": CLIENT_ID,
-            });
-            for (k, v) in device_fields(&app2) {
-                body[k] = serde_json::Value::String(v);
-            }
-            let resp = st
-                .http
-                .post(format!("{}{}", api_base(&app2), paths::DEVICE_TOKEN))
-                .json(&body)
-                .send()
-                .await;
-            let (status, text) = match resp {
-                Ok(r) => {
-                    let s = r.status();
-                    (s, r.text().await.unwrap_or_default())
-                }
+            // RFC 8628 §3.4: the device code is redeemed at the regular token endpoint.
+            let mut form: Vec<(&str, String)> = vec![
+                ("grant_type", api::DEVICE_CODE_GRANT.into()),
+                ("device_code", device_code.clone()),
+                ("client_id", CLIENT_ID.into()),
+            ];
+            form.extend(device_fields(&app2));
+            let outcome = match token_request(&app2, &form).await {
+                Ok(o) => o,
                 Err(e) => {
                     log::warn!("device poll: {e}");
                     continue;
                 }
             };
-            if status.is_success() {
-                match serde_json::from_str::<TokenResponse>(&text) {
-                    Ok(tokens) => {
-                        if let Err(e) = finish_login(&app2, tokens).await {
-                            events::login_progress(&app2, "failed", Some(e.message));
-                        }
+            match outcome {
+                Ok(tokens) => {
+                    if let Err(e) = finish_login(&app2, tokens).await {
+                        events::login_progress(&app2, "failed", Some(e.message));
                     }
-                    Err(e) => events::login_progress(&app2, "failed", Some(e.to_string())),
-                }
-                return;
-            }
-            let err: OAuthError = serde_json::from_str(&text).unwrap_or_default();
-            match err.error.as_str() {
-                "authorization_pending" => {}
-                "slow_down" => interval += 5,
-                "expired_token" | "access_denied" => {
-                    events::login_progress(&app2, "failed", Some(err.error));
                     return;
                 }
-                other => {
-                    events::login_progress(&app2, "failed", Some(other.to_string()));
+                // RFC 8628 §3.5
+                Err((_, err)) if err.is("authorization_pending") => {}
+                Err((_, err)) if err.is("slow_down") => interval += 5,
+                Err((status, err)) => {
+                    // expired_token / access_denied / device_limit_reached / anything else
+                    let e = login_failure(status, &err);
+                    log::warn!("device flow ended: {e}");
+                    events::login_progress(&app2, "failed", Some(e.message));
                     return;
                 }
             }
@@ -684,7 +725,11 @@ pub async fn logout(app: &AppHandle) -> IpcResult<()> {
         let _ = state
             .http
             .post(format!("{}{}", api_base(app), paths::REVOKE))
-            .form(&[("token", refresh.as_str()), ("client_id", CLIENT_ID)])
+            .form(&[
+                ("token", refresh.as_str()),
+                ("token_type_hint", "refresh_token"),
+                ("client_id", CLIENT_ID),
+            ])
             .timeout(Duration::from_secs(10))
             .send()
             .await;
@@ -773,6 +818,7 @@ pub async fn api_request(
 #[serde(rename_all = "camelCase")]
 pub struct SyncToken {
     pub token: String,
+    /// Unix ms (server `expires_at`).
     pub expires_at: i64,
 }
 
@@ -791,15 +837,10 @@ pub async fn sync_token(app: &AppHandle) -> IpcResult<SyncToken> {
             r.status
         )));
     }
-    let v: serde_json::Value = serde_json::from_str(&r.body_text)?;
-    let token = v["token"]
-        .as_str()
-        .ok_or_else(|| IpcError::auth("sync token missing"))?
-        .to_string();
-    let ttl = v["expires_in"].as_i64().unwrap_or(60);
+    let v: SyncTokenResponse = serde_json::from_str(&r.body_text)?;
     Ok(SyncToken {
-        token,
-        expires_at: now_ms() + ttl * 1000,
+        expires_at: v.expires_at_ms(now_ms()),
+        token: v.token,
     })
 }
 

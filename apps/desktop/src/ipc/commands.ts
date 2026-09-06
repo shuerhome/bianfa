@@ -5,10 +5,12 @@ import type {
   ApiResponse,
   AppInfo,
   AttachmentInfo,
+  AttachmentUploadResult,
   AuthStatus,
   ExportFile,
   ImportCommitItem,
   ImportCommitResult,
+  ImportPreview,
   ImportSource,
   NoteColor,
   NoteDocBundle,
@@ -172,6 +174,7 @@ export const authLoginDeviceStart = () =>
   call<{ userCode: string; verificationUrl: string; expiresIn: number }>("auth_login_device_start");
 export const authLoginCancel = () => call<void>("auth_login_cancel");
 export const authLogout = (wipeLocal = false) => call<void>("auth_logout", { wipeLocal });
+/** expiresAt = 服务端 expires_at（Unix ms） */
 export const authSyncToken = () => call<{ token: string; expiresAt: number }>("auth_sync_token");
 
 /** 唯一 HTTP 出口；path 必须以 /v1/ 开头 */
@@ -194,10 +197,13 @@ export const attachmentImport = (args: {
   mime?: string;
 }) => call<AttachmentInfo>("attachment_import", args);
 export const attachmentLocalUrl = (id: string) => call<{ url: string }>("attachment_local_url", { id });
+/** 协调者修订：登录后由 Rust 走 presign → PUT → commit；未登录直接返回 status 'local' */
+export const attachmentUpload = (id: string) => call<AttachmentUploadResult>("attachment_upload", { id });
+/** upload_state = 'local' 的附件 id（sync host 登录 / 重连后补传） */
+export const attachmentsPendingUpload = () => call<string[]>("attachments_pending_upload");
 
 export const importScan = () => call<{ sources: ImportSource[] }>("import_scan");
-export const importPreview = (path: string) =>
-  call<{ notes: import("@bianfa/shared").PlumExportNote[]; archivedTo: string }>("import_preview", { path });
+export const importPreview = (path: string) => call<ImportPreview>("import_preview", { path });
 export const importCommit = (path: string, items: ImportCommitItem[]) =>
   call<ImportCommitResult>("import_commit", { path, items });
 

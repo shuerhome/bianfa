@@ -356,6 +356,21 @@ pub struct AuthStatus {
     pub device_id: String,
     pub personal_workspace_id: Option<String>,
     pub active_organization_id: Option<String>,
+    /// Effective plan from `GET /v1/me` (`free` / `pro` / `team`); `None` until fetched.
+    #[serde(default)]
+    pub plan: Option<String>,
+}
+
+/// Result of `attachment_upload` (presign → PUT → commit against `/v1/attachments/*`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentUploadResult {
+    /// Local attachment id (the one referenced from note bodies).
+    pub attachment_id: String,
+    /// Server-side id; differs from `attachment_id` only on a workspace-level dedup hit.
+    pub remote_attachment_id: Option<String>,
+    /// `committed` | `local` (not signed in) | `unsupported` (non-image) | `disabled` (503).
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

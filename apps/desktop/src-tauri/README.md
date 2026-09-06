@@ -7,7 +7,8 @@ Tauri 2.11.5 壳层。Yjs 语义全部在 WebView（`@bianfa/shared`），Rust �
 | 路径 | 职责 |
 |---|---|
 | `src/error.rs` | `IpcError { code, message, details? }`；code ∈ `db / keyring / io / network / auth / not_found / invalid / unsupported / internal` |
-| `src/model.rs` | 与 07 §1 对齐的 DTO（camelCase）：`NoteProjection`、`NoteListItem`、`NoteRecord`、`WindowState`、`Settings`、`AppInfo`、`AuthStatus`… |
+| `src/model.rs` | 与 07 §1 对齐的 DTO（camelCase）：`NoteProjection`、`NoteListItem`、`NoteRecord`、`WindowState`、`Settings`、`AppInfo`、`AuthStatus`、`AttachmentUploadResult`… |
+| `src/api.rs` | 服务端线格式（snake_case / ISO / `server_time`）的 serde 形状与到 IPC DTO 的映射：`TokenResponse`、`OAuthError`（含双语提示）、`DeviceCodeResponse`、`MeResponse → AuthStatus`、`ClaimResponse`、`SyncTokenResponse`、`PresignResponse` / `CommitResponse`；路径常量 `api::paths`；宿主单测用服务端集成测试里的 JSON |
 | `src/colors.rs` | 10 色枚举；`paper`/`dot` 取自 `packages/tokens/dist/tokens.rs`（`include!`） |
 | `src/db/` | SQLCipher 本地库：`schema.rs`（DDL，`user_version=1`）、`notes.rs`（列表/检索/创建/追加/快照/压缩/回收站）、`window_state.rs`、`versions.rs`（daily / shrink_guard / manual）、`sync_state.rs`、`attachments.rs`、`imports.rs`；`mod.rs` 负责开库（keyring 密钥、WAL、`integrity_check`、`user_version` 门禁）、每日 `VACUUM INTO backups/`（保留 14 份）、`meta.rev` |
 | `src/import/` | Windows 便笺导入：`plum.rs`（三件套复制后 `?mode=ro` 打开，按列名取值）、`snt.rs`（`cfb`，stream `3` UTF‑16 / stream `0` RTF）、`text.rs`（ticks、`WindowPosition`、私有 `Text` 格式、`LastServerVersion`） |
@@ -18,8 +19,8 @@ Tauri 2.11.5 壳层。Yjs 语义全部在 WebView（`@bianfa/shared`），Rust �
 | `src/app/windows/pin_macos.rs` | 贴桌面 / 置顶（macOS） |
 | `src/app/tray.rs` | 托盘与菜单（中/英随设置）；同步状态行；快捷键被占用 / 便笺过多 / 有更新 的警示行 |
 | `src/app/hotkey.rs` | 唯一全局热键 `Ctrl+Alt+N` / `⌥⌘N` |
-| `src/app/auth.rs` | loopback + PKCE 登录、设备码降级、刷新（单飞锁）、`api_request` 代理、`/v1/sync/token`；token 只在 keyring / 内存 |
-| `src/app/attachments.rs` | 附件落盘（BLAKE3 去重、长边 >2560 缩放、blurhash）与 `bianfa-att://localhost/<id>` 协议 |
+| `src/app/auth.rs` | loopback + PKCE 登录、设备码降级（`/api/auth/device/code` → 轮询 `/api/auth/oauth2/token` device_code grant）、刷新（单飞锁）、`POST /v1/claim` → `GET /v1/me` 派生 `AuthStatus`、`/oauth2/revoke` 登出、`api_request` 代理、`/v1/sync/token`；token 只在 keyring / 内存；403 `device_limit_reached` → `auth:login-progress {phase:'failed', message}` 双语提示。契约见 `docs/desktop-server-contract.md` |
+| `src/app/attachments.rs` | 附件落盘（BLAKE3 去重、长边 >2560 缩放、blurhash）与 `bianfa-att://localhost/<id>` 协议；`attachment_upload`：`POST /v1/attachments/presign` → `PUT` R2 → `POST /v1/attachments/commit`（WebView 无网络，只有 Rust 能传） |
 | `src/app/updater.rs` | `X-Bianfa-Install-Id` / `X-Bianfa-Channel` 头；启动后 30 s + 每小时检查 |
 | `src/app/notices.rs` | `/v1/notice` Ed25519 验签（占位公钥时整体禁用） |
 | `src/app/commands/` | 全部 `#[tauri::command]`，按 notes / windows / system / auth / files 分组 |

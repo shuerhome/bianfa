@@ -1,23 +1,28 @@
 // 导入向导（specs/06 §4.9、05 §7.4、02 §7）：import_scan → import_preview → JS 构造 Y.Doc → import_commit。
-import { encodeStateV2, type PlumExportNote, plumNoteToNoteDoc, plumTimeToMs } from "@bianfa/shared";
+import { encodeStateV2, plumNoteToNoteDoc, plumTimeToMs } from "@bianfa/shared";
 import { Button, Dialog } from "@bianfa/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { buildProjection } from "../../editor/projection.js";
 import { importCommit, importPreview, importScan, pickFile } from "../../ipc/commands.js";
-import type { ImportCommitItem, ImportCommitResult, ImportSource } from "../../ipc/types.js";
+import type {
+  ImportCommitItem,
+  ImportCommitResult,
+  ImportPreviewNote,
+  ImportSource,
+} from "../../ipc/types.js";
 import { toB64 } from "../../lib/base64.js";
 import { uuidv7 } from "../../lib/uuid.js";
 
 type Step =
   | { kind: "sources"; sources: ImportSource[]; loading: boolean }
-  | { kind: "preview"; path: string; notes: PlumExportNote[]; selected: Set<string>; archivedTo: string }
+  | { kind: "preview"; path: string; notes: ImportPreviewNote[]; selected: Set<string>; archivedTo: string }
   | { kind: "committing"; done: number; total: number }
   | { kind: "result"; result: ImportCommitResult; degraded: number; ink: number }
   | { kind: "error"; message: string };
 
-/** 一条 plum 便笺 → import_commit 项（纯函数，可测） */
-export function buildCommitItem(note: PlumExportNote): ImportCommitItem {
+/** 一条 plum 便笺 → import_commit 项（纯函数，可测）。Rust 预览已附 *_ms；缺失时再从 ISO 解析 */
+export function buildCommitItem(note: ImportPreviewNote): ImportCommitItem {
   const noteId = uuidv7();
   const { doc, init } = plumNoteToNoteDoc(note, noteId);
   const projection = buildProjection(doc);
@@ -32,7 +37,7 @@ export function buildCommitItem(note: PlumExportNote): ImportCommitItem {
       w && w.x !== undefined && w.y !== undefined && w.w !== undefined && w.h !== undefined
         ? { x: w.x, y: w.y, w: w.w, h: w.h, displayId: w.display_id ?? "" }
         : null,
-    sourceUpdatedAt: plumTimeToMs(note.updated_at),
+    sourceUpdatedAt: note.updated_at_ms ?? plumTimeToMs(note.updated_at),
     degraded: note.import_degraded,
   };
   doc.destroy();

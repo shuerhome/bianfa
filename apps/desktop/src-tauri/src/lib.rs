@@ -2,12 +2,14 @@
 //!
 //! Module map (see README.md):
 //! - `error`, `model`, `util`, `colors` — IPC types shared by every command.
+//! - `api` — server wire shapes (snake_case) and their mapping onto the IPC DTOs.
 //! - `db` — SQLCipher store (schema, notes, window state, versions, sync state, attachments).
 //! - `import` — Windows Sticky Notes parsers (`plum.sqlite`, `.snt`).
 //! - `app` (feature `app`) — the Tauri runtime: windows, tray, hotkey, auth, updater, protocol.
 //!
 //! The `app` feature is on by default; host unit tests on Linux use `--no-default-features`.
 
+pub mod api;
 pub mod colors;
 pub mod db;
 pub mod error;

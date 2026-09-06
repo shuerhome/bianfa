@@ -1,7 +1,7 @@
-// 团队墙（简，specs/06 §4.12）：占位实现——经 api_request 读 /v1/orgs/:id/notes，按颜色分列展示。
+// 团队墙（简，specs/06 §4.12）：GET /v1/workspaces → org 内 team 工作区 → GET /v1/workspaces/:id/notes（服务端没有 /v1/orgs/:id/notes）。
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchOrgNotes } from "../../api/notes.js";
+import { fetchTeamWall } from "../../api/workspaces.js";
 import type { AuthStatus } from "../../ipc/types.js";
 import { queryKeys } from "../../lib/query.js";
 import { relativeTime } from "../../lib/time.js";
@@ -12,8 +12,9 @@ export function TeamWall({ auth }: { auth: AuthStatus | null }) {
   const orgId = auth?.activeOrganizationId ?? null;
   const q = useQuery({
     queryKey: queryKeys.teamNotes(orgId ?? "-"),
-    queryFn: () => fetchOrgNotes(orgId as string),
+    queryFn: () => fetchTeamWall(orgId as string),
     enabled: orgId !== null,
+    staleTime: 15_000,
   });
 
   if (!auth?.loggedIn) return <EmptyState title={t("team.loginFirst")} hint={t("team.loginHint")} />;
@@ -38,15 +39,14 @@ export function TeamWall({ auth }: { auth: AuthStatus | null }) {
         action={{ label: t("common.retry"), onClick: () => void q.refetch() }}
       />
     );
-  const notes = q.data ?? [];
+  const notes = q.data?.notes ?? [];
   if (notes.length === 0) return <EmptyState title={t("team.empty")} hint={t("team.emptyHint")} />;
+  const multiWorkspace = (q.data?.workspaces.length ?? 0) > 1;
   return (
     <div className="team-wall">
       {notes.map((n) => (
         <div key={n.id} className="note-card note-card--grid" data-color={n.color}>
-          {n.editing ? (
-            <div className="team-card__editing">{t("team.editing", { name: n.editing.name })}</div>
-          ) : null}
+          {multiWorkspace ? <div className="team-card__workspace">{n.workspaceName}</div> : null}
           <div className="note-card__title">{n.title || t("note.untitled")}</div>
           <div className="note-card__excerpt">{n.excerpt}</div>
           <div className="note-card__meta tabular">

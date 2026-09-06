@@ -367,3 +367,67 @@ body {
   flex-direction: column;
   gap: var(--sp-4);
 }
+
+/* 账号：设备列表 / 计划徽标 / 登录失败详情 */
+.plan-badge {
+  margin-left: var(--sp-3);
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  vertical-align: middle;
+}
+.device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.device-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: 52px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--c-border-subtle);
+  font-size: var(--fs-sm);
+}
+.device-row[data-revoked] {
+  opacity: 0.6;
+}
+.device-row__text {
+  flex: 1;
+  min-width: 0;
+}
+.device-row__name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-row__meta {
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+}
+.device-row__badge {
+  padding: 0 6px;
+  border-radius: var(--r-full);
+  background: var(--c-success-subtle);
+  color: var(--c-success);
+  font-size: var(--fs-2xs);
+}
+.device-row__badge--muted {
+  background: var(--c-surface-3);
+  color: var(--c-text-3);
+}
+.login-failure-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+}
