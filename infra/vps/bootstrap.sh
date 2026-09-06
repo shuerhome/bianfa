@@ -16,6 +16,10 @@
 #       cloudflared-debian-install.mdx：keyring /usr/share/keyrings/cloudflare-main.gpg，suite 固定为 any）。
 #       适用 Ubuntu 24.04/22.04、Debian 12/13。
 # 用法：--prepare（阶段 A：包、UTC、ops/deploy 用户、sshd、Docker、目录、unattended-upgrades、cron、fail2ban、宿主机 cloudflared；不动防火墙）
+#       --prepare --coexist（**共存模式**：宿主机已经跑着别的项目时用。只建 ops/deploy 用户、/srv/bianfa 目录、.env.prod 模板、cron、
+#         logrotate、（可选）宿主机 cloudflared；**不**装 ufw / fail2ban / unattended-upgrades、**不**改 sshd、**不**改时区、**不**碰 Docker
+#         daemon.json 也不重启 dockerd。写入 /var/lib/bianfa/coexist 标记后 --lockdown 永远拒绝执行。代价：RUNBOOK §0.1 不变量 1
+#         「无公网入站端口」在这台机器上不成立，整机隔离靠你自己。compose 的固定子网 10.77.0.0/24、10.77.1.0/24 不能与机上已有网络重叠）
 #       → clone 到 /srv/bianfa/app、填 .env.prod、compose up -d cloudflared、按 tunnel-setup.md / access-ssh.md 配 Access、
 #         从笔记本 Access SSH 登录成功 →
 #       --lockdown（阶段 B：ufw deny incoming，仅放行 docker 网段 → 22 作为备用路径）。无参数 = A+B，B 前要输入确认短语；--yes 跳过确认。
@@ -40,7 +44,8 @@ LOG_DIR="${LOG_DIR:-$BIANFA_ROOT/log}"
 RUN_DIR="${RUN_DIR:-$BIANFA_ROOT/run}"
 SECRETS_DIR="${SECRETS_DIR:-$BIANFA_ROOT/secrets}"
 STATE_DIR="/var/lib/bianfa"
-DOCKER_POOL_BASE="${DOCKER_POOL_BASE:-172.20.0.0/14}"   # 固定容器网段；ufw 只放行它 → sshd（备用路径）
+DOCKER_POOL_BASE="${DOCKER_POOL_BASE:-172.20.0.0/14}"   # 固定容器网段（daemon.json default-address-pools，专机模式）
+EDGE_SUBNET="${EDGE_SUBNET:-10.77.0.0/24}"              # compose networks.edge 的固定子网（cloudflared 容器在这里）；ufw 放行它 → sshd（备用路径）
 OPS_SSH_PUBKEY="${OPS_SSH_PUBKEY:-<REPLACE_ME:ops-user-ed25519-public-key>}"
 DEPLOY_SSH_PUBKEY="${DEPLOY_SSH_PUBKEY:-<REPLACE_ME:deploy-ci-ed25519-public-key>}"
 CF_TUNNEL_TOKEN_SSH="${CF_TUNNEL_TOKEN_SSH:-<REPLACE_ME:cloudflare-tunnel-token-bianfa-ssh>}"
@@ -52,15 +57,17 @@ DEPLOY_ENTRY="$BIANFA_REPO/infra/vps/deploy-entry.sh"
 DEPLOY_SH="$BIANFA_REPO/infra/vps/deploy.sh"
 export DEBIAN_FRONTEND=noninteractive
 
-DO_PREPARE=0; DO_LOCKDOWN=0; ASSUME_YES=0
+DO_PREPARE=0; DO_LOCKDOWN=0; ASSUME_YES=0; DO_COEXIST=0
 for arg in "$@"; do
   case "$arg" in
-    --prepare) DO_PREPARE=1 ;; --lockdown) DO_LOCKDOWN=1 ;; --yes) ASSUME_YES=1 ;;
+    --prepare) DO_PREPARE=1 ;; --lockdown) DO_LOCKDOWN=1 ;; --yes) ASSUME_YES=1 ;; --coexist) DO_COEXIST=1 ;;
     -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "未知参数: $arg" >&2; exit 64 ;;
   esac
 done
 (( DO_PREPARE || DO_LOCKDOWN )) || { DO_PREPARE=1; DO_LOCKDOWN=1; }
+STATE_DIR_MARK_COEXIST="/var/lib/bianfa/coexist"
+[[ -f "$STATE_DIR_MARK_COEXIST" ]] && DO_COEXIST=1   # 上次以共存模式准备过：以后每次运行都按共存模式（防止误跑 --lockdown）
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[warn] %s\033[0m\n' "$*" >&2; }
@@ -100,7 +107,7 @@ _home_of() { getent passwd "$1" | cut -d: -f6; }
 
 step_users() {
   log "用户：${OPS_USER}（人工；NOPASSWD sudo——docker 组本身等价 root，不假装分权，边界在 Access）+ ${DEPLOY_USER}（CI；forced command）"
-  if is_placeholder "$OPS_SSH_PUBKEY" && [[ "$ALLOW_NO_OPS_KEY" != 1 ]]; then
+  if is_placeholder "$OPS_SSH_PUBKEY" && [[ "$ALLOW_NO_OPS_KEY" != 1 ]] && (( ! DO_COEXIST )); then
     die "OPS_SSH_PUBKEY 是占位符。本脚本会把 sshd 改成只允许 ${OPS_USER}/${DEPLOY_USER} 用密钥登录，没有 ops 公钥 = 把自己锁在外面。
       用法：OPS_SSH_PUBKEY='ssh-ed25519 AAAA… you@laptop' $0 --prepare   （只用 Access CA 时加 ALLOW_NO_OPS_KEY=1）"
   fi
@@ -110,7 +117,7 @@ step_users() {
   chmod 440 /etc/sudoers.d/90-bianfa-ops
   visudo -cf /etc/sudoers.d/90-bianfa-ops >/dev/null || die "sudoers 语法错误（ops）"
   if is_placeholder "$OPS_SSH_PUBKEY"; then
-    warn "OPS_SSH_PUBKEY 是占位符：未给 ${OPS_USER} 装公钥（ALLOW_NO_OPS_KEY=1）。--lockdown 前必须有 Access CA + principals"
+    warn "OPS_SSH_PUBKEY 是占位符：未给 ${OPS_USER} 装公钥。之后可 OPS_SSH_PUBKEY='…' $0 --prepare$( (( DO_COEXIST )) && echo ' --coexist' ) 重跑补上"
   else
     grep -qxF "$OPS_SSH_PUBKEY" "$home/.ssh/authorized_keys" || printf '%s\n' "$OPS_SSH_PUBKEY" >> "$home/.ssh/authorized_keys"
   fi
@@ -274,7 +281,7 @@ step_fail2ban() {
   # fail2ban 在此主要兜底 break-glass 期间及「有人把 22 开回公网」的误操作。
   cat > /etc/fail2ban/jail.d/bianfa-sshd.local <<EOF
 [DEFAULT]
-ignoreip = 127.0.0.1/8 ::1 ${DOCKER_POOL_BASE}
+ignoreip = 127.0.0.1/8 ::1 ${DOCKER_POOL_BASE} ${EDGE_SUBNET}
 backend = systemd
 
 [sshd]
@@ -314,6 +321,33 @@ step_cloudflared_host() {
   fi
 }
 
+# ============================================================================= 共存模式（宿主机已有别的项目）
+step_base_packages_coexist() {
+  log "共存模式：只装本仓库脚本自身需要的包；不装 ufw / fail2ban / unattended-upgrades，不改时区、不改 NTP"
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg git jq python3 cron logrotate sudo dnsutils util-linux
+  local tz; tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo '?')
+  [[ "$tz" == UTC || "$tz" == Etc/UTC ]] || warn "宿主机时区是 ${tz}，不是 UTC：cron.d/bianfa 的 03:00 按本机时区执行。不改时区（会影响机上其它服务），要改就改 cron.d/bianfa 的小时"
+}
+
+step_docker_coexist() {
+  log "共存模式：沿用宿主机已有的 Docker；不写 daemon.json、不重启 dockerd（重启会闪断机上全部容器）"
+  command -v docker >/dev/null || die "共存模式要求宿主机已装 Docker；没有就不要用 --coexist，走专机模式"
+  systemctl is-active --quiet docker || die "docker 未运行"
+  docker compose version >/dev/null || die "docker compose 插件不可用（需要 docker-compose-plugin v2）"
+  usermod -aG docker "$OPS_USER"
+  docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null | grep -q true \
+    || warn "Docker 未开 live-restore：以后升级 docker-ce 会重启机上所有容器（宿主机既有状态，本脚本不改）"
+  # compose 固定子网预检（infra/docker/docker-compose.yml networks.edge/data + pg/pg_hba.conf）
+  local net
+  for net in 10.77.0.0/24 10.77.1.0/24; do
+    if ip -4 route show 2>/dev/null | grep -q "^${net%/*}/" || docker network ls -q | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | grep -qw "$net"; then
+      die "宿主机已有 ${net}（路由或 docker 网络）：与 compose 固定子网冲突。改 infra/docker/docker-compose.yml 的 networks.*.ipam.config.subnet 与 infra/docker/pg/pg_hba.conf 后重跑"
+    fi
+  done
+  echo "子网预检通过：10.77.0.0/24、10.77.1.0/24 未被占用"
+}
+
 # ============================================================================= 阶段 B
 lockdown_preflight() {
   local home has_key=0 has_ca=0
@@ -342,7 +376,8 @@ step_ufw_lockdown() {
   done
   ufw default deny incoming  >/dev/null
   ufw default allow outgoing >/dev/null   # cloudflared 出站 7844 udp/tcp + 443、apt、R2、Telegram
-  ufw allow in proto tcp from "$DOCKER_POOL_BASE" to any port 22 comment 'sshd <- cloudflared container (fallback)' >/dev/null
+  ufw allow in proto tcp from "$DOCKER_POOL_BASE" to any port 22 comment 'sshd <- docker default pool (fallback)' >/dev/null
+  ufw allow in proto tcp from "$EDGE_SUBNET" to any port 22 comment 'sshd <- cloudflared container on compose edge net (fallback)' >/dev/null
   ufw --force enable >/dev/null
   # ufw enable/reload 会重建 iptables 内建链，Docker 追加在 FORWARD 上的规则可能被清掉 → 重启 dockerd 让它重新写入
   # （live-restore: true，容器不重启；cloudflared 连接会闪断几秒后自动重连）
@@ -352,6 +387,24 @@ step_ufw_lockdown() {
 }
 
 main() {
+  if (( DO_COEXIST && DO_LOCKDOWN )); then
+    die "共存模式下拒绝 --lockdown：这台机器上还有别的服务在用公网端口。要锁防火墙就给 bianfa 开一台专用 VPS。"
+  fi
+  if (( DO_PREPARE && DO_COEXIST )); then
+    log "共存模式 --prepare（不改 sshd / 防火墙 / Docker daemon / 时区）"
+    step_base_packages_coexist; step_users; step_docker_coexist; step_dirs; step_cron; step_cloudflared_host
+    date -u +%FT%TZ > "$STATE_DIR/prepared"; date -u +%FT%TZ > "$STATE_DIR_MARK_COEXIST"
+    log "共存模式准备完成。"
+    cat <<EOF
+下一步：
+  1. su - ${OPS_USER} -c 'git clone <repo-url> ${BIANFA_REPO}'（root 已 clone 到别处的话：cp -a 过去并 chown -R ${OPS_USER}:${OPS_USER}）
+  2. 填 ${ENV_FILE}（至少 CF_TUNNEL_TOKEN / BIANFA_DOMAIN / TG_BOT_TOKEN / TG_CHAT_ID）；ln -sfn ${ENV_FILE} ${BIANFA_REPO}/infra/docker/.env.prod
+  3. cd ${BIANFA_REPO}/infra/docker && docker compose --env-file ${ENV_FILE} up -d cloudflared  → 控制台 bianfa-prod Healthy、2 个 connector
+  4. 跳过 RUNBOOK D4「锁防火墙」与 D5 里涉及 ufw 的部分；其余按 RUNBOOK §2 继续。
+  注意：不变量 1「VPS 无公网入站端口」在本机不成立；机上其它项目的安全边界由你自己负责。
+EOF
+    return 0
+  fi
   if (( DO_PREPARE )); then
     step_base_packages; step_users; step_sshd; step_docker; step_dirs; step_unattended; step_cron; step_fail2ban; step_cloudflared_host
     date -u +%FT%TZ > "$STATE_DIR/prepared"

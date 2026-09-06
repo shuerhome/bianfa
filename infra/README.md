@@ -67,13 +67,14 @@ infra/
 
 日常：合并 `main` → `backend.yml` 自动部署（镜像 tag `sha-<40hex>`，**不重推 `.env.prod`**）；打 `v*` tag → `desktop.yml` 发桌面端。密钥变更走人工 `ssh bianfa-prod deploy-with-env <tag> < rendered.env.prod`。
 
-## 3. 与裁定文字的三处已知偏差（诚实记录，不是遗漏）
+## 3. 与裁定文字的四处已知偏差（诚实记录，不是遗漏）
 
 | 裁定原文 | 实际能做到的 | 为什么 |
 |---|---|---|
 | S5：releases / backups 的 R2 key「只写」 | Object Read & Write，限定到单桶 | R2 token 只有 4 档（`r2/api/tokens.mdx` 逐字核实），**没有 write-only**；且 pgBackRest 的 expire 阶段必须能读 `backup.info` 与删过期对象，缺 Delete 会让每日备份报错。补偿：桶级对象锁定 + 版本目录不可变 + git tag 可重建任意版本 |
 | 第 9 章 8.7：备份加密口令「不存 VPS」 | 口令的**权威副本**在 VPS 之外（密码管理器），VPS 上 `.env.prod` 里有一份运行副本 | `archive_command` 由 PG 进程执行，容器环境里必须有 `PGBACKREST_REPO1_CIPHER_PASS`，否则 WAL 归档根本跑不起来。「不存 VPS」在这个架构下不可达 |
 | RUNBOOK 初稿：服务端也用 `v1.2.3` 举例 | 服务端镜像 tag = `sha-<40hex>` | `v*` 是 desktop.yml 的触发前缀，两条流水线共用命名空间会互相误触发 |
+| 第 9 章 8.4 / 不变量 1：VPS 专用、无公网入站端口 | 新增 `bootstrap.sh --prepare --coexist`：宿主机已跑别的项目时，不改 sshd / 防火墙 / Docker daemon / 时区，只建 bianfa 自己的用户、目录与 compose 栈 | 实际的第一台目标机是已有 30 多个容器的共用 VPS（2026-09-06）。共存模式放弃整机隔离，换来不动现有服务；何时该升级为专机见 RUNBOOK §2 开头 |
 
 ## 4. 必须人工替换的占位符
 

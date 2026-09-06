@@ -176,7 +176,10 @@ validate_caddyfile() {
     || die "生成的 Caddyfile 未通过 caddy validate，见 $LOG（cat $BG_CADDYFILE）"
 }
 
+have_ufw() { command -v ufw >/dev/null 2>&1; }   # 共存模式（bootstrap --coexist）不装 ufw：端口本来就没被防火墙挡
+
 ufw_delete_443() {
+  have_ufw || return 0
   ufw --force delete allow in 443/tcp >/dev/null 2>&1 || true
   local n   # 兜底：按编号倒序删掉所有带 break-glass 注释的 443 规则（ufw status numbered 每行形如 "[ 3] 443/tcp ALLOW IN Anywhere # break-glass"）
   while read -r n; do [[ -n "$n" ]] && { ufw --force delete "$n" >>"$LOG" 2>&1 || true; }; done \
@@ -222,7 +225,11 @@ EOF
   logline "enter: mode=${MODE} drill=${DRILL} staging=${STAGING} ip=${ip} hosts=${HOSTS[*]}"
   (( DRILL )) || notify_warn "break-glass 开始（${MODE}）：绕过 Tunnel，直连 ${ip}:443 by ${SUDO_USER:-root}"
   make_caddyfile; make_override; validate_caddyfile
-  ufw allow in 443/tcp comment 'break-glass' >>"$LOG" 2>&1 || die "ufw allow 443 失败"
+  if have_ufw; then
+    ufw allow in 443/tcp comment 'break-glass' >>"$LOG" 2>&1 || die "ufw allow 443 失败"
+  else
+    logline "无 ufw（共存模式）：跳过放行 443；确认 hPanel 外层防火墙没有拦 443"
+  fi
   compose_bg up -d --no-deps --force-recreate caddy >>"$LOG" 2>&1 || die "caddy 重建失败，见 $LOG"
   printf '%s mode=%s drill=%s ip=%s\n' "$(ts)" "$MODE" "$DRILL" "$ip" > "$MARKER"
 

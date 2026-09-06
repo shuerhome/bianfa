@@ -37,7 +37,7 @@
 
 ### 0.1 三条不变量（违反任何一条 = 架构被改坏了）
 
-1. **VPS 没有任何公网入站端口。** `sudo ufw status` 里唯一的 allow 规则是 `172.20.0.0/14 → 22/tcp`（容器网段里的 cloudflared 进 sshd，bootstrap.sh 写的）；compose 里不得出现 `ports:`（break-glass 的 override 例外，用完必须 `--revert`）。
+1. **VPS 没有任何公网入站端口。**（**共存模式例外**：`bootstrap.sh --prepare --coexist` 用于已经跑着别的项目的宿主机，这条在那台机器上不成立，见 §2 开头）`sudo ufw status` 里唯一的 allow 规则是 `172.20.0.0/14 → 22/tcp` 与 `10.77.0.0/24 → 22/tcp`（容器网段里的 cloudflared 进 sshd，bootstrap.sh 写的）；compose 里不得出现 `ports:`（break-glass 的 override 例外，用完必须 `--revert`）。
 2. **有状态的东西只在 VPS 上。** Cloudflare 侧只有 DNS/WAF、R2 三个桶、两个 Worker、KV 开关。Redis 里没有任何持久数据（`allkeys-lru`、不开 appendonly），挂了直接重启。
 3. **两把不可恢复的密钥都不在 VPS 上。** updater minisign 私钥（GitHub Environment `release` + 两处离线介质）、kill-switch 第二私钥（永久离线，从不进 CI）。VPS 上的一切都可以从 git + R2 备份重建。
 
@@ -150,6 +150,12 @@ flowchart TB
 
 > 顺序按**前置期**排，不按兴趣排。D1 原来的两项签名身份申请（各有 1–20 个工作日审核期）按 **ADR-001** 改为**可选**：v1 不买，
 > 替代动作是 1 分钟生成一张 macOS 自签名证书。以后要买时再回来做那两行，流水线不用改。
+
+> **共存模式**（2026-09-06 加）：如果 VPS 上已经跑着别的 Docker 项目（例如同一台机器还挂着 WordPress、n8n、Gitea），专机模式的 D3/D4 会伤到它们：
+> 改 Docker daemon.json 并重启 dockerd（全部容器闪断、以后新发布端口只绑回环）、改 sshd 禁 root/禁密码、装 ufw 默认拒绝入站。
+> 这种机器用 `bootstrap.sh --prepare --coexist`：只建用户、目录、模板、cron 与（可选）宿主机 cloudflared；D4「锁防火墙」**不做**（脚本也会拒绝），
+> D5 break-glass 的 ufw 部分自动跳过。代价写在 §0.1 不变量 1。compose 固定子网 `10.77.0.0/24`、`10.77.1.0/24`，脚本会预检不与机上已有网络重叠。
+> 专机（推荐）与共存的取舍：出事影响面。共存模式下任何一个同机容器被打穿 = bianfa 的库一起沦陷。
 
 | 天 | 做什么 | 具体动作 | 完成判据 |
 |---|---|---|---|
