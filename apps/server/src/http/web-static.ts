@@ -57,11 +57,16 @@ export function resolveWebDistDir(env: NodeJS.ProcessEnv = process.env): string 
   return existsSync(fromDist) ? fromDist : existsSync(fromSrc) ? fromSrc : fromDist;
 }
 
-export function applyWebSecurityHeaders(c: Context, opts: { production: boolean; csp: string | null }): void {
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
-  if (opts.production) c.header("Strict-Transport-Security", HSTS);
-  if (opts.csp) c.header("Content-Security-Policy", opts.csp);
-  c.header("X-Robots-Tag", "noindex");
+export function applyWebSecurityHeaders(
+  headers: Headers,
+  opts: { production: boolean; csp: string | null; cacheControl: string },
+): void {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
+  if (opts.production) headers.set("Strict-Transport-Security", HSTS);
+  if (opts.csp) headers.set("Content-Security-Policy", opts.csp);
+  else headers.delete("Content-Security-Policy");
+  headers.set("Cache-Control", opts.cacheControl);
+  headers.set("X-Robots-Tag", "noindex");
 }
 
 export interface WebStaticOptions {
@@ -70,32 +75,45 @@ export interface WebStaticOptions {
   production?: boolean | undefined;
 }
 
+/**
+ * @hono/node-server 的 serveStatic 先 c.body() 再调 onFound，此时 c.header() 已经进不了那个 Response；
+ * 所以在这里拿到它返回的 Response 再补头。没命中文件时它会调 next() 并返回 undefined，原样放行。
+ */
+async function serveAndStamp(
+  mw: MiddlewareHandler,
+  c: Context,
+  next: () => Promise<void>,
+  stamp: (headers: Headers) => void,
+): Promise<Response | undefined> {
+  const res = await mw(c, next);
+  if (res instanceof Response) {
+    stamp(res.headers);
+    return res;
+  }
+  return undefined;
+}
+
 export function webStatic(opts: WebStaticOptions = {}): MiddlewareHandler {
   const dir = opts.dir ?? resolveWebDistDir();
   const production = opts.production ?? false;
   if (!existsSync(resolve(dir, "index.html"))) {
     return async (_c, next) => next();
   }
-  const assets = serveStatic({
-    root: dir,
-    onFound: (_path, c) => {
-      c.header("Cache-Control", "public, max-age=31536000, immutable");
-      applyWebSecurityHeaders(c, { production, csp: null });
-    },
-  });
-  const index = serveStatic({
-    root: dir,
-    path: "index.html",
-    onFound: (_path, c) => {
-      c.header("Cache-Control", "no-store");
-      applyWebSecurityHeaders(c, { production, csp: WEB_PAGE_CSP });
-    },
-  });
+  const assets = serveStatic({ root: dir });
+  const index = serveStatic({ root: dir, path: "index.html" });
+  const stampAsset = (h: Headers) =>
+    applyWebSecurityHeaders(h, {
+      production,
+      csp: null,
+      cacheControl: "public, max-age=31536000, immutable",
+    });
+  const stampPage = (h: Headers) =>
+    applyWebSecurityHeaders(h, { production, csp: WEB_PAGE_CSP, cacheControl: "no-store" });
   return async (c, next) => {
     if (c.req.method !== "GET" && c.req.method !== "HEAD") return next();
     const path = c.req.path;
-    if (path.startsWith(ASSETS_PREFIX)) return assets(c, next);
-    if (isWebPagePath(path)) return index(c, next);
+    if (path.startsWith(ASSETS_PREFIX)) return serveAndStamp(assets, c, next, stampAsset);
+    if (isWebPagePath(path)) return serveAndStamp(index, c, next, stampPage);
     return next();
   };
 }
@@ -113,9 +131,9 @@ export function webRoutes(opts: WebRoutesOptions): Hono {
   const production = opts.production ?? false;
   const raw = opts.raw ?? process.env;
   app.get(WEB_CONFIG_PATH, (c) => {
-    c.header("Cache-Control", "public, max-age=300");
-    applyWebSecurityHeaders(c, { production, csp: null });
-    return c.json(computeWebConfig(raw, opts.appOrigins));
+    const res = c.json(computeWebConfig(raw, opts.appOrigins));
+    applyWebSecurityHeaders(res.headers, { production, csp: null, cacheControl: "public, max-age=300" });
+    return res;
   });
   app.use("*", webStatic({ dir: opts.dir, production }));
   return app;

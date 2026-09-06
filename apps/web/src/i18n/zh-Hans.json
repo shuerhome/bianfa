@@ -106,14 +106,15 @@
     "changeTitle": "确认新邮箱",
     "verifying": "正在验证…",
     "done": "邮箱已验证。",
-    "changeDone": "邮箱已更换。",
+    "changeDone": "已收到更换邮箱的确认",
     "doneDetail": "现在可以回到桌面端继续登录，或在这里管理账号。",
     "resumeDesktop": "继续登录桌面端",
     "goAccount": "进入账号页",
     "expired": "验证链接已过期。",
     "expiredDetail": "链接 15 分钟内有效。登录时可以重新发送一封。",
     "invalid": "验证链接无效。",
-    "invalidDetail": "链接可能已经用过了，或者不完整。"
+    "invalidDetail": "链接可能已经用过了，或者不完整。",
+    "changeDoneDetail": "我们已给新邮箱发了一封验证邮件，点开里面的链接后新邮箱才会生效。"
   },
   "consent": {
     "title": "授权访问",

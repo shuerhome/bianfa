@@ -53,7 +53,7 @@ export function VerifyEmail({ search, kind }: { search: string; kind: "verify" |
         <StateView
           kind="success"
           headline={kind === "change" ? t("verify.changeDone") : t("verify.done")}
-          title={t("verify.doneDetail")}
+          title={kind === "change" ? t("verify.changeDoneDetail") : t("verify.doneDetail")}
           actions={
             <>
               {state.resume ? (

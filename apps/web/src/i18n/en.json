@@ -106,14 +106,15 @@
     "changeTitle": "Confirm your new email",
     "verifying": "Verifying…",
     "done": "Your email is verified.",
-    "changeDone": "Your email has been changed.",
+    "changeDone": "Email change confirmed",
     "doneDetail": "You can go back to the desktop app and continue signing in, or manage your account here.",
     "resumeDesktop": "Continue to the desktop app",
     "goAccount": "Go to account",
     "expired": "This verification link has expired.",
     "expiredDetail": "Links last 15 minutes. You can request a new one when signing in.",
     "invalid": "This verification link is invalid.",
-    "invalidDetail": "It may have been used already, or it's incomplete."
+    "invalidDetail": "It may have been used already, or it's incomplete.",
+    "changeDoneDetail": "We've sent a verification email to the new address — the change takes effect once you open that link."
   },
   "consent": {
     "title": "Authorize access",

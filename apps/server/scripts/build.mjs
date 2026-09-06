@@ -12,13 +12,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 rmSync(resolve(root, "dist"), { recursive: true, force: true });
 await build({
   absWorkingDir: root,
-  entryPoints: [
-    "src/api.ts",
-    "src/sync.ts",
-    "src/worker.ts",
-    "src/migrate.ts",
-    "src/auth-bootstrap.ts",
-  ],
+  entryPoints: ["src/api.ts", "src/sync.ts", "src/worker.ts", "src/migrate.ts", "src/auth-bootstrap.ts"],
   outdir: "dist",
   bundle: true,
   platform: "node",
