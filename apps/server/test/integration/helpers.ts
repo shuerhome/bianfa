@@ -1,6 +1,7 @@
 // 集成测试公共工具：DSN 解析、非超级用户 RLS 测试角色、清表。
 // 契约（backend.yml 头）：优先读环境变量 DATABASE_URL / DATABASE_DIRECT_URL（/ DATABASE_URL_DIRECT），不自起容器。
-import pg from "pg";
+import type pg from "pg";
+import { expect } from "vitest";
 import { createDb, createPool, type Db } from "../../src/db/client.js";
 import { uuidv7 } from "../../src/db/ids.js";
 import { user, workspaces } from "../../src/db/schema/index.js";
@@ -60,10 +61,30 @@ export function openAdmin(): Fixture {
   return { admin, adminDb: createDb(admin) };
 }
 
+/** 断言一个 drizzle 查询因 RLS 被拒：drizzle 0.45 抛 DrizzleQueryError（message = Failed query…），PG 原错误在 cause 里 */
+export async function expectRlsViolation(p: Promise<unknown>): Promise<void> {
+  let thrown: unknown;
+  try {
+    await p;
+  } catch (err) {
+    thrown = err;
+  }
+  expect(thrown, "expected the query to be rejected by row-level security").toBeDefined();
+  const cause = (thrown as { cause?: unknown }).cause;
+  const message = cause instanceof Error ? cause.message : (thrown as Error).message;
+  expect(message).toMatch(/row-level security/);
+}
+
 /** 建一个用户 + 个人 workspace，返回两者 id */
-export async function seedUser(db: Db, userId: string, name = userId): Promise<{ userId: string; workspaceId: string }> {
+export async function seedUser(
+  db: Db,
+  userId: string,
+  name = userId,
+): Promise<{ userId: string; workspaceId: string }> {
   await db.insert(user).values({ id: userId, name, email: `${userId}@test.invalid` });
   const workspaceId = uuidv7();
-  await db.insert(workspaces).values({ id: workspaceId, kind: "personal", ownerUserId: userId, name: `${name} 的便笺` });
+  await db
+    .insert(workspaces)
+    .values({ id: workspaceId, kind: "personal", ownerUserId: userId, name: `${name} 的便笺` });
   return { userId, workspaceId };
 }

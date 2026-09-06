@@ -180,7 +180,9 @@ export function createDirectClient(opts: DirectClientOptions = {}): DirectClient
 function requireDirectUrl(): string {
   const env = loadBaseEnv();
   if (!env.DATABASE_URL_DIRECT) {
-    throw new Error("DATABASE_URL_DIRECT（或别名 DATABASE_DIRECT_URL）未设置：LISTEN 必须走直连，不能用 DATABASE_URL");
+    throw new Error(
+      "DATABASE_URL_DIRECT（或别名 DATABASE_DIRECT_URL）未设置：LISTEN 必须走直连，不能用 DATABASE_URL",
+    );
   }
   return env.DATABASE_URL_DIRECT;
 }

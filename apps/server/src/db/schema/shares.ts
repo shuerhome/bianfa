@@ -3,7 +3,17 @@
 //   note_pins：只有 (user_id, note_id, always_on_top, pinned_at)，无任何窗口几何列（第 1 章 C14）。
 // shares.id 的 DEFAULT uuidv7() 同 workspaces，由 custom migration 0002 在 PG ≥ 18 条件添加。
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 import { granteeKind, notePerm } from "./enums.js";
 import { notes } from "./notes.js";
@@ -35,12 +45,8 @@ export const shares = pgTable(
     uniqueIndex("shares_user_uq")
       .on(t.noteId, t.granteeUserId)
       .where(sql`${t.granteeKind} = 'user' AND ${t.revokedAt} IS NULL`),
-    uniqueIndex("shares_token_uq")
-      .on(t.tokenHash)
-      .where(sql`${t.granteeKind} = 'link'`),
-    index("shares_inbox_idx")
-      .on(t.granteeUserId, t.createdAt.desc())
-      .where(sql`${t.granteeKind} = 'user'`),
+    uniqueIndex("shares_token_uq").on(t.tokenHash).where(sql`${t.granteeKind} = 'link'`),
+    index("shares_inbox_idx").on(t.granteeUserId, t.createdAt.desc()).where(sql`${t.granteeKind} = 'user'`),
   ],
 );
 

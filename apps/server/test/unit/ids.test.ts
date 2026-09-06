@@ -24,7 +24,7 @@ describe("uuidv7", () => {
   it("同进程严格单调递增（字典序 = 时间序）且唯一", () => {
     const ids = Array.from({ length: 5_000 }, () => uuidv7());
     for (let i = 1; i < ids.length; i++) {
-      expect(ids[i] > (ids[i - 1] as string)).toBe(true);
+      expect((ids[i] as string) > (ids[i - 1] as string)).toBe(true);
     }
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -39,7 +39,7 @@ describe("uuidv7", () => {
   it("同一毫秒内计数器溢出后借用下一毫秒", () => {
     const fixed = Date.now() + 120_000; // 未来时间，确保不被此前的 lastMs 钳住
     const ids = Array.from({ length: 5_000 }, () => uuidv7(fixed));
-    for (let i = 1; i < ids.length; i++) expect(ids[i] > (ids[i - 1] as string)).toBe(true);
+    for (let i = 1; i < ids.length; i++) expect((ids[i] as string) > (ids[i - 1] as string)).toBe(true);
     expect(uuidv7Timestamp(ids[0] as string)).toBe(fixed);
     // 12 bit 计数器最多 4096 个/ms，5000 个必然跨到下一毫秒
     expect(uuidv7Timestamp(ids.at(-1) as string) as number).toBeGreaterThan(fixed);

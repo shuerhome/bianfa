@@ -8,7 +8,9 @@ import { MIGRATIONS_DIR, runMigrations } from "../../src/db/migrate.js";
 import { notes } from "../../src/db/schema/index.js";
 import { DIRECT_URL, type Fixture, hasDb, openAdmin, seedUser, truncateAll } from "./helpers.js";
 
-const RESTORE_CHECKS_SQL = fileURLToPath(new URL("../../../../infra/vps/restore-checks.sql", import.meta.url));
+const RESTORE_CHECKS_SQL = fileURLToPath(
+  new URL("../../../../infra/vps/restore-checks.sql", import.meta.url),
+);
 const RLS_TABLES = [
   "notes",
   "note_updates",
@@ -50,7 +52,11 @@ describe.skipIf(!hasDb)("migrations", () => {
     );
     expect(cols.rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ table_name: "notes", column_name: "deleted_at", data_type: "timestamp with time zone" }),
+        expect.objectContaining({
+          table_name: "notes",
+          column_name: "deleted_at",
+          data_type: "timestamp with time zone",
+        }),
         expect.objectContaining({
           table_name: "note_updates",
           column_name: "created_at",
@@ -89,11 +95,12 @@ describe.skipIf(!hasDb)("migrations", () => {
       { rolname: "bianfa_app", rolbypassrls: false, rolsuper: false },
       { rolname: "bianfa_worker", rolbypassrls: true, rolsuper: false },
     ]);
+    // 用 oid 而不是表名做 has_table_privilege：WHERE 里的函数可能先于 schema 过滤求值，未限定名会解析失败
     const priv = await f.admin.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM information_schema.tables t
-        WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
-          AND NOT (has_table_privilege('bianfa_app', quote_ident(t.table_name), 'SELECT,INSERT,UPDATE,DELETE')
-               AND has_table_privilege('bianfa_worker', quote_ident(t.table_name), 'SELECT,INSERT,UPDATE,DELETE'))`,
+      `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'
+          AND NOT (has_table_privilege('bianfa_app', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
+               AND has_table_privilege('bianfa_worker', c.oid, 'SELECT,INSERT,UPDATE,DELETE'))`,
     );
     expect(priv.rows[0]?.n).toBe(0);
     const owners = await f.admin.query<{ n: number }>(
@@ -116,7 +123,8 @@ describe.skipIf(!hasDb)("migrations", () => {
       [RLS_TABLES],
     );
     expect(r.rows).toHaveLength(RLS_TABLES.length);
-    for (const row of r.rows) expect(row, row.relname).toEqual({ relname: row.relname, rls: true, force: true, policies: 1 });
+    for (const row of r.rows)
+      expect(row, row.relname).toEqual({ relname: row.relname, rls: true, force: true, policies: 1 });
     // Better Auth 表不加 RLS
     const auth = await f.admin.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class WHERE relname IN ('user','session','organization','member') AND relrowsecurity`,
@@ -140,8 +148,24 @@ describe.skipIf(!hasDb)("migrations", () => {
     const [a, b] = await f.adminDb
       .insert(notes)
       .values([
-        { id: uuidv7(), workspaceId, createdBy: userId, contentText: "第一行标题\n第二行正文", zMode: 1, createdAt: now, updatedAt: now },
-        { id: uuidv7(), workspaceId, createdBy: userId, contentText: "", zMode: 2, createdAt: now, updatedAt: now },
+        {
+          id: uuidv7(),
+          workspaceId,
+          createdBy: userId,
+          contentText: "第一行标题\n第二行正文",
+          zMode: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: uuidv7(),
+          workspaceId,
+          createdBy: userId,
+          contentText: "",
+          zMode: 2,
+          createdAt: now,
+          updatedAt: now,
+        },
       ])
       .returning({ titleCache: notes.titleCache, pinned: notes.pinned, lsn: notes.lsn });
     expect(a).toEqual({ titleCache: "第一行标题", pinned: true, lsn: expect.any(Number) });

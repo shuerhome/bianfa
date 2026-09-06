@@ -135,7 +135,10 @@ export const invitation = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
   },
-  (t) => [index("invitation_organizationId_idx").on(t.organizationId), index("invitation_email_idx").on(t.email)],
+  (t) => [
+    index("invitation_organizationId_idx").on(t.organizationId),
+    index("invitation_email_idx").on(t.email),
+  ],
 );
 
 export const team = pgTable(

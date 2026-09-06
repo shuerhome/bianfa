@@ -1,0 +1,112 @@
+/* Tailwind v4 只做 utility 别名层（specs/06 §0）：全关默认刻度，再把 L2 token 以 inline 方式挂成 utility。
+   任何字面色值/尺寸都不允许出现在这里。 */
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --spacing: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-*: initial;
+  --font-weight-*: initial;
+  --leading-*: initial;
+  --tracking-*: initial;
+  --ease-*: initial;
+  --animate-*: initial;
+}
+
+@theme inline {
+  /* 颜色（bg-canvas / text-text-1 / border-border …） */
+  --color-canvas: var(--c-canvas);
+  --color-surface-1: var(--c-surface-1);
+  --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
+  --color-overlay: var(--c-overlay);
+  --color-hover: var(--c-hover);
+  --color-active: var(--c-active);
+  --color-selected: var(--c-selected);
+  --color-text-1: var(--c-text-1);
+  --color-text-2: var(--c-text-2);
+  --color-text-3: var(--c-text-3);
+  --color-text-disabled: var(--c-text-disabled);
+  --color-text-on-accent: var(--c-text-on-accent);
+  --color-border-subtle: var(--c-border-subtle);
+  --color-border: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-active: var(--c-accent-active);
+  --color-accent-subtle: var(--c-accent-subtle);
+  --color-accent-border: var(--c-accent-border);
+  --color-danger: var(--c-danger);
+  --color-danger-hover: var(--c-danger-hover);
+  --color-danger-subtle: var(--c-danger-subtle);
+  --color-danger-border: var(--c-danger-border);
+  --color-success: var(--c-success);
+  --color-success-subtle: var(--c-success-subtle);
+  --color-warning: var(--c-warning);
+  --color-warning-subtle: var(--c-warning-subtle);
+  --color-info: var(--c-info);
+  --color-focus: var(--c-focus);
+  --color-scrim: var(--c-scrim);
+  --color-note-paper: var(--note-paper);
+  --color-note-ink: var(--note-ink);
+  --color-note-ink2: var(--note-ink2);
+  --color-note-line: var(--note-line);
+  --color-note-dot: var(--note-dot);
+  --color-note-rule: var(--note-rule);
+
+  /* 字号（text-2xs … text-4xl） */
+  --text-2xs: var(--fs-2xs);
+  --text-xs: var(--fs-xs);
+  --text-sm: var(--fs-sm);
+  --text-md: var(--fs-md);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  --text-2xl: var(--fs-2xl);
+  --text-3xl: var(--fs-3xl);
+  --text-4xl: var(--fs-4xl);
+  --leading-snug: var(--lh-snug);
+  --leading-cjk: var(--lh-cjk);
+  --leading-body: var(--lh-body);
+  --leading-loose: var(--lh-loose);
+  --leading-flush: var(--lh-flush);
+  --tracking-tight: var(--ls-tight);
+  --tracking-none: var(--ls-none);
+  --tracking-caps: var(--ls-caps);
+  --font-weight-normal: var(--fw-normal);
+  --font-weight-medium: var(--fw-medium);
+  --font-weight-strong: var(--fw-strong);
+  --font-sans: var(--f-sans);
+  --font-mono: var(--f-mono);
+
+  /* 间距（p-1 … p-12 = --sp-1 … --sp-12；非线性刻度，故逐个别名） */
+  --spacing-1: var(--sp-1);
+  --spacing-2: var(--sp-2);
+  --spacing-3: var(--sp-3);
+  --spacing-4: var(--sp-4);
+  --spacing-5: var(--sp-5);
+  --spacing-6: var(--sp-6);
+  --spacing-7: var(--sp-7);
+  --spacing-8: var(--sp-8);
+  --spacing-9: var(--sp-9);
+  --spacing-10: var(--sp-10);
+  --spacing-11: var(--sp-11);
+  --spacing-12: var(--sp-12);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-full: var(--r-full);
+  --radius-window: var(--r-window);
+
+  --shadow-1: var(--sh-1);
+  --shadow-2: var(--sh-2);
+  --shadow-3: var(--sh-3);
+  --shadow-window: var(--sh-window);
+
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+  --ease-in-out: var(--ease-in-out);
+  --ease-spring: var(--ease-spring);
+}

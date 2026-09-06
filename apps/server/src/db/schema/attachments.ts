@@ -1,6 +1,17 @@
 // 规格 02 §1.5 / §8：attachments（对象元数据，客户端生成 id）与 attachment_refs（projector 投影，mark-and-sweep GC）。
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 import { notes } from "./notes.js";
 import { bytea } from "./types.js";
@@ -40,9 +51,7 @@ export const attachments = pgTable(
     index("attachments_hash_idx")
       .on(t.workspaceId, t.contentHash)
       .where(sql`${t.status} = 'committed' AND NOT ${t.encrypted}`),
-    index("attachments_pending_idx")
-      .on(t.createdAt)
-      .where(sql`${t.status} = 'pending'`),
+    index("attachments_pending_idx").on(t.createdAt).where(sql`${t.status} = 'pending'`),
   ],
 );
 

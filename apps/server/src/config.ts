@@ -33,7 +33,9 @@ export const baseEnvSchema = z.object({
 export type BaseEnv = z.output<typeof baseEnvSchema>;
 
 /** 直连 DSN 的别名映射：规范名优先，别名只在规范名缺失时生效 */
-const ALIASES: ReadonlyArray<readonly [canonical: string, alias: string]> = [["DATABASE_URL_DIRECT", "DATABASE_DIRECT_URL"]];
+const ALIASES: ReadonlyArray<readonly [canonical: string, alias: string]> = [
+  ["DATABASE_URL_DIRECT", "DATABASE_DIRECT_URL"],
+];
 
 export function normalizeEnv(raw: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...raw };

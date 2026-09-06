@@ -3,7 +3,8 @@
 import pg from "pg";
 import { runMigrations } from "../../src/db/migrate.js";
 
-const DIRECT_URL = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
+const DIRECT_URL =
+  process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
 
 export async function setup(): Promise<void> {
   if (!DIRECT_URL) {

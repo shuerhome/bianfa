@@ -21,6 +21,8 @@
 #
 # 与第 9 章正文不同之处（以第 1 章裁定为准）：
 #   * worker 跑 pg-boss（C8），队列在 Postgres 里 → worker 不依赖 Redis，也不拿 REDIS_URL。
+#   * worker 以独立角色 bianfa_worker（BYPASSRLS，规格 02 §9-16）连接：DATABASE_URL 换用 PG_WORKER_USER / PG_WORKER_PASSWORD，
+#     仍经 PgBouncer —— 所以 PgBouncer 的 userlist 必须同时有 bianfa_app 与 bianfa_worker（见 pgbouncer 的 AUTH_FILE + configs）。
 #   * Redis 无持久数据（C8）：allkeys-lru / appendonly no / 不挂 volume。
 #   * sync-ws（Hocuspocus）拿两条 DSN（S3）：DATABASE_URL 走 PgBouncer；DATABASE_URL_DIRECT 直连 PG，
 #     只用于 LISTEN authz_revoked 那一条连接。
@@ -245,7 +247,8 @@ services:
     command: ["node", "dist/worker.js"]
     environment:
       <<: *node-env-base
-      DATABASE_URL: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@pgbouncer:5432/${POSTGRES_DB:-bianfa}
+      # worker 用 bianfa_worker（BYPASSRLS，由 pg/initdb 创建；规格 02 §9-16）：projector / GC 不必伪造 app.user_id。仍经 PgBouncer。
+      DATABASE_URL: postgres://${PG_WORKER_USER:-bianfa_worker}:${PG_WORKER_PASSWORD:?PG_WORKER_PASSWORD 未设置}@pgbouncer:5432/${POSTGRES_DB:-bianfa}
       # 附件 GC（S1 第 7 步 mark-and-sweep）要删 R2 对象 → 同一把 attachments key
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}
       R2_ATTACHMENTS_BUCKET: ${R2_ATTACHMENTS_BUCKET:-bianfa-attachments}
@@ -288,7 +291,10 @@ services:
       DB_NAME: ${POSTGRES_DB:-bianfa}
       DB_USER: ${PG_APP_USER:-bianfa_app}
       DB_PASSWORD: ${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}
-      AUTH_TYPE: scram-sha-256          # 镜像默认 md5，必须显式改；scram 时 entrypoint 把明文写进 userlist.txt（tmpfs）
+      AUTH_TYPE: scram-sha-256          # 镜像默认 md5，必须显式改；scram 时 userlist 里可以是明文（PgBouncer 自己做 SCRAM）
+      # userlist 由下面的 configs 渲染（bianfa_app + bianfa_worker 两个用户；worker 服务以 bianfa_worker 连接）。
+      # entrypoint 只在 AUTH_FILE 里找不到 "$DB_USER" 时才追加一行（已核实 v1.25.2-p0 entrypoint.sh），文件里已有 → 不写只读挂载。
+      AUTH_FILE: /etc/pgbouncer-auth/userlist.txt
       POOL_MODE: transaction
       LISTEN_ADDR: 0.0.0.0              # 容器内地址；容器无 ports 映射，只在 data 网可达
       MAX_CLIENT_CONN: "500"
@@ -300,6 +306,12 @@ services:
       SERVER_IDLE_TIMEOUT: "300"
       QUERY_WAIT_TIMEOUT: "30"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    configs:
+      - source: pgbouncer_userlist
+        target: /etc/pgbouncer-auth/userlist.txt
+        uid: "70"
+        gid: "70"
+        mode: 0440
     deploy:
       resources:
         limits:
@@ -357,6 +369,8 @@ services:
       # 供 initdb/01-roles-and-extensions.sh 建应用角色与监控角色
       PG_APP_USER: ${PG_APP_USER:-bianfa_app}
       PG_APP_PASSWORD: ${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}
+      PG_WORKER_USER: ${PG_WORKER_USER:-bianfa_worker}
+      PG_WORKER_PASSWORD: ${PG_WORKER_PASSWORD:?PG_WORKER_PASSWORD 未设置}
       PG_EXPORTER_USER: ${PG_EXPORTER_USER:-bianfa_exporter}
       PG_EXPORTER_PASSWORD: ${PG_EXPORTER_PASSWORD:?PG_EXPORTER_PASSWORD 未设置}
       # pgBackRest 敏感项一律走环境变量（规则 PGBACKREST_<OPTION>，大写、- 换 _；已核实 reference.xml），不写进 pgbackrest.conf。
@@ -483,3 +497,12 @@ volumes:
   pgdata:
   pgbackrest_spool:
   alloy_data:
+
+# ---- configs ----------------------------------------------------------------
+# PgBouncer userlist：格式 "user" "password" 每行一个（AUTH_TYPE=scram-sha-256 时可放明文）。
+# 两个用户都要在：api / sync-ws 用 bianfa_app，worker 用 bianfa_worker。密码来自 .env.prod，compose 渲染成一个只读 bind 文件。
+configs:
+  pgbouncer_userlist:
+    content: |
+      "${PG_APP_USER:-bianfa_app}" "${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}"
+      "${PG_WORKER_USER:-bianfa_worker}" "${PG_WORKER_PASSWORD:?PG_WORKER_PASSWORD 未设置}"

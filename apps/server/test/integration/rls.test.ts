@@ -8,6 +8,7 @@ import { notePins, notes, noteUpdates, shares, workspaces } from "../../src/db/s
 import {
   DIRECT_URL,
   ensureTestRoles,
+  expectRlsViolation,
   type Fixture,
   hasDb,
   openAdmin,
@@ -15,9 +16,9 @@ import {
   RLS_ROLE,
   seedUser,
   truncateAll,
-  withCredentials,
   WORKER_PASSWORD,
   WORKER_ROLE,
+  withCredentials,
 } from "./helpers.js";
 
 describe.skipIf(!hasDb)("RLS（bianfa_app 成员角色，非 owner，NOBYPASSRLS）", () => {
@@ -41,9 +42,30 @@ describe.skipIf(!hasDb)("RLS（bianfa_app 成员角色，非 owner，NOBYPASSRLS
     ub = await seedUser(f.adminDb, "user_b");
     const now = new Date();
     await f.adminDb.insert(notes).values([
-      { id: noteA1, workspaceId: ua.workspaceId, createdBy: ua.userId, contentText: "A1", createdAt: now, updatedAt: now },
-      { id: noteB1, workspaceId: ub.workspaceId, createdBy: ub.userId, contentText: "B1", createdAt: now, updatedAt: now },
-      { id: noteB2, workspaceId: ub.workspaceId, createdBy: ub.userId, contentText: "B2", createdAt: now, updatedAt: now },
+      {
+        id: noteA1,
+        workspaceId: ua.workspaceId,
+        createdBy: ua.userId,
+        contentText: "A1",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: noteB1,
+        workspaceId: ub.workspaceId,
+        createdBy: ub.userId,
+        contentText: "B1",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: noteB2,
+        workspaceId: ub.workspaceId,
+        createdBy: ub.userId,
+        contentText: "B2",
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
     shareId = uuidv7();
     await f.adminDb.insert(shares).values({
@@ -125,17 +147,17 @@ describe.skipIf(!hasDb)("RLS（bianfa_app 成员角色，非 owner，NOBYPASSRLS
       ),
     ).resolves.toBeDefined();
 
-    await expect(
+    await expectRlsViolation(
       withUserTx(
         ua.userId,
         (tx) => tx.insert(noteUpdates).values({ noteId: noteB2, seq: 1, updateV2: Buffer.from([0]) }),
         rlsDb,
       ),
-    ).rejects.toThrow(/row-level security/);
+    );
 
     // 往别人的 workspace 里建便笺同样被拒
     const now = new Date();
-    await expect(
+    await expectRlsViolation(
       withUserTx(
         ua.userId,
         (tx) =>
@@ -148,7 +170,7 @@ describe.skipIf(!hasDb)("RLS（bianfa_app 成员角色，非 owner，NOBYPASSRLS
           }),
         rlsDb,
       ),
-    ).rejects.toThrow(/row-level security/);
+    );
   });
 
   it("共享撤销 / 过期后立即不可见", async () => {
@@ -169,13 +191,17 @@ describe.skipIf(!hasDb)("RLS（bianfa_app 成员角色，非 owner，NOBYPASSRLS
   });
 
   it("note_pins：只能钉自己可见的便笺，且只看到自己的钉放", async () => {
-    await withUserTx(ua.userId, (tx) => tx.insert(notePins).values({ userId: ua.userId, noteId: noteA1 }), rlsDb);
-    await expect(
+    await withUserTx(
+      ua.userId,
+      (tx) => tx.insert(notePins).values({ userId: ua.userId, noteId: noteA1 }),
+      rlsDb,
+    );
+    await expectRlsViolation(
       withUserTx(ua.userId, (tx) => tx.insert(notePins).values({ userId: ua.userId, noteId: noteB2 }), rlsDb),
-    ).rejects.toThrow(/row-level security/);
-    await expect(
+    );
+    await expectRlsViolation(
       withUserTx(ua.userId, (tx) => tx.insert(notePins).values({ userId: ub.userId, noteId: noteA1 }), rlsDb),
-    ).rejects.toThrow(/row-level security/);
+    );
     const pinsB = await withUserTx(ub.userId, (tx) => tx.select().from(notePins), rlsDb);
     expect(pinsB).toHaveLength(0);
     const pinsA = await withUserTx(

@@ -1,0 +1,534 @@
+// 自动生成（pnpm -F @bianfa/tokens build），勿手改；来源 packages/tokens/src/tokens.json
+export const NOTE_COLORS = [
+  "graphite",
+  "rose",
+  "coral",
+  "amber",
+  "citron",
+  "fern",
+  "teal",
+  "azure",
+  "violet",
+  "fuchsia"
+] as const;
+export type NoteColor = (typeof NOTE_COLORS)[number];
+export type Theme = "light" | "dark";
+export const THEMES = ["light", "dark"] as const;
+export type NoteRole = "paper" | "ink" | "ink2" | "line" | "dot" | "paperDim" | "inkDim";
+export interface NotePalette {
+  readonly paper: string;
+  readonly ink: string;
+  readonly ink2: string;
+  readonly line: string;
+  readonly dot: string;
+  readonly paperDim: string;
+  readonly inkDim: string;
+}
+export interface NoteColorInfo {
+  readonly zh: string;
+  readonly en: string;
+  readonly hue: number;
+  readonly shortcut: number;
+}
+export type SemanticName = "canvas" | "surface-1" | "surface-2" | "surface-3" | "overlay" | "hover" | "active" | "selected" | "text-1" | "text-2" | "text-3" | "text-disabled" | "text-on-accent" | "border-subtle" | "border" | "border-strong" | "accent" | "accent-hover" | "accent-active" | "accent-subtle" | "accent-border" | "danger" | "danger-hover" | "danger-active" | "danger-subtle" | "danger-border" | "success" | "success-subtle" | "warning" | "warning-subtle" | "info" | "focus" | "scrim" | "tooltip-bg" | "tooltip-text";
+export const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>> = {
+  "graphite": {
+    "zh": "石墨",
+    "en": "Graphite",
+    "hue": 96,
+    "shortcut": 0
+  },
+  "rose": {
+    "zh": "玫瑰",
+    "en": "Rose",
+    "hue": 358,
+    "shortcut": 1
+  },
+  "coral": {
+    "zh": "珊瑚",
+    "en": "Coral",
+    "hue": 28,
+    "shortcut": 2
+  },
+  "amber": {
+    "zh": "琥珀",
+    "en": "Amber",
+    "hue": 68,
+    "shortcut": 3
+  },
+  "citron": {
+    "zh": "柠檬",
+    "en": "Citron",
+    "hue": 105,
+    "shortcut": 4
+  },
+  "fern": {
+    "zh": "竹绿",
+    "en": "Fern",
+    "hue": 145,
+    "shortcut": 5
+  },
+  "teal": {
+    "zh": "松石",
+    "en": "Teal",
+    "hue": 188,
+    "shortcut": 6
+  },
+  "azure": {
+    "zh": "天青",
+    "en": "Azure",
+    "hue": 232,
+    "shortcut": 7
+  },
+  "violet": {
+    "zh": "紫罗兰",
+    "en": "Violet",
+    "hue": 288,
+    "shortcut": 8
+  },
+  "fuchsia": {
+    "zh": "品红",
+    "en": "Fuchsia",
+    "hue": 328,
+    "shortcut": 9
+  }
+};
+export const notePalette: Readonly<Record<Theme, Readonly<Record<NoteColor, NotePalette>>>> = {
+  "light": {
+    "graphite": {
+      "paper": "#E5E3D9",
+      "ink": "#2F2E2A",
+      "ink2": "#646360",
+      "line": "#CECCC3",
+      "dot": "#77756C",
+      "paperDim": "#E6E5DD",
+      "inkDim": "#2E2D2A"
+    },
+    "rose": {
+      "paper": "#F8DAE3",
+      "ink": "#42232E",
+      "ink2": "#765A63",
+      "line": "#DFC4CC",
+      "dot": "#BF3B74",
+      "paperDim": "#F6DEE5",
+      "inkDim": "#3D252D"
+    },
+    "coral": {
+      "paper": "#F8DBD7",
+      "ink": "#44241F",
+      "ink2": "#785B57",
+      "line": "#DFC5C2",
+      "dot": "#C63D34",
+      "paperDim": "#F6DFDB",
+      "inkDim": "#3F2521"
+    },
+    "amber": {
+      "paper": "#F8DEC3",
+      "ink": "#3E2910",
+      "ink2": "#725F4C",
+      "line": "#DFC8B0",
+      "dot": "#9A682D",
+      "paperDim": "#F6E1CB",
+      "inkDim": "#3A2916"
+    },
+    "citron": {
+      "paper": "#EBE7A4",
+      "ink": "#312F12",
+      "ink2": "#66654D",
+      "line": "#D3D095",
+      "dot": "#7C7733",
+      "paperDim": "#EBE8B3",
+      "inkDim": "#2F2E18"
+    },
+    "fern": {
+      "paper": "#C6F0C6",
+      "ink": "#213321",
+      "ink2": "#596859",
+      "line": "#B3D8B3",
+      "dot": "#458649",
+      "paperDim": "#CEEFCE",
+      "inkDim": "#233123"
+    },
+    "teal": {
+      "paper": "#AEF2EB",
+      "ink": "#1B3331",
+      "ink2": "#516966",
+      "line": "#9EDAD3",
+      "dot": "#49807B",
+      "paperDim": "#BCF1EB",
+      "inkDim": "#1F312F"
+    },
+    "azure": {
+      "paper": "#CBE8F8",
+      "ink": "#123241",
+      "ink2": "#4D6775",
+      "line": "#B7D1DF",
+      "dot": "#327EA1",
+      "paperDim": "#D2E9F6",
+      "inkDim": "#18303C"
+    },
+    "violet": {
+      "paper": "#E1E0F8",
+      "ink": "#2D2A45",
+      "ink2": "#626078",
+      "line": "#CBCADF",
+      "dot": "#735DD3",
+      "paperDim": "#E3E3F6",
+      "inkDim": "#2C2A3F"
+    },
+    "fuchsia": {
+      "paper": "#F8D6F6",
+      "ink": "#3B243A",
+      "ink2": "#705C6E",
+      "line": "#DFC1DD",
+      "dot": "#A846A7",
+      "paperDim": "#F6DBF4",
+      "inkDim": "#372537"
+    }
+  },
+  "dark": {
+    "graphite": {
+      "paper": "#2C2B28",
+      "ink": "#E0E0DC",
+      "ink2": "#969592",
+      "line": "#403E39",
+      "dot": "#A19F93",
+      "paperDim": "#2D2C2A",
+      "inkDim": "#DFDFDB"
+    },
+    "rose": {
+      "paper": "#421D2B",
+      "ink": "#F3D7DF",
+      "ink2": "#A58E95",
+      "line": "#58303E",
+      "dot": "#E4749E",
+      "paperDim": "#40222C",
+      "inkDim": "#EED7DE"
+    },
+    "coral": {
+      "paper": "#451E1A",
+      "ink": "#F4D8D4",
+      "ink2": "#A68F8C",
+      "line": "#5A322C",
+      "dot": "#EB776A",
+      "paperDim": "#42231F",
+      "inkDim": "#EFD8D5"
+    },
+    "amber": {
+      "paper": "#3B260E",
+      "ink": "#EEDCCA",
+      "ink2": "#A19283",
+      "line": "#533818",
+      "dot": "#D08F40",
+      "paperDim": "#3A2917",
+      "inkDim": "#EADBCD"
+    },
+    "citron": {
+      "paper": "#2F2D11",
+      "ink": "#E2E1CA",
+      "ink2": "#979684",
+      "line": "#43401B",
+      "dot": "#A9A248",
+      "paperDim": "#302E19",
+      "inkDim": "#E0DFCD"
+    },
+    "fern": {
+      "paper": "#1B321C",
+      "ink": "#D6E4D5",
+      "ink2": "#8D998D",
+      "line": "#2E452F",
+      "dot": "#6EB170",
+      "paperDim": "#203221",
+      "inkDim": "#D7E2D6"
+    },
+    "teal": {
+      "paper": "#1A302E",
+      "ink": "#CFE5E2",
+      "ink2": "#879A98",
+      "line": "#274542",
+      "dot": "#65AEA7",
+      "paperDim": "#20312F",
+      "inkDim": "#D1E3E0"
+    },
+    "azure": {
+      "paper": "#112F3E",
+      "ink": "#CCE4F2",
+      "ink2": "#8599A4",
+      "line": "#1B4357",
+      "dot": "#47AAD9",
+      "paperDim": "#19303C",
+      "inkDim": "#CFE2ED"
+    },
+    "violet": {
+      "paper": "#2A2647",
+      "ink": "#DEDDF4",
+      "ink2": "#9493A6",
+      "line": "#3D395C",
+      "dot": "#9B90EC",
+      "paperDim": "#2C2943",
+      "inkDim": "#DDDCEF"
+    },
+    "fuchsia": {
+      "paper": "#3B203A",
+      "ink": "#ECD9EB",
+      "ink2": "#9F8F9E",
+      "line": "#50334E",
+      "dot": "#CE7BCC",
+      "paperDim": "#3A2439",
+      "inkDim": "#E8D9E7"
+    }
+  }
+};
+export const semantic: Readonly<Record<Theme, Readonly<Record<SemanticName, string>>>> = {
+  "light": {
+    "canvas": "#FCFCFB",
+    "surface-1": "#FCFCFB",
+    "surface-2": "#F8F8F6",
+    "surface-3": "#F1F1EE",
+    "overlay": "#FFFFFF",
+    "hover": "#F1F1EE",
+    "active": "#E9E9E5",
+    "selected": "#EFF2FD",
+    "text-1": "#1B1B18",
+    "text-2": "#5C5C55",
+    "text-3": "#6E6E64",
+    "text-disabled": "#8C8C84",
+    "text-on-accent": "#FFFFFF",
+    "border-subtle": "#E2E2DD",
+    "border": "#D3D3CD",
+    "border-strong": "#B4B4AC",
+    "accent": "#4C5FD5",
+    "accent-hover": "#4353C4",
+    "accent-active": "#3B49AF",
+    "accent-subtle": "#EFF2FD",
+    "accent-border": "#C3CCF6",
+    "danger": "#C0362C",
+    "danger-hover": "#A82D24",
+    "danger-active": "#902620",
+    "danger-subtle": "#FBEDEB",
+    "danger-border": "#F0C4BF",
+    "success": "#17784A",
+    "success-subtle": "#E8F5ED",
+    "warning": "#8A5A00",
+    "warning-subtle": "#FCF3E0",
+    "info": "#0A66A8",
+    "focus": "#4C5FD5",
+    "scrim": "rgba(24,24,20,.32)",
+    "tooltip-bg": "#2E2E2A",
+    "tooltip-text": "#FCFCFB"
+  },
+  "dark": {
+    "canvas": "#131312",
+    "surface-1": "#1A1A18",
+    "surface-2": "#201F1D",
+    "surface-3": "#272623",
+    "overlay": "#232220",
+    "hover": "rgba(255,255,255,.045)",
+    "active": "rgba(255,255,255,.075)",
+    "selected": "#1E2233",
+    "text-1": "#EDEDEA",
+    "text-2": "#A3A299",
+    "text-3": "#96958B",
+    "text-disabled": "#6E6D66",
+    "text-on-accent": "#131312",
+    "border-subtle": "rgba(255,255,255,.06)",
+    "border": "rgba(255,255,255,.10)",
+    "border-strong": "rgba(255,255,255,.16)",
+    "accent": "#8E9BF5",
+    "accent-hover": "#A2ADF8",
+    "accent-active": "#7A88EC",
+    "accent-subtle": "#1E2233",
+    "accent-border": "#3A4270",
+    "danger": "#F0736A",
+    "danger-hover": "#F48A82",
+    "danger-active": "#E55F55",
+    "danger-subtle": "#2B1E1C",
+    "danger-border": "#5C302C",
+    "success": "#4DBE86",
+    "success-subtle": "#16271F",
+    "warning": "#D9A22E",
+    "warning-subtle": "#2A2317",
+    "info": "#5FB2E8",
+    "focus": "#8E9BF5",
+    "scrim": "rgba(0,0,0,.56)",
+    "tooltip-bg": "#3A3A34",
+    "tooltip-text": "#EDEDEA"
+  }
+};
+export const shadow: Readonly<Record<Theme, Readonly<Record<"1" | "2" | "3" | "window", string>>>> = {
+  "light": {
+    "1": "0 1px 1px -.5px rgba(24,24,20,.10), 0 1px 2px -1px rgba(24,24,20,.06)",
+    "2": "0 1px 1px -.5px rgba(24,24,20,.10), 0 3px 6px -2px rgba(24,24,20,.07), 0 8px 16px -8px rgba(24,24,20,.08)",
+    "3": "0 1px 1px -.5px rgba(24,24,20,.11), 0 6px 12px -4px rgba(24,24,20,.09), 0 20px 40px -16px rgba(24,24,20,.16)",
+    "window": "0 0 0 1px var(--note-line, var(--c-border)), 0 1px 1px -.5px rgba(24,24,20,.12), 0 6px 12px -4px rgba(24,24,20,.10), 0 20px 40px -16px rgba(24,24,20,.18)"
+  },
+  "dark": {
+    "1": "0 1px 2px rgba(0,0,0,.34)",
+    "2": "0 1px 2px rgba(0,0,0,.36), 0 4px 10px -4px rgba(0,0,0,.44)",
+    "3": "0 2px 4px rgba(0,0,0,.40), 0 16px 32px -12px rgba(0,0,0,.60)",
+    "window": "inset 0 1px 0 rgba(255,255,255,.07), 0 0 0 1px var(--note-line, var(--c-border)), 0 2px 4px rgba(0,0,0,.42), 0 16px 36px -12px rgba(0,0,0,.66)"
+  }
+};
+export const tokens = {
+  "gray": {
+    "0": "#FFFFFF",
+    "25": "#FCFCFB",
+    "50": "#F8F8F6",
+    "100": "#F1F1EE",
+    "150": "#E9E9E5",
+    "200": "#E2E2DD",
+    "300": "#D3D3CD",
+    "400": "#B4B4AC",
+    "500": "#8C8C84",
+    "550": "#6E6E64",
+    "600": "#5C5C55",
+    "700": "#4A4A44",
+    "800": "#2E2E2A",
+    "900": "#1B1B18",
+    "950": "#111110"
+  },
+  "font": {
+    "sans": "\"BF Punct\", -apple-system, BlinkMacSystemFont, \"Segoe UI Variable Text\", \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans SC\", \"Hiragino Sans GB\", Arial, sans-serif",
+    "mono": "ui-monospace, \"SF Mono\", Menlo, \"Cascadia Mono\", Consolas, \"Sarasa Mono SC\", monospace"
+  },
+  "fontSize": {
+    "2xs": "0.6875rem",
+    "xs": "0.75rem",
+    "sm": "0.8125rem",
+    "md": "0.875rem",
+    "lg": "0.9375rem",
+    "xl": "1.0625rem",
+    "2xl": "1.25rem",
+    "3xl": "1.5rem",
+    "4xl": "2rem"
+  },
+  "lineHeight": {
+    "snug": "1.45",
+    "cjk": "1.62",
+    "body": "1.70",
+    "loose": "1.85",
+    "title": "1.4",
+    "display": "1.35",
+    "flush": "1.2"
+  },
+  "letterSpacing": {
+    "tight": "-0.011em",
+    "none": "0",
+    "caps": "0.06em"
+  },
+  "fontWeight": {
+    "normal": "400",
+    "medium": "500",
+    "strong": "600"
+  },
+  "uiScale": {
+    "default": "1",
+    "steps": [
+      0.9,
+      1,
+      1.15,
+      1.3
+    ]
+  },
+  "spacing": {
+    "1": "2px",
+    "2": "4px",
+    "3": "6px",
+    "4": "8px",
+    "5": "12px",
+    "6": "16px",
+    "7": "20px",
+    "8": "24px",
+    "9": "32px",
+    "10": "40px",
+    "11": "48px",
+    "12": "64px"
+  },
+  "radius": {
+    "xs": "3px",
+    "sm": "5px",
+    "md": "7px",
+    "lg": "10px",
+    "full": "999px",
+    "window": "10px"
+  },
+  "border": {
+    "hair": "1px"
+  },
+  "control": {
+    "sm": "24px",
+    "md": "28px",
+    "lg": "32px"
+  },
+  "z": {
+    "content": "0",
+    "sticky": "10",
+    "float": "20",
+    "menu": "30",
+    "command": "40",
+    "modal": "50",
+    "toast": "60",
+    "drag": "70",
+    "resize": "100"
+  },
+  "geometry": {
+    "note-titlebar-h": "max(28px, 1.75rem)",
+    "note-toolbar-h": "max(32px, 2rem)",
+    "note-toolbar-h-static": "40px",
+    "caption-btn-h": "var(--note-titlebar-h)",
+    "caption-btn-w": "clamp(36px, 2.5rem, 56px)",
+    "note-pad-x": "14px",
+    "note-body-floor": "calc(var(--note-titlebar-h) + 24px + 95px)"
+  },
+  "duration": {
+    "1": "90ms",
+    "2": "140ms",
+    "3": "200ms",
+    "4": "300ms",
+    "5": "360ms"
+  },
+  "delay": {
+    "ack": "200ms",
+    "selection": "180ms",
+    "tooltip-in": "500ms",
+    "tooltip-out": "100ms",
+    "toolbar-blur": "200ms",
+    "toolbar-leave": "800ms",
+    "sync-show": "300ms"
+  },
+  "ease": {
+    "out": "cubic-bezier(.16, 1, .3, 1)",
+    "in": "cubic-bezier(.3, 0, .8, .15)",
+    "in-out": "cubic-bezier(.65, 0, .35, 1)",
+    "spring": "cubic-bezier(.34, 1.30, .52, 1)",
+    "spring-linear": "linear(0, .164, .470, .746, .931, 1.026, 1.057, 1.053, 1.037, 1.020, 1.007, 1, 1)"
+  },
+  "contrastGates": {
+    "$comment": "specs/06 §1.6 对类阈值；test/contrast.test.ts 据此计算",
+    "note-ink": 10,
+    "note-ink2": 4.5,
+    "note-mark-sel": 4.5,
+    "note-dot": 3,
+    "focus-ring": 3,
+    "body-text": 4.5,
+    "tertiary-text": 4.5,
+    "on-accent": 4.5,
+    "semantic-text": 4.5,
+    "tooltip": 4.5
+  }
+} as const;
+export function isNoteColor(value: unknown): value is NoteColor {
+  return typeof value === "string" && (NOTE_COLORS as readonly string[]).includes(value);
+}
+/** 便笺纸面色（= 窗口底色）；未知色名 → graphite */
+export function notePaper(color: string, theme: Theme): string {
+  const name: NoteColor = isNoteColor(color) ? color : "graphite";
+  return notePalette[theme][name].paper;
+}
+/** #RRGGBB → [r, g, b] */
+export function hexToRgb(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) throw new Error(`hexToRgb: 不是 #RRGGBB: ${hex}`);
+  const n = Number.parseInt(m[1] as string, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}

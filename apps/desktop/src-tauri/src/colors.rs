@@ -1,0 +1,114 @@
+//! The 10-colour note palette (02 §5 / 06 §1.2–1.3). Only `paper` is needed on the Rust side
+//! (window background colour); everything else is rendered by the WebView.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum NoteColor {
+    #[default]
+    Graphite,
+    Rose,
+    Coral,
+    Amber,
+    Citron,
+    Fern,
+    Teal,
+    Azure,
+    Violet,
+    Fuchsia,
+}
+
+impl NoteColor {
+    pub const ALL: [NoteColor; 10] = [
+        NoteColor::Graphite,
+        NoteColor::Rose,
+        NoteColor::Coral,
+        NoteColor::Amber,
+        NoteColor::Citron,
+        NoteColor::Fern,
+        NoteColor::Teal,
+        NoteColor::Azure,
+        NoteColor::Violet,
+        NoteColor::Fuchsia,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NoteColor::Graphite => "graphite",
+            NoteColor::Rose => "rose",
+            NoteColor::Coral => "coral",
+            NoteColor::Amber => "amber",
+            NoteColor::Citron => "citron",
+            NoteColor::Fern => "fern",
+            NoteColor::Teal => "teal",
+            NoteColor::Azure => "azure",
+            NoteColor::Violet => "violet",
+            NoteColor::Fuchsia => "fuchsia",
+        }
+    }
+
+    /// Unknown values render as graphite (02 §3 meta.color rule).
+    pub fn parse(s: &str) -> NoteColor {
+        NoteColor::ALL
+            .into_iter()
+            .find(|c| c.as_str() == s)
+            .unwrap_or(NoteColor::Graphite)
+    }
+
+    /// Windows Sticky Notes theme → palette (tools/export_sticky_notes.py THEME_MAP).
+    pub fn from_plum_theme(theme: &str) -> NoteColor {
+        match theme.trim().to_ascii_lowercase().as_str() {
+            "yellow" => NoteColor::Citron,
+            "green" => NoteColor::Fern,
+            "blue" => NoteColor::Azure,
+            "purple" => NoteColor::Violet,
+            "pink" => NoteColor::Rose,
+            "gray" | "grey" | "charcoal" => NoteColor::Graphite,
+            _ => NoteColor::Citron,
+        }
+    }
+
+    /// `paper` role: window background (06 §1.2 light / §1.3 dark).
+    pub fn paper_rgb(self, dark: bool) -> (u8, u8, u8) {
+        let hex = match (self, dark) {
+            (NoteColor::Graphite, false) => 0xE5E3D9,
+            (NoteColor::Rose, false) => 0xF8DAE3,
+            (NoteColor::Coral, false) => 0xF8DBD7,
+            (NoteColor::Amber, false) => 0xF8DEC3,
+            (NoteColor::Citron, false) => 0xEBE7A4,
+            (NoteColor::Fern, false) => 0xC6F0C6,
+            (NoteColor::Teal, false) => 0xAEF2EB,
+            (NoteColor::Azure, false) => 0xCBE8F8,
+            (NoteColor::Violet, false) => 0xE1E0F8,
+            (NoteColor::Fuchsia, false) => 0xF8D6F6,
+            (NoteColor::Graphite, true) => 0x2C2B28,
+            (NoteColor::Rose, true) => 0x421D2B,
+            (NoteColor::Coral, true) => 0x451E1A,
+            (NoteColor::Amber, true) => 0x3B260E,
+            (NoteColor::Citron, true) => 0x2F2D11,
+            (NoteColor::Fern, true) => 0x1B321C,
+            (NoteColor::Teal, true) => 0x1A302E,
+            (NoteColor::Azure, true) => 0x112F3E,
+            (NoteColor::Violet, true) => 0x2A2647,
+            (NoteColor::Fuchsia, true) => 0x3B203A,
+        };
+        ((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_roundtrip() {
+        for c in NoteColor::ALL {
+            assert_eq!(NoteColor::parse(c.as_str()), c);
+        }
+        assert_eq!(NoteColor::parse("nope"), NoteColor::Graphite);
+        assert_eq!(NoteColor::from_plum_theme("Yellow"), NoteColor::Citron);
+        assert_eq!(NoteColor::from_plum_theme("Charcoal"), NoteColor::Graphite);
+        assert_eq!(NoteColor::from_plum_theme(""), NoteColor::Citron);
+    }
+}

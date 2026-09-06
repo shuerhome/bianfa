@@ -29,7 +29,10 @@ export interface RunMigrationsOptions {
 }
 
 /** 用一条直连执行全部未应用的迁移；可重复调用 */
-export async function runMigrations(connectionString: string, opts: RunMigrationsOptions = {}): Promise<MigrateResult> {
+export async function runMigrations(
+  connectionString: string,
+  opts: RunMigrationsOptions = {},
+): Promise<MigrateResult> {
   const migrationsFolder = opts.migrationsFolder ?? MIGRATIONS_DIR;
   const client = new pg.Client({ connectionString });
   await client.connect();
@@ -38,7 +41,10 @@ export async function runMigrations(connectionString: string, opts: RunMigration
     await migrate(drizzle(client), { migrationsFolder });
     const total = await appliedCount(client);
     const result = { applied: total - before, total };
-    opts.logger?.info({ ...result, migrationsFolder }, result.applied > 0 ? "migrations applied" : "already up to date");
+    opts.logger?.info(
+      { ...result, migrationsFolder },
+      result.applied > 0 ? "migrations applied" : "already up to date",
+    );
     return result;
   } finally {
     await client.end();
@@ -71,7 +77,10 @@ async function main(): Promise<void> {
   try {
     await runMigrations(env.DATABASE_URL, { logger });
   } catch (err) {
-    logger.error({ err: err instanceof Error ? { message: err.message, stack: err.stack } : err }, "migration failed");
+    logger.error(
+      { err: err instanceof Error ? { message: err.message, stack: err.stack } : err },
+      "migration failed",
+    );
     process.exitCode = 1;
   }
 }

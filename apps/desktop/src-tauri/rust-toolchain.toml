@@ -1,0 +1,6 @@
+# yrs 0.27.4 uses `if let` guards (stable since Rust 1.98); 1.94.x cannot compile it.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+profile = "minimal"

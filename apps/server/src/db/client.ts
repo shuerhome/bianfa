@@ -70,7 +70,11 @@ export function getDb(): Db {
  * GUC 为事务级，COMMIT/ROLLBACK 后自动失效；RLS 策略读 NULLIF(current_setting('app.user_id', true), '')，
  * 未设置即零行（fail-closed）。api / sync-ws 的所有业务读写都必须经此。
  */
-export async function withUserTx<T>(userId: string, fn: (tx: Tx) => Promise<T>, db: Db = getDb()): Promise<T> {
+export async function withUserTx<T>(
+  userId: string,
+  fn: (tx: Tx) => Promise<T>,
+  db: Db = getDb(),
+): Promise<T> {
   if (typeof userId !== "string" || userId.length === 0) {
     throw new TypeError("withUserTx: userId 必须是非空字符串");
   }

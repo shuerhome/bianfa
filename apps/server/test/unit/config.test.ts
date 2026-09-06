@@ -20,7 +20,7 @@ describe("config：DSN 与别名", () => {
     expect(env.DATABASE_URL_DIRECT).toBe(DIRECT);
   });
 
-  it("空串视为未设置（compose ${X:-} 会注入空串），此时别名生效", () => {
+  it("空串视为未设置（compose 的 X:- 缺省写法会注入空串），此时别名生效", () => {
     const out = normalizeEnv({ DATABASE_URL_DIRECT: "", DATABASE_DIRECT_URL: DIRECT, LOG_LEVEL: "" });
     expect(out.DATABASE_URL_DIRECT).toBe(DIRECT);
     expect("LOG_LEVEL" in out).toBe(false);
@@ -33,10 +33,12 @@ describe("config：DSN 与别名", () => {
 
   it("DATABASE_URL 缺失或不是 postgres DSN 时抛错并指出字段", () => {
     expect(() => loadBaseEnv({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/);
-    expect(() => loadBaseEnv({ NODE_ENV: "production", DATABASE_URL: "mysql://x/y" })).toThrow(/DATABASE_URL/);
-    expect(() => loadBaseEnv({ NODE_ENV: "production", DATABASE_URL: DSN, DATABASE_DIRECT_URL: "nope" })).toThrow(
-      /DATABASE_URL_DIRECT/,
+    expect(() => loadBaseEnv({ NODE_ENV: "production", DATABASE_URL: "mysql://x/y" })).toThrow(
+      /DATABASE_URL/,
     );
+    expect(() =>
+      loadBaseEnv({ NODE_ENV: "production", DATABASE_URL: DSN, DATABASE_DIRECT_URL: "nope" }),
+    ).toThrow(/DATABASE_URL_DIRECT/);
   });
 
   it("NODE_ENV / LOG_LEVEL 有默认值，非法值拒绝", () => {

@@ -23,9 +23,7 @@ export const workspaces = pgTable(
       "ws_shape",
       sql`(${t.kind} = 'personal' AND ${t.ownerUserId} IS NOT NULL AND ${t.orgId} IS NULL AND ${t.teamId} IS NULL) OR (${t.kind} = 'team' AND ${t.orgId} IS NOT NULL AND ${t.ownerUserId} IS NULL)`,
     ),
-    uniqueIndex("workspaces_personal_uq")
-      .on(t.ownerUserId)
-      .where(sql`${t.kind} = 'personal'`),
+    uniqueIndex("workspaces_personal_uq").on(t.ownerUserId).where(sql`${t.kind} = 'personal'`),
     index("workspaces_org_idx").on(t.orgId, t.teamId),
   ],
 );

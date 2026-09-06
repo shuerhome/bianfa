@@ -23,7 +23,11 @@ describe.skipIf(!hasDb)("direct LISTEN client", () => {
 
   beforeAll(async () => {
     f = openAdmin();
-    client = createDirectClient({ connectionString: DIRECT_URL as string, reconnectBaseMs: 50, reconnectMaxMs: 500 });
+    client = createDirectClient({
+      connectionString: DIRECT_URL as string,
+      reconnectBaseMs: 50,
+      reconnectMaxMs: 500,
+    });
     await client.listen(CHANNEL, (payload) => {
       received.push(payload);
       pending?.(payload);

@@ -93,9 +93,7 @@ export const notes = pgTable(
     check("notes_import_source_check", sql`${t.importSource} IN ('plum.sqlite','snt','json')`),
     check("notes_encryption_check", sql`${t.encryption} IN ('server','e2ee')`),
     check("notes_purge_shape", sql`${t.purgeAfter} IS NULL OR ${t.deletedAt} IS NOT NULL`),
-    index("notes_trash_idx")
-      .on(t.workspaceId, t.deletedAt.desc())
-      .where(sql`${t.deletedAt} IS NOT NULL`),
+    index("notes_trash_idx").on(t.workspaceId, t.deletedAt.desc()).where(sql`${t.deletedAt} IS NOT NULL`),
     index("notes_feed_idx").on(t.workspaceId, t.lsn),
     index("notes_purge_idx")
       .on(t.purgeAfter)
@@ -141,12 +139,8 @@ export const noteSnapshots = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.noteId, t.uptoSeq] }),
-    uniqueIndex("note_snapshots_head_uq")
-      .on(t.noteId)
-      .where(sql`NOT ${t.isMilestone}`), // 每便笺一个 head
-    index("note_snapshots_milestone_idx")
-      .on(t.createdAt)
-      .where(sql`${t.isMilestone}`),
+    uniqueIndex("note_snapshots_head_uq").on(t.noteId).where(sql`NOT ${t.isMilestone}`), // 每便笺一个 head
+    index("note_snapshots_milestone_idx").on(t.createdAt).where(sql`${t.isMilestone}`),
   ],
 );
 

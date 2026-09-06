@@ -1,0 +1,594 @@
+/* @bianfa/ui 组件样式：只读 L2/L3 token，禁止字面色值；hover/focus 只动 opacity/transform/背景色 */
+
+.bf-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── 焦点环：全 app 唯一一条 ── */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+.bf-btn--danger:focus-visible,
+.bf-btn--danger-secondary:focus-visible {
+  outline-color: var(--c-danger);
+}
+
+/* ── 图标 ── */
+.bf-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+
+/* ── Button ── */
+.bf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  height: var(--h-ctl-md);
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-sm);
+  border: var(--bw-hair) solid transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  color: var(--c-text-1);
+  background: var(--c-surface-1);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-1) linear;
+}
+.bf-btn:disabled {
+  color: var(--c-text-disabled);
+  cursor: not-allowed;
+}
+.bf-btn--sm {
+  height: var(--h-ctl-sm);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-xs);
+}
+.bf-btn--lg {
+  height: var(--h-ctl-lg);
+  padding: 0 var(--sp-6);
+}
+.bf-btn--primary {
+  background: var(--c-accent);
+  color: var(--c-text-on-accent);
+}
+.bf-btn--primary:hover:not(:disabled) {
+  background: var(--c-accent-hover);
+}
+.bf-btn--primary:active:not(:disabled) {
+  background: var(--c-accent-active);
+}
+.bf-btn--secondary {
+  border-color: var(--c-border);
+  background: var(--c-overlay);
+}
+.bf-btn--secondary:hover:not(:disabled) {
+  background: var(--c-hover);
+}
+.bf-btn--secondary:active:not(:disabled) {
+  background: var(--c-active);
+}
+.bf-btn--ghost {
+  background: transparent;
+  color: var(--c-text-2);
+}
+.bf-btn--ghost:hover:not(:disabled) {
+  background: var(--c-hover);
+  color: var(--c-text-1);
+}
+.bf-btn--danger {
+  background: var(--c-danger);
+  color: var(--c-text-on-accent);
+}
+.bf-btn--danger:hover:not(:disabled) {
+  background: var(--c-danger-hover);
+}
+.bf-btn--danger:active:not(:disabled) {
+  background: var(--c-danger-active);
+}
+.bf-btn--danger-secondary {
+  border-color: var(--c-danger-border);
+  color: var(--c-danger);
+  background: var(--c-overlay);
+}
+.bf-btn--danger-secondary:hover:not(:disabled) {
+  background: var(--c-danger-subtle);
+}
+
+.bf-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--c-border-strong);
+  border-top-color: var(--c-accent);
+  animation: bf-spin 0.8s linear infinite;
+}
+@keyframes bf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── IconButton ── */
+.bf-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: default;
+  transition: background-color var(--dur-1) linear;
+}
+.bf-iconbtn--sm {
+  width: 22px;
+  height: 22px;
+}
+.bf-iconbtn--lg {
+  width: var(--h-ctl-lg);
+  height: var(--h-ctl-lg);
+}
+.bf-iconbtn--secondary {
+  border: var(--bw-hair) solid var(--c-border);
+  background: var(--c-overlay);
+}
+.bf-iconbtn:hover:not(:disabled) {
+  background: var(--c-hover);
+  color: var(--c-text-1);
+}
+.bf-iconbtn:active:not(:disabled) {
+  background: var(--c-active);
+}
+.bf-iconbtn[aria-pressed="true"] {
+  color: var(--c-accent);
+}
+.bf-iconbtn:disabled {
+  color: var(--c-text-disabled);
+}
+
+/* ── Popover / Menu ── */
+.bf-popover {
+  z-index: var(--z-menu);
+  background: var(--c-overlay);
+  border: var(--bw-hair) solid var(--c-border-subtle);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  color: var(--c-text-1);
+  overflow: auto;
+  animation: bf-pop-in var(--dur-2) var(--ease-out);
+}
+@keyframes bf-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bf-menu {
+  min-width: 168px;
+  padding: var(--sp-2);
+}
+.bf-menu__list {
+  display: flex;
+  flex-direction: column;
+}
+.bf-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--c-text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+}
+.bf-menu__item:hover,
+.bf-menu__item:focus-visible {
+  background: var(--c-hover);
+  outline: none;
+}
+.bf-menu__item[aria-disabled="true"] {
+  color: var(--c-text-disabled);
+}
+.bf-menu__item--danger {
+  color: var(--c-danger);
+}
+.bf-menu__item--danger:hover,
+.bf-menu__item--danger:focus-visible {
+  background: var(--c-danger-subtle);
+}
+.bf-menu__icon-slot {
+  width: 16px;
+  height: 16px;
+}
+.bf-menu__label {
+  flex: 1;
+}
+.bf-menu__kbd {
+  font-family: var(--f-mono);
+  font-size: var(--fs-2xs);
+  color: var(--c-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.bf-menu__sep {
+  height: 1px;
+  margin: var(--sp-2) 0;
+  background: var(--c-border-subtle);
+}
+
+/* ── Dialog ── */
+.bf-dialog {
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--c-overlay);
+  color: var(--c-text-1);
+  box-shadow: var(--sh-3);
+  z-index: var(--z-modal);
+}
+.bf-dialog::backdrop {
+  background: var(--c-scrim);
+  animation: bf-fade-in var(--dur-2) linear;
+}
+.bf-dialog[open] {
+  animation: bf-dialog-in var(--dur-3) var(--ease-out);
+}
+@keyframes bf-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bf-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.bf-dialog__panel {
+  padding: var(--sp-7) var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+.bf-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.bf-dialog__title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-snug);
+}
+.bf-dialog__desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+}
+.bf-dialog__body {
+  font-size: var(--fs-sm);
+}
+.bf-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+/* ── Switch ── */
+.bf-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  min-height: 44px;
+}
+.bf-switch-row__label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-1);
+}
+.bf-switch-row__desc {
+  margin: 2px 0 0;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+}
+.bf-switch {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--c-border-strong);
+  transition: background-color var(--dur-2) linear;
+  cursor: default;
+}
+.bf-switch[aria-checked="true"] {
+  background: var(--c-accent);
+}
+.bf-switch:disabled {
+  opacity: 0.5;
+}
+.bf-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-full);
+  background: var(--p-w-0);
+  box-shadow: var(--sh-1);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.bf-switch[aria-checked="true"] .bf-switch__knob {
+  transform: translateX(14px);
+}
+
+/* ── Select ── */
+.bf-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.bf-select__label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+}
+.bf-select__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.bf-select__native {
+  appearance: none;
+  height: var(--h-ctl-md);
+  padding: 0 28px 0 var(--sp-4);
+  border: var(--bw-hair) solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-overlay);
+  color: var(--c-text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.bf-select__chevron {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--c-text-3);
+}
+
+/* ── Tabs ── */
+.bf-tabs {
+  display: flex;
+  gap: var(--sp-1);
+}
+.bf-tabs--vertical {
+  flex-direction: column;
+}
+.bf-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+  transition: background-color var(--dur-1) linear;
+}
+.bf-tab:hover {
+  background: var(--c-hover);
+  color: var(--c-text-1);
+}
+.bf-tab--selected {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+  font-weight: var(--fw-medium);
+}
+.bf-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ── Tooltip ── */
+.bf-tooltip {
+  z-index: var(--z-toast);
+  max-width: 240px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--c-tooltip-bg);
+  color: var(--c-tooltip-text);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-snug);
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+  animation: bf-fade-in var(--dur-2) linear;
+}
+
+/* ── Toast ── */
+.bf-toast-viewport {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-6);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--sp-4);
+  z-index: var(--z-toast);
+  pointer-events: none;
+}
+.bf-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 240px;
+  max-width: 420px;
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-full);
+  background: var(--c-overlay);
+  color: var(--c-text-1);
+  border: var(--bw-hair) solid var(--c-border-subtle);
+  box-shadow: var(--sh-3);
+  font-size: var(--fs-sm);
+  pointer-events: auto;
+  animation: bf-toast-in var(--dur-3) var(--ease-out);
+}
+@keyframes bf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bf-toast--success .bf-icon {
+  color: var(--c-success);
+}
+.bf-toast--warning .bf-icon {
+  color: var(--c-warning);
+}
+.bf-toast--danger .bf-icon {
+  color: var(--c-danger);
+}
+.bf-toast__msg {
+  flex: 1;
+}
+.bf-toast__close {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-3);
+  border-radius: var(--r-xs);
+}
+.bf-toast__close:hover {
+  color: var(--c-text-1);
+  background: var(--c-hover);
+}
+
+/* ── 骨架、空态、横幅（共享骨架） ── */
+.bf-skeleton {
+  height: 11px;
+  border-radius: var(--r-xs);
+  background: var(--c-surface-3);
+  animation: bf-breathe 1.2s var(--ease-in-out) infinite alternate;
+}
+@keyframes bf-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.bf-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: 32px;
+  padding: 0 var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--c-text-1);
+}
+.bf-banner--warning {
+  background: var(--c-warning-subtle);
+}
+.bf-banner--warning .bf-icon {
+  color: var(--c-warning);
+}
+.bf-banner--accent {
+  background: var(--c-accent-subtle);
+}
+.bf-banner--accent .bf-icon {
+  color: var(--c-accent);
+}
+.bf-banner--danger {
+  background: var(--c-danger-subtle);
+}
+.bf-banner--danger .bf-icon {
+  color: var(--c-danger);
+}
+.bf-banner__spacer {
+  flex: 1;
+}
+
+.bf-input {
+  height: var(--h-ctl-md);
+  padding: 0 var(--sp-4);
+  border: var(--bw-hair) solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-overlay);
+  color: var(--c-text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.bf-input::placeholder {
+  color: var(--c-text-3);
+}
+.bf-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: var(--bw-hair) solid var(--c-border);
+  border-radius: var(--r-xs);
+  font-family: var(--f-mono);
+  font-size: var(--fs-2xs);
+  color: var(--c-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-popover,
+  .bf-dialog[open],
+  .bf-toast {
+    animation-duration: 1ms;
+    transform: none !important;
+  }
+  .bf-skeleton {
+    animation: none;
+  }
+}
