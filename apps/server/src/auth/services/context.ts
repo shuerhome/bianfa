@@ -4,6 +4,7 @@ import type { AuditEntry } from "../../audit/index.js";
 import type { Db } from "../../db/client.js";
 import type { MailProvider } from "../../mail/index.js";
 import type { AuthEnv } from "../env.js";
+import type { PasswordHasher } from "../security-code.js";
 
 export interface ServiceDeps {
   db: Db;
@@ -12,6 +13,10 @@ export interface ServiceDeps {
   log: Logger;
   /** 撤销用户全部 Better Auth Web 会话（DB + secondaryStorage）；由 createAuth 注入 */
   revokeWebSessions?: (userId: string) => Promise<void>;
+  /** Better Auth 配置的密码哈希器（argon2id，回退 scrypt）；安全码与密码共用；由 createAuth 注入 */
+  password?: PasswordHasher;
+  /** 经 Better Auth internalAdapter 设置用户密码（credential account 不存在时创建）；由 createAuth 注入 */
+  setUserPassword?: (userId: string, newPassword: string) => Promise<void>;
 }
 
 export interface Actor {

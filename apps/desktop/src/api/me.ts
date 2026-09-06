@@ -36,6 +36,8 @@ export interface Me {
   activeDevices: number;
   currentDeviceId: string | null;
   deletionDueAt: number | null;
+  /** 安全码最近一次设置时间（Unix ms）；null = 尚未设置（社交登录建的账号） */
+  securityCodeSetAt: number | null;
   serverTime: number | null;
 }
 
@@ -65,6 +67,7 @@ interface MeDto {
   active_devices: number;
   current_device_id: string | null;
   deletion_due_at: string | null;
+  security_code_set_at?: string | null;
   server_time?: number;
 }
 
@@ -95,6 +98,7 @@ export function mapMe(m: MeDto): Me {
     activeDevices: m.active_devices ?? 0,
     currentDeviceId: m.current_device_id ?? null,
     deletionDueAt: isoToMs(m.deletion_due_at),
+    securityCodeSetAt: isoToMs(m.security_code_set_at),
     serverTime: typeof m.server_time === "number" ? m.server_time : null,
   };
 }
@@ -170,6 +174,25 @@ export async function revokeAllDevices(opts: { keepCurrent?: boolean } = {}): Pr
     body: { keep_current: opts.keepCurrent ?? false },
   });
   return { revoked: r.revoked ?? [], count: r.count ?? 0 };
+}
+
+// ── 安全码（只用于「忘记密码」时在 Web 端重置密码；服务端 auth/services/me.ts changeSecurityCode） ──
+
+export const SECURITY_CODE_MIN = 4;
+export const SECURITY_CODE_MAX = 32;
+
+/**
+ * POST /v1/me/security-code { password, new_security_code } → { security_code_set_at }。
+ * 403 invalid_password（当前密码不对）/ 400 security_code_equals_password / 400 validation_failed / 409 no_password。
+ */
+export async function changeSecurityCode(input: {
+  password: string;
+  newSecurityCode: string;
+}): Promise<{ securityCodeSetAt: number | null }> {
+  const r = await apiJson<{ security_code_set_at: string }>("POST", "/v1/me/security-code", {
+    body: { password: input.password, new_security_code: input.newSecurityCode.trim() },
+  });
+  return { securityCodeSetAt: isoToMs(r.security_code_set_at) };
 }
 
 // ── 账号删除（30 天宽限；服务端会撤销全部 token） ──

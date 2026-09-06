@@ -14,7 +14,10 @@
     "password": "密码",
     "name": "名字",
     "newPassword": "新密码",
-    "confirmPassword": "再输一次新密码"
+    "confirmPassword": "再输一次新密码",
+    "passwordConfirm": "再输一次密码",
+    "securityCode": "安全码",
+    "confirmSecurityCode": "再输一次安全码"
   },
   "validation": {
     "email": "请输入正确的邮箱地址。",
@@ -24,7 +27,14 @@
     "passwordLong": "密码太长了（最多 128 个字符）。",
     "passwordHint": "至少 {{min}} 个字符。",
     "passwordMismatch": "两次输入的密码不一致。",
-    "totp": "请输入 6 位数字验证码。"
+    "totp": "请输入 6 位数字验证码。",
+    "securityCodeRequired": "请输入安全码。",
+    "securityCodeShort": "安全码至少 {{min}} 个字符。",
+    "securityCodeLong": "安全码最多 {{max}} 个字符。",
+    "securityCodeSamePassword": "安全码不能和密码相同。",
+    "securityCodeMismatch": "两次输入的安全码不一致。",
+    "securityCodeHint": "安全码只在忘记密码时使用，请记住它。{{min}}–{{max}} 个任意字符，不能和密码相同。",
+    "passwordSameAsSecurityCode": "新密码不能和安全码相同。"
   },
   "errors": {
     "generic": "这次没成功，请稍后再试。",
@@ -32,7 +42,6 @@
     "rate_limited": "操作太频繁了，请稍等几分钟再试。",
     "social": "第三方登录没有完成，请重试或改用邮箱登录。",
     "INVALID_EMAIL_OR_PASSWORD": "邮箱或密码不正确。",
-    "EMAIL_NOT_VERIFIED": "这个邮箱还没有验证。",
     "USER_ALREADY_EXISTS": "这个邮箱已经注册过了，直接登录即可。",
     "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL": "这个邮箱已经注册过了，直接登录即可。",
     "PASSWORD_TOO_SHORT": "密码至少 8 个字符。",
@@ -46,7 +55,6 @@
     "ACCOUNT_TEMPORARILY_LOCKED": "失败次数过多，账号已暂时锁定，请稍后再试。",
     "UNAUTHORIZED": "登录已失效，请重新登录。",
     "invitation_email_mismatch": "这封邀请发给的是另一个邮箱，与当前登录的账号不一致。",
-    "email_not_verified": "接受邀请前需要先验证邮箱。",
     "already_member": "你已经是这个组织的成员了。",
     "seat_limit": "这个组织的席位已满，请联系邀请人。",
     "not_found": "邀请不存在或已失效。",
@@ -55,7 +63,15 @@
     "access_denied": "已拒绝授权。",
     "invalid_signature": "链接已失效，请回到桌面端重新点登录。",
     "DEVICE_CODE_ALREADY_PROCESSED": "这个代码已经处理过了。",
-    "DEVICE_CODE_NOT_CLAIMED": "请先输入代码再确认。"
+    "DEVICE_CODE_NOT_CLAIMED": "请先输入代码再确认。",
+    "invalid_security_code": "邮箱或安全码不正确。",
+    "password_equals_security_code": "新密码不能和安全码相同。",
+    "security_code_equals_password": "安全码不能和密码相同。",
+    "validation_failed": "输入有误，请检查后重试。",
+    "SECURITY_CODE_REQUIRED": "请输入安全码。",
+    "SECURITY_CODE_TOO_SHORT": "安全码至少 4 个字符。",
+    "SECURITY_CODE_TOO_LONG": "安全码最多 32 个字符。",
+    "SECURITY_CODE_EQUALS_PASSWORD": "安全码不能和密码相同。"
   },
   "login": {
     "title": "登录 bianfa",
@@ -67,9 +83,6 @@
     "or": "或者",
     "withGoogle": "使用 Google 登录",
     "withApple": "使用 Apple 登录",
-    "unverified": "这个邮箱还没有验证，先去邮箱里点一下验证链接。",
-    "resend": "重发验证邮件",
-    "resent": "验证邮件已重新发送，请查收。",
     "totpTitle": "两步验证",
     "totpDesc": "输入验证器应用里的 6 位数字。",
     "totpLabel": "验证码",
@@ -77,19 +90,19 @@
   },
   "signup": {
     "title": "注册 bianfa",
-    "desc": "免费账号，便笺在你的设备间同步。",
+    "desc": "免费账号，便笺在你的设备间同步。不需要验证邮箱。",
     "submit": "注册",
     "haveAccount": "已有账号？登录",
-    "checkMailTitle": "去邮箱验证一下",
-    "checkMail": "验证邮件已发送到 {{email}}。",
-    "checkMailDetail": "链接 15 分钟内有效。没收到的话看看垃圾邮件，或重发一封。"
+    "desktopDesc": "注册完成后会自动回到桌面端。不需要验证邮箱。"
   },
   "forgot": {
     "title": "找回密码",
-    "desc": "输入注册邮箱，我们会发一封重置密码的邮件。",
-    "submit": "发送重置邮件",
-    "sent": "如果这个邮箱已注册，你会收到一封重置密码的邮件。",
-    "sentDetail": "链接 30 分钟内有效。没收到的话看看垃圾邮件。"
+    "desc": "输入注册邮箱、注册时设置的安全码和新密码，不需要邮件。",
+    "codeHint": "安全码是注册时自己设置的；如果记不得了，可以在仍登录着的桌面端 设置 → 账号 里重新设置。",
+    "submit": "重置密码",
+    "done": "密码已重置。",
+    "doneDetail": "所有设备都已退出登录。用新密码重新登录即可，桌面端也需要重新登录一次。",
+    "goLogin": "去登录"
   },
   "reset": {
     "title": "重置密码",
@@ -181,10 +194,10 @@
   "account": {
     "title": "账号",
     "desc": "便笺同步、团队与设备都在桌面端里管理。",
-    "unverified": "邮箱还没验证，去邮箱里点一下验证链接。",
     "download": "下载桌面端",
     "desktopHint": "设备与团队管理请在桌面端的「设置」里操作。",
-    "signOut": "退出登录"
+    "signOut": "退出登录",
+    "securityCodeHint": "安全码只在忘记密码时使用；在桌面端 设置 → 账号 里可以修改安全码。"
   },
   "notFound": {
     "title": "没有这个页面",

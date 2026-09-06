@@ -11,7 +11,7 @@ import { bootstrapDesktopClient } from "../../src/auth/bootstrap-client.js";
 import { type AuthInternals, type AuthRuntime, createAuthWithInternals } from "../../src/auth/index.js";
 import { closeDb } from "../../src/db/client.js";
 import { createLogger } from "../../src/log.js";
-import { clearMailOutbox, waitForMail } from "../../src/mail/index.js";
+import { clearMailOutbox } from "../../src/mail/index.js";
 import { type Fixture, hasDb, openAdmin, POOLED_URL, truncateAll } from "./helpers.js";
 
 const BASE = "http://127.0.0.1:3000";
@@ -19,7 +19,9 @@ const APP_ORIGIN = "http://localhost:1420";
 const CLIENT_ID = "bianfa-desktop";
 const REDIRECT = "http://127.0.0.1:43123/cb";
 const PASSWORD = "correct-horse-battery-staple";
+const SECURITY_CODE = "web-login-code";
 const USER = { email: "web-login@test.invalid", name: "Web Login" };
+const USER2 = { email: "web-signup@test.invalid", name: "Web Signup" };
 
 /** 等价于 @better-auth/oauth-provider/client 的 buildSignedOAuthQuery：只保留 ba_param 列出的键 + sig */
 function buildSignedOAuthQuery(search: string): string {
@@ -72,13 +74,13 @@ describe.skipIf(!hasDb)("web login round trip", () => {
     app = new Hono();
     app.on(["GET", "POST"], "/api/auth/*", (c) => rt.handler(c.req.raw));
     await bootstrapDesktopClient(f.adminDb);
-    const res = await post("/api/auth/sign-up/email", { ...USER, password: PASSWORD });
+    // 注册 = 邮箱 + 密码 + 安全码；不需要验证邮件
+    const res = await post("/api/auth/sign-up/email", {
+      ...USER,
+      password: PASSWORD,
+      securityCode: SECURITY_CODE,
+    });
     expect(res.status, await res.clone().text()).toBe(200);
-    const mail = await waitForMail((m) => m.template === "verify_email" && m.to === USER.email);
-    const verify = await app.request(
-      `${BASE}/api/auth/verify-email?token=${encodeURIComponent(String(mail.vars.token))}`,
-    );
-    expect(verify.status).toBe(200);
   });
 
   afterAll(async () => {
@@ -131,6 +133,23 @@ describe.skipIf(!hasDb)("web login round trip", () => {
     expect(url.searchParams.get("code")).toBeTruthy();
     // iss = baseURL + basePath（桌面端校验 iss 时要按这个值比，不是裸 origin）
     expect(url.searchParams.get("iss")).toBe(`${BASE}/api/auth`);
+  });
+
+  it("sign-up/email + oauth_query → 注册即登录并直接回到桌面端：{ redirect: true, url: redirect_uri?code&state }", async () => {
+    const res = await post("/api/auth/sign-up/email", {
+      ...USER2,
+      password: PASSWORD,
+      securityCode: SECURITY_CODE,
+      oauth_query: buildSignedOAuthQuery(loginSearch),
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(cookieOf(res)).toMatch(/session_token/);
+    const body = (await res.json()) as { redirect?: boolean; url?: string };
+    expect(body.redirect).toBe(true);
+    const url = new URL(body.url as string);
+    expect(`${url.origin}${url.pathname}`).toBe(REDIRECT);
+    expect(url.searchParams.get("state")).toBe(state);
+    expect(url.searchParams.get("code")).toBeTruthy();
   });
 
   it("oauth2/consent 拒绝 → { redirect: true, url: redirect_uri?error=access_denied&state }", async () => {

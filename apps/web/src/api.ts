@@ -142,14 +142,44 @@ export function verifyEmailToken(token: string): Promise<Result<{ status: boolea
   return wrap(authClient.$fetch("/verify-email", { method: "GET", query: { token } }));
 }
 
-/** POST /api/auth/send-verification-email { email }（恒 200；服务端自行拼 ${APP_ORIGIN}/verify-email?token= 链接） */
-export function resendVerification(email: string): Promise<Result<{ status: boolean }>> {
-  return wrap(
-    authClient.$fetch("/send-verification-email", {
+export interface ResetWithCodeInput {
+  email: string;
+  securityCode: string;
+  newPassword: string;
+}
+
+/**
+ * POST /v1/auth/reset-with-code { email, security_code, new_password }（匿名，5 次 / 15 分钟 / ip+email；
+ * apps/server/src/auth/routes.ts）。成功 200 { ok: true }：所有设备与 Web 会话已被退出。
+ * 错误：400 invalid_security_code（邮箱或安全码不对，故意不区分）/ password_equals_security_code / validation_failed；429 rate_limited。
+ */
+export async function resetPasswordWithCode(input: ResetWithCodeInput): Promise<Result<{ ok: true }>> {
+  try {
+    const res = await fetch("/v1/auth/reset-with-code", {
       method: "POST",
-      body: { email, callbackURL: "/account" },
-    }),
-  );
+      credentials: "omit",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        email: input.email,
+        security_code: input.securityCode,
+        new_password: input.newPassword,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!res.ok || body.ok !== true) {
+      return {
+        ok: false,
+        error: {
+          status: res.status,
+          code: body.error ?? (res.status === 429 ? "rate_limited" : `http_${res.status}`),
+          message: "",
+        },
+      };
+    }
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    return { ok: false, error: toFailure(err) };
+  }
 }
 
 /** POST /api/auth/two-factor/verify-totp { code, trustDevice }：登录返回 twoFactorRedirect 后的第二步 */

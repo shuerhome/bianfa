@@ -11,8 +11,10 @@
 //   * Better Auth 运行时会校验本 schema：期望列缺失 / 多出「非空且无默认」的列都会让请求失败，所以自加列一律可空或带默认。
 // 这些表不加 RLS（规格 02 §1.8）。drizzleAdapter 只接收 authSchema（本文件末尾的对象），不是整个 schema/index。
 // =============================================================================
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -25,22 +27,32 @@ import {
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 
-export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("emailVerified").notNull().default(false),
-  image: text("image"),
-  createdAt: ts("createdAt").notNull().defaultNow(),
-  updatedAt: ts("updatedAt").notNull().defaultNow(),
-  // two-factor 插件
-  twoFactorEnabled: boolean("twoFactorEnabled").default(false),
-  // ---- additionalFields（规格 04 §1.3 / §7.9）----
-  banned: boolean("banned").notNull().default(false),
-  deletedAt: ts("deleted_at"),
-  deletionDueAt: ts("deletion_due_at"),
-  aiOptIn: boolean("ai_opt_in").notNull().default(false),
-});
+export const user = pgTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("emailVerified").notNull().default(false),
+    image: text("image"),
+    createdAt: ts("createdAt").notNull().defaultNow(),
+    updatedAt: ts("updatedAt").notNull().defaultNow(),
+    // two-factor 插件
+    twoFactorEnabled: boolean("twoFactorEnabled").default(false),
+    // ---- additionalFields（规格 04 §1.3 / §7.9）----
+    banned: boolean("banned").notNull().default(false),
+    deletedAt: ts("deleted_at"),
+    deletionDueAt: ts("deletion_due_at"),
+    aiOptIn: boolean("ai_opt_in").notNull().default(false),
+    // 安全码（0007）：只存哈希；明文只在 databaseHooks.user.create.before 里出现一次，从不落库。
+    // securityCode 列只是为了让 adapter 的 schema diff 通过（additionalFields 里 input-only 的字段也要求有列）：
+    // hook 把它置为 undefined → adapter 跳过；CHECK (IS NULL) 保证任何路径都写不进明文。
+    securityCode: text("security_code"),
+    securityCodeHash: text("security_code_hash"),
+    securityCodeSetAt: ts("security_code_set_at"),
+  },
+  (t) => [check("user_security_code_never_stored", sql`${t.securityCode} IS NULL`)],
+);
 
 export const session = pgTable(
   "session",

@@ -1,5 +1,6 @@
 // 邀请（规格 04 §4.4 / §4.5）：token = base64url(32B)，库里只存 sha256；同 org+email 的 pending 覆盖不堆积；
-// 席位闸门在发送与接受两处；邮件链接 ${APP_ORIGIN}/invite/{token}；50/h/org。
+// 席位闸门在发送与接受两处；链接 ${APP_ORIGIN}/invite/{token}；50/h/org。
+// 不依赖邮件：创建 / 重发的响应直接带 invite_url，邀请人可以复制后用任意渠道发给对方（邮件仍会走 provider，缺省 console）。
 import { and, eq, sql } from "drizzle-orm";
 import { audit } from "../../audit/index.js";
 import { type Tx, withUserTx } from "../../db/client.js";
@@ -206,6 +207,8 @@ export async function createInvite(
       status: "pending",
       expires_at: issued.expiresAt.toISOString(),
     },
+    /** 邀请人复制后自行发送（唯一一次能看到明文 token 的地方；库里只有 hash） */
+    invite_url: inviteLink(deps, issued.token),
   };
 }
 
@@ -321,6 +324,7 @@ export async function resendInvite(deps: ServiceDeps, actor: Actor, org: OrgCont
       status: "pending",
       expires_at: issued.expiresAt.toISOString(),
     },
+    invite_url: inviteLink(deps, issued.token),
   };
 }
 
@@ -354,7 +358,7 @@ export async function previewInvite(deps: ServiceDeps, token: string) {
   };
 }
 
-/** 接受：token → FOR UPDATE → 邮箱一致 + 已验证 → 席位闸门 → member(active)（被移除过的行复活）→ teamMember → accepted → 通知邀请人 */
+/** 接受：token → FOR UPDATE → 邮箱一致（不要求邮箱已验证：账号模型不验证邮箱）→ 席位闸门 → member(active)（被移除过的行复活）→ teamMember → accepted → 通知邀请人 */
 export async function acceptInvitationByToken(deps: ServiceDeps, actor: Actor, token: string) {
   const result = await withUserTx(
     actor.userId,
@@ -377,7 +381,6 @@ export async function acceptInvitationByToken(deps: ServiceDeps, actor: Actor, t
       if (!inv) throw new ApiFailure(404, "not_found");
       if (inv.email.toLowerCase() !== actor.email.toLowerCase())
         throw new ApiFailure(403, "invitation_email_mismatch");
-      if (!actor.emailVerified) throw new ApiFailure(403, "email_not_verified");
       const existing = await tx
         .select({ id: member.id, status: member.status })
         .from(member)

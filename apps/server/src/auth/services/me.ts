@@ -1,12 +1,13 @@
-// /v1/me、账号删除（规格 04 §6.2 / §7.9）。
+// /v1/me、修改安全码、账号删除（规格 04 §6.2 / §7.9）。
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../../audit/index.js";
 import { type Db, withUserTx } from "../../db/client.js";
-import { device, member, organization, user, workspaces } from "../../db/schema/index.js";
+import { account, device, member, organization, user, workspaces } from "../../db/schema/index.js";
 import { notifyAuthzRevoked } from "../db-helpers.js";
 import { ApiFailure } from "../http.js";
 import { revokeAllUserTokens } from "../oauth-tokens.js";
 import { invalidateMemberCache } from "../org-guard.js";
+import { normalizeSecurityCode, securityCodeProblem } from "../security-code.js";
 import { type Actor, actorEntry, type ServiceDeps, sendMailSafely } from "./context.js";
 
 export type Plan = "free" | "pro" | "team";
@@ -46,6 +47,7 @@ export async function getMe(deps: ServiceDeps, actor: Actor) {
           deletionDueAt: user.deletionDueAt,
           aiOptIn: user.aiOptIn,
           twoFactorEnabled: user.twoFactorEnabled,
+          securityCodeSetAt: user.securityCodeSetAt,
         })
         .from(user)
         .where(eq(user.id, actor.userId))
@@ -107,10 +109,75 @@ export async function getMe(deps: ServiceDeps, actor: Actor) {
         active_devices: devices[0]?.n ?? 0,
         current_device_id: actor.deviceId,
         deletion_due_at: u.deletionDueAt ? u.deletionDueAt.toISOString() : null,
+        /** 安全码最近一次设置时间；null = 尚未设置（社交登录建的账号） */
+        security_code_set_at: u.securityCodeSetAt ? u.securityCodeSetAt.toISOString() : null,
       };
     },
     deps.db,
   );
+}
+
+export interface ChangeSecurityCodeInput {
+  password: string;
+  newSecurityCode: string;
+}
+
+/**
+ * POST /v1/me/security-code：当前密码验证通过 → 新安全码哈希落库（与密码同一哈希器）→ 审计 auth.security_code_changed。
+ * 明文既不进日志也不进审计（audit 的 FORBIDDEN_KEYS 也挡 code 键）。
+ */
+export async function changeSecurityCode(deps: ServiceDeps, actor: Actor, input: ChangeSecurityCodeInput) {
+  const hasher = deps.password;
+  if (!hasher) throw new ApiFailure(500, "internal_error");
+  const problem = securityCodeProblem(input.newSecurityCode, input.password);
+  if (problem === "equals_password") throw new ApiFailure(400, "security_code_equals_password");
+  if (problem)
+    throw new ApiFailure(400, "validation_failed", {
+      issues: [{ path: "new_security_code", message: problem }],
+    });
+  const accounts = await deps.db
+    .select({ password: account.password })
+    .from(account)
+    .where(and(eq(account.userId, actor.userId), eq(account.providerId, "credential")))
+    .limit(1);
+  const hash = accounts[0]?.password;
+  if (!hash) throw new ApiFailure(409, "no_password");
+  if (!(await hasher.verify({ hash, password: input.password }))) {
+    await deps.db.transaction((tx) =>
+      audit(
+        tx,
+        actorEntry(actor, {
+          action: "auth.security_code_change_denied",
+          targetType: "user",
+          targetId: actor.userId,
+          outcome: "denied",
+          metadata: { reason: "invalid_password" },
+        }),
+      ),
+    );
+    throw new ApiFailure(403, "invalid_password");
+  }
+  const securityCodeHash = await hasher.hash(normalizeSecurityCode(input.newSecurityCode));
+  const setAt = new Date();
+  await withUserTx(
+    actor.userId,
+    async (tx) => {
+      await tx
+        .update(user)
+        .set({ securityCodeHash, securityCodeSetAt: setAt, updatedAt: setAt })
+        .where(eq(user.id, actor.userId));
+      await audit(
+        tx,
+        actorEntry(actor, {
+          action: "auth.security_code_changed",
+          targetType: "user",
+          targetId: actor.userId,
+        }),
+      );
+    },
+    deps.db,
+  );
+  return { security_code_set_at: setAt.toISOString() };
 }
 
 /** 软删：deleted_at / deletion_due_at(+30d)，撤销全部 token/会话/设备，NOTIFY session:*，邮件，审计 */

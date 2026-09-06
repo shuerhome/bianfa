@@ -155,6 +155,25 @@ export async function createAuthWithInternals(deps: CreateAuthDeps): Promise<Aut
       const ctx = await auth.$context;
       await ctx.internalAdapter.deleteUserSessions(userId);
     },
+    // 安全码与密码共用 Better Auth 配置的哈希器（argon2id，probe 失败时是 scrypt）
+    password: {
+      hash: async (p) => (await auth.$context).password.hash(p),
+      verify: async (d) => (await auth.$context).password.verify(d),
+    },
+    // 安全码重置：经 internalAdapter 写 credential account 的 password（没有 credential account 的社交账号则补建一条）
+    setUserPassword: async (userId, newPassword) => {
+      const ctx = await auth.$context;
+      const hash = await ctx.password.hash(newPassword);
+      const credential = await ctx.internalAdapter.findCredentialAccount(userId);
+      if (credential) await ctx.internalAdapter.updatePassword(userId, hash);
+      else
+        await ctx.internalAdapter.linkAccount({
+          userId,
+          providerId: "credential",
+          accountId: userId,
+          password: hash,
+        });
+    },
   };
 
   const verifyBearer = createBearerVerifier(deps.db, log);

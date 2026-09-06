@@ -8,9 +8,7 @@
     "frontendDist": "../dist",
     "beforeDevCommand": "pnpm turbo run build --filter=@bianfa/desktop^... && pnpm --filter @bianfa/desktop dev",
     "beforeBuildCommand": "pnpm turbo run build --filter=@bianfa/desktop",
-    "features": [
-      "vendored-openssl"
-    ]
+    "features": ["vendored-openssl"]
   },
   "app": {
     "withGlobalTauri": false,
@@ -25,9 +23,7 @@
         "font-src": "'self' data:",
         "connect-src": "'self' ipc: http://ipc.localhost https: wss:"
       },
-      "capabilities": [
-        "default"
-      ]
+      "capabilities": ["default"]
     },
     "trayIcon": {
       "id": "main",
@@ -39,11 +35,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": [
-      "nsis",
-      "dmg",
-      "app"
-    ],
+    "targets": ["nsis", "dmg", "app"],
     "publisher": "bianfa",
     "category": "Productivity",
     "shortDescription": "便笺 · bianfa",
@@ -61,10 +53,7 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "languages": [
-          "SimpChinese",
-          "English"
-        ],
+        "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true
       }
     },
@@ -85,18 +74,14 @@
   "plugins": {
     "updater": {
       "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBKEY",
-      "endpoints": [
-        "https://update.bianfa.app/{{target}}/{{arch}}/{{current_version}}"
-      ],
+      "endpoints": ["https://update.bianfa.app/{{target}}/{{arch}}/{{current_version}}"],
       "windows": {
         "installMode": "passive"
       }
     },
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "bianfa"
-        ]
+        "schemes": ["bianfa"]
       }
     }
   }

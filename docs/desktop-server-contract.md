@@ -13,6 +13,10 @@
 
 ## 2. 登录流程
 
+账号模型（2026-09-06 起）**不依赖邮件**：注册 = 邮箱（只是登录标识，不验证）+ 密码 + **安全码**（用户自选 4–32 个任意字符，只在
+Web `/forgot-password` 用来重置密码：`POST /v1/auth/reset-with-code`，见 §3）。桌面端 `设置 → 账号` 可用当前密码改安全码
+（`POST /v1/me/security-code`）。`GET /v1/me` 的 `user.email_verified` 恒为 `false`，任何流程都不看它。
+
 公共常量：`client_id = bianfa-desktop`，`scope = openid profile email offline_access`。
 所有 grant 都在 **`POST /api/auth/oauth2/token`**（`application/x-www-form-urlencoded`）换 token，并附桌面字段
 `device_id`（UUID v7，keyring 持久化）、`device_name`、`platform ∈ windows|macos|linux`、`app_version`。
@@ -51,7 +55,10 @@ Free 计划最多 2 台活跃设备：第 3 台换 token 得到 **403 `{ error: 
 
 | 端点 | 请求 | 响应（关键字段） | 桌面端 |
 |---|---|---|---|
-| `GET /v1/me` | — | `user{id,name,email,email_verified,image,created_at,ai_opt_in,two_factor_enabled}`, `plan`, `personal_workspace_id`, `orgs[]{id,name,slug,plan,enterprise_mode,role,status,joined_at}`, `active_devices`, `current_device_id`, `deletion_due_at` | Rust `api::MeResponse`；前端 `api/me.ts fetchMe` |
+| `GET /v1/me` | — | `user{id,name,email,email_verified,image,created_at,ai_opt_in,two_factor_enabled}`, `plan`, `personal_workspace_id`, `orgs[]{id,name,slug,plan,enterprise_mode,role,status,joined_at}`, `active_devices`, `current_device_id`, `deletion_due_at`, `security_code_set_at`（null = 未设） | Rust `api::MeResponse`；前端 `api/me.ts fetchMe` |
+| `POST /v1/me/security-code` | `{ password, new_security_code }`（新码 trim 后 4–32，≠ 密码） | `{ security_code_set_at }`；403 `invalid_password`；400 `security_code_equals_password` / `validation_failed`；409 `no_password`（第三方登录账号） | 设置 → 账号「修改安全码」（`api/me.ts changeSecurityCode`） |
+| `POST /v1/auth/reset-with-code` | **匿名**；`{ email, security_code, new_password }` | `{ ok: true, revoked_devices }`：密码已改，该用户全部桌面 token / 设备 / Web 会话已撤销（NOTIFY `session:*`）；400 `invalid_security_code`（邮箱或码不对，不区分）/ `password_equals_security_code`；429（5 次 / 15 min / ip+email） | 桌面端不直接调；Web `/forgot-password` 用；重置后桌面端收到 401 → 刷新失败 → 回到未登录态，需重新登录 |
+| `POST /v1/orgs/:id/invites`、`POST /v1/orgs/:id/invites/:inv/resend` | `{ email, role?, team_id? }` / — | `{ invitation{…}, invite_url }`：`invite_url = ${APP_ORIGIN}/invite/<token>`，邀请人复制后用任意渠道发给对方（邮件仍会走 provider，没配邮件服务时只落 console） | （预留：团队管理 UI） |
 | `GET /v1/me/devices` | — | `devices[]{id,name,platform,app_version,last_ip,last_seen_at,created_at,revoked_at,current}` | 设置 → 账号 设备列表 |
 | `DELETE /v1/me/devices/:id` | — | `{ revoked: true, device_id }` | 逐个注销 |
 | `POST /v1/me/devices/revoke-all` | `{ keep_current?: bool }` | `{ revoked: string[], count }` | 「注销其他所有设备」（`keep_current: true`） |

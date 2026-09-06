@@ -1,49 +1,76 @@
-// /forgot-password：响应恒定文案（不泄露邮箱是否存在）；服务端限流 3/h/email
+// /forgot-password：邮箱 + 安全码 + 新密码 → POST /v1/auth/reset-with-code（不经邮件）。
+// 成功后所有设备 / 会话已退出，给「去登录」按钮；search（桌面端授权参数 / next）原样带到 /login，桌面端流程能接着走。
 import { Button } from "@bianfa/ui";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authClient } from "../auth-client.js";
+import { resetPasswordWithCode } from "../api.js";
 import { Field } from "../components/Field.js";
 import { Notice } from "../components/Notice.js";
 import { Card } from "../components/Shell.js";
 import { StateView } from "../components/StateView.js";
-import { describeFailure, toFailure } from "../lib/errors.js";
-import { isValidEmail, normalizeEmail } from "../lib/validation.js";
+import { describeFailure } from "../lib/errors.js";
+import {
+  isValidEmail,
+  normalizeEmail,
+  normalizeSecurityCode,
+  PASSWORD_MIN,
+  passwordProblem,
+  SECURITY_CODE_MAX,
+  SECURITY_CODE_MIN,
+  securityCodeProblem,
+} from "../lib/validation.js";
 
-export function ForgotPassword() {
+interface FieldErrors {
+  email?: string;
+  securityCode?: string;
+  password?: string;
+  confirm?: string;
+}
+
+export function ForgotPassword({ search }: { search: string }) {
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
-  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [securityCode, setSecurityCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (!isValidEmail(email)) errs.email = t("validation.email");
+    const code = securityCodeProblem(securityCode, password);
+    if (code === "required") errs.securityCode = t("validation.securityCodeRequired");
+    if (code === "short") errs.securityCode = t("validation.securityCodeShort", { min: SECURITY_CODE_MIN });
+    if (code === "long") errs.securityCode = t("validation.securityCodeLong", { max: SECURITY_CODE_MAX });
+    if (code === "same_as_password") errs.password = t("validation.passwordSameAsSecurityCode");
+    const pw = passwordProblem(password);
+    if (pw === "short") errs.password = t("validation.passwordShort", { min: PASSWORD_MIN });
+    if (pw === "long") errs.password = t("validation.passwordLong");
+    if (confirm !== password) errs.confirm = t("validation.passwordMismatch");
+    return errs;
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!isValidEmail(email)) {
-      setFieldError(t("validation.email"));
-      return;
-    }
-    setFieldError(null);
+    const errs = validate();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setBusy(true);
     setError(null);
-    try {
-      // 1.7：/request-password-reset（/forget-password 为旧名）；redirectTo 不传，链接由服务端拼 ${APP_ORIGIN}/reset-password?token=
-      const res = await authClient.requestPasswordReset({ email: normalizeEmail(email) });
-      if (res.error) {
-        const f = toFailure(res.error);
-        // 只有限流 / 网络问题才提示；其它情况一律显示恒定成功文案
-        if (f.status === 429 || f.code === "network") {
-          setError(describeFailure(f));
-          return;
-        }
-      }
-      setDone(true);
-    } catch (err) {
-      setError(describeFailure(toFailure(err)));
-    } finally {
-      setBusy(false);
+    const res = await resetPasswordWithCode({
+      email: normalizeEmail(email),
+      securityCode: normalizeSecurityCode(securityCode),
+      newPassword: password,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError(describeFailure(res.error));
+      return;
     }
+    setDone(true);
   }
 
   if (done) {
@@ -51,11 +78,11 @@ export function ForgotPassword() {
       <Card title={t("forgot.title")}>
         <StateView
           kind="success"
-          title={t("forgot.sent")}
-          detail={t("forgot.sentDetail")}
+          title={t("forgot.done")}
+          detail={t("forgot.doneDetail")}
           actions={
-            <a className="bf-btn bf-btn--secondary bf-btn--lg" href="/login">
-              {t("common.backToLogin")}
+            <a className="bf-btn bf-btn--primary bf-btn--lg" href={`/login${search}`}>
+              {t("forgot.goLogin")}
             </a>
           }
         />
@@ -74,15 +101,44 @@ export function ForgotPassword() {
           autoComplete="username"
           autoFocus
           value={email}
-          error={fieldError}
+          error={fieldErrors.email}
           onChange={(e) => setEmail(e.target.value)}
+        />
+        <Field
+          label={t("fields.securityCode")}
+          type="password"
+          name="securityCode"
+          autoComplete="off"
+          hint={t("forgot.codeHint")}
+          value={securityCode}
+          error={fieldErrors.securityCode}
+          onChange={(e) => setSecurityCode(e.target.value)}
+        />
+        <Field
+          label={t("fields.newPassword")}
+          type="password"
+          name="password"
+          autoComplete="new-password"
+          hint={t("validation.passwordHint", { min: PASSWORD_MIN })}
+          value={password}
+          error={fieldErrors.password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Field
+          label={t("fields.confirmPassword")}
+          type="password"
+          name="confirm"
+          autoComplete="new-password"
+          value={confirm}
+          error={fieldErrors.confirm}
+          onChange={(e) => setConfirm(e.target.value)}
         />
         <Button type="submit" variant="primary" size="lg" className="web-btn-block" busy={busy}>
           {t("forgot.submit")}
         </Button>
       </form>
       <div className="web-links">
-        <a href="/login">{t("common.backToLogin")}</a>
+        <a href={`/login${search}`}>{t("common.backToLogin")}</a>
         <span />
       </div>
     </Card>

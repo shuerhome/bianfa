@@ -14,7 +14,10 @@
     "password": "Password",
     "name": "Name",
     "newPassword": "New password",
-    "confirmPassword": "Confirm new password"
+    "confirmPassword": "Confirm new password",
+    "passwordConfirm": "Confirm password",
+    "securityCode": "Security code",
+    "confirmSecurityCode": "Confirm security code"
   },
   "validation": {
     "email": "Enter a valid email address.",
@@ -24,7 +27,14 @@
     "passwordLong": "Password is too long (128 characters max).",
     "passwordHint": "At least {{min}} characters.",
     "passwordMismatch": "The passwords don't match.",
-    "totp": "Enter the 6-digit code."
+    "totp": "Enter the 6-digit code.",
+    "securityCodeRequired": "Enter a security code.",
+    "securityCodeShort": "The security code must be at least {{min}} characters.",
+    "securityCodeLong": "The security code can be at most {{max}} characters.",
+    "securityCodeSamePassword": "The security code must be different from your password.",
+    "securityCodeMismatch": "The security codes don't match.",
+    "securityCodeHint": "Used only to reset your password — remember it. {{min}}–{{max}} characters of any kind, different from the password.",
+    "passwordSameAsSecurityCode": "The new password must be different from your security code."
   },
   "errors": {
     "generic": "That didn't work. Please try again in a moment.",
@@ -32,7 +42,6 @@
     "rate_limited": "Too many attempts. Please wait a few minutes and try again.",
     "social": "Sign-in with that provider didn't complete. Try again or use your email.",
     "INVALID_EMAIL_OR_PASSWORD": "Incorrect email or password.",
-    "EMAIL_NOT_VERIFIED": "This email hasn't been verified yet.",
     "USER_ALREADY_EXISTS": "This email is already registered — just sign in.",
     "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL": "This email is already registered — just sign in.",
     "PASSWORD_TOO_SHORT": "Password must be at least 8 characters.",
@@ -46,7 +55,6 @@
     "ACCOUNT_TEMPORARILY_LOCKED": "Too many failed attempts. Your account is temporarily locked — try again later.",
     "UNAUTHORIZED": "Your session has expired. Please sign in again.",
     "invitation_email_mismatch": "This invitation was sent to a different email than the account you're signed in with.",
-    "email_not_verified": "Verify your email before accepting the invitation.",
     "already_member": "You're already a member of this organization.",
     "seat_limit": "This organization has no seats left. Ask the person who invited you.",
     "not_found": "The invitation doesn't exist or is no longer valid.",
@@ -55,7 +63,15 @@
     "access_denied": "Access denied.",
     "invalid_signature": "This link is no longer valid. Go back to the desktop app and sign in again.",
     "DEVICE_CODE_ALREADY_PROCESSED": "This code has already been handled.",
-    "DEVICE_CODE_NOT_CLAIMED": "Enter the code first, then confirm."
+    "DEVICE_CODE_NOT_CLAIMED": "Enter the code first, then confirm.",
+    "invalid_security_code": "Incorrect email or security code.",
+    "password_equals_security_code": "The new password must be different from your security code.",
+    "security_code_equals_password": "The security code must be different from your password.",
+    "validation_failed": "Something in the form isn't valid. Check it and try again.",
+    "SECURITY_CODE_REQUIRED": "Enter a security code.",
+    "SECURITY_CODE_TOO_SHORT": "The security code must be at least 4 characters.",
+    "SECURITY_CODE_TOO_LONG": "The security code can be at most 32 characters.",
+    "SECURITY_CODE_EQUALS_PASSWORD": "The security code must be different from your password."
   },
   "login": {
     "title": "Sign in to bianfa",
@@ -67,9 +83,6 @@
     "or": "or",
     "withGoogle": "Continue with Google",
     "withApple": "Continue with Apple",
-    "unverified": "This email isn't verified yet — open the verification link we sent you.",
-    "resend": "Resend verification email",
-    "resent": "Verification email sent again. Check your inbox.",
     "totpTitle": "Two-step verification",
     "totpDesc": "Enter the 6-digit code from your authenticator app.",
     "totpLabel": "Code",
@@ -77,19 +90,19 @@
   },
   "signup": {
     "title": "Create your bianfa account",
-    "desc": "Free account — your notes sync across devices.",
+    "desc": "Free account — your notes sync across devices. No email verification needed.",
     "submit": "Sign up",
     "haveAccount": "Have an account? Sign in",
-    "checkMailTitle": "Check your inbox",
-    "checkMail": "We sent a verification email to {{email}}.",
-    "checkMailDetail": "The link is valid for 15 minutes. Check your spam folder, or resend it."
+    "desktopDesc": "After signing up you'll be sent straight back to the desktop app. No email verification needed."
   },
   "forgot": {
     "title": "Reset your password",
-    "desc": "Enter the email you signed up with and we'll send a reset link.",
-    "submit": "Send reset email",
-    "sent": "If that email is registered, a password reset email is on its way.",
-    "sentDetail": "The link is valid for 30 minutes. Check your spam folder if it doesn't show up."
+    "desc": "Enter the email you signed up with, the security code you chose at sign-up, and a new password. No email needed.",
+    "codeHint": "You chose the security code when you signed up. If you can't remember it, set a new one from Settings → Account in a desktop app that's still signed in.",
+    "submit": "Reset password",
+    "done": "Your password has been reset.",
+    "doneDetail": "Every device has been signed out. Sign in with the new password — the desktop app will need to sign in again too.",
+    "goLogin": "Go to sign in"
   },
   "reset": {
     "title": "Set a new password",
@@ -181,10 +194,10 @@
   "account": {
     "title": "Account",
     "desc": "Sync, teams and devices are managed in the desktop app.",
-    "unverified": "Your email isn't verified yet — open the verification link we sent you.",
     "download": "Download the desktop app",
     "desktopHint": "Manage devices and teams from Settings in the desktop app.",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "securityCodeHint": "Your security code is only used to reset your password. Change it in the desktop app under Settings → Account."
   },
   "notFound": {
     "title": "Page not found",

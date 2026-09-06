@@ -29,7 +29,7 @@ export interface CreateOrgInput {
 }
 
 export async function createOrg(deps: ServiceDeps, actor: Actor, input: CreateOrgInput) {
-  if (!actor.emailVerified) throw new ApiFailure(403, "email_not_verified");
+  // 账号模型不验证邮箱（安全码取代邮件），这里不再要求 emailVerified
   return withUserTx(
     actor.userId,
     async (tx) => {

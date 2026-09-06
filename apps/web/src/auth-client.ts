@@ -5,14 +5,23 @@
 //   oauthProviderClient → fetch 插件：非 GET 请求自动附带 oauth_query（页面 URL 里由 /oauth2/authorize 带来的签名参数），
 //                         登录 / 同意后服务端据此继续授权流程并返回 { redirect: true, url }
 //   oauthDeviceAuthorizationClient → /device（GET 认领）、/device/approve、/device/deny
+//   inferAdditionalFields  → 注册 body 多一个 securityCode（服务端 user.additionalFields.securityCode，只进不出）
 import { oauthDeviceAuthorizationClient, oauthProviderClient } from "@better-auth/oauth-provider/client";
-import { organizationClient, twoFactorClient } from "better-auth/client/plugins";
+import { inferAdditionalFields, organizationClient, twoFactorClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
   baseURL: typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:3000",
   basePath: "/api/auth",
-  plugins: [organizationClient(), twoFactorClient(), oauthProviderClient(), oauthDeviceAuthorizationClient()],
+  plugins: [
+    inferAdditionalFields({
+      user: { securityCode: { type: "string", required: true, input: true, returned: false } },
+    }),
+    organizationClient(),
+    twoFactorClient(),
+    oauthProviderClient(),
+    oauthDeviceAuthorizationClient(),
+  ],
 });
 
 export type AuthClient = typeof authClient;

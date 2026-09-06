@@ -1,7 +1,8 @@
 // =============================================================================
 // /v1 账号 / 设备 / 组织 / 成员 / 邀请 / 团队 / 审计 路由（规格 04 §6.2 / §6.3）。B2 以 app.route('/v1', v1Routes) 挂载。
 // -----------------------------------------------------------------------------
-// * 除 GET /invites/:token/preview（匿名，10/min/ip）外全部 requireBearer；带 cookie 无 Bearer → 401（seam 保证）。
+// * 匿名的只有 GET /invites/:token/preview（10/min/ip）与 POST /auth/reset-with-code（安全码重置密码，5/15min/ip+email）；
+//   其余全部 requireBearer；带 cookie 无 Bearer → 401（seam 保证）。
 // * 已认证 600/min/user 限流；org 路由再过 requireOrgRole；body 全部 zod .strict()；响应统一 server_time。
 // * 每个 service 自己开 withUserTx 并写审计；ApiFailure → 对应状态码。
 // =============================================================================
@@ -22,6 +23,7 @@ import {
 } from "./http.js";
 import { type AuthVariables, type BearerVerifier, requireBearer } from "./index.js";
 import { type OrgVariables, requireOrgRole } from "./org-guard.js";
+import { securityCodeSchema } from "./security-code.js";
 import { auditToCsv, listAudit } from "./services/audit-query.js";
 import type { Actor, ServiceDeps } from "./services/context.js";
 import { listDevices, revokeAllDevices, revokeDevice } from "./services/devices.js";
@@ -34,9 +36,10 @@ import {
   rejectInvitationByToken,
   resendInvite,
 } from "./services/invites.js";
-import { cancelDeletion, getMe, scheduleDeletion } from "./services/me.js";
+import { cancelDeletion, changeSecurityCode, getMe, scheduleDeletion } from "./services/me.js";
 import { leaveOrg, listMembers, removeMember, setSuspended, updateMemberRole } from "./services/members.js";
 import { createOrg, deleteOrg, getOrg, listOrgs, transferOrg, updateOrg } from "./services/orgs.js";
+import { resetPasswordWithSecurityCode } from "./services/security-code.js";
 import {
   addTeamMember,
   createTeam,
@@ -51,6 +54,7 @@ export type V1Env = { Variables: AuthVariables & OrgVariables };
 
 export const AUTHENTICATED_RATE_LIMIT = { limit: 600, windowSeconds: 60 };
 export const ANON_PREVIEW_RATE_LIMIT = { limit: 10, windowSeconds: 60 };
+export const RESET_WITH_CODE_RATE_LIMIT = { limit: 5, windowSeconds: 15 * 60 };
 
 function actorOf(c: Context<V1Env>): Actor {
   const auth = c.get("auth");
@@ -74,6 +78,14 @@ const tokenSchema = z
   .regex(/^[A-Za-z0-9_-]+$/);
 const colorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const confirmDelete = z.object({ confirm: z.literal("DELETE") }).strict();
+/** 与 Better Auth emailAndPassword.min/maxPasswordLength 一致 */
+const passwordSchema = z.string().min(8).max(128);
+const resetWithCodeBody = z
+  .object({ email: emailSchema, security_code: securityCodeSchema, new_password: passwordSchema })
+  .strict();
+const changeSecurityCodeBody = z
+  .object({ password: z.string().min(1).max(128), new_security_code: securityCodeSchema })
+  .strict();
 
 export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{ Variables: AuthVariables }> {
   const app = new Hono<V1Env>();
@@ -99,6 +111,33 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
       const token = tokenSchema.safeParse(c.req.param("token"));
       if (!token.success) return fail(c, 404, "not_found");
       return ok(c, await previewInvite(deps, token.data));
+    },
+  );
+
+  // ---------------------------------------------------------------- 匿名：安全码重置密码（5 / 15 min / ip+email；先校验 body 再计数）
+  app.post(
+    "/auth/reset-with-code",
+    zValidator("json", resetWithCodeBody, validationHook),
+    rateLimit({
+      name: "reset_with_code",
+      key: (c) => {
+        const body = (c.req as unknown as { valid: (t: "json") => z.output<typeof resetWithCodeBody> }).valid(
+          "json",
+        );
+        return `${requestMeta(c).ip ?? "unknown"}:${body.email}`;
+      },
+      ...RESET_WITH_CODE_RATE_LIMIT,
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      return ok(
+        c,
+        await resetPasswordWithSecurityCode(deps, requestMeta(c), {
+          email: body.email,
+          securityCode: body.security_code,
+          newPassword: body.new_password,
+        }),
+      );
     },
   );
 
@@ -133,6 +172,16 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
       return ok(c, await revokeAllDevices(deps, actorOf(c), { keepCurrent: body.keep_current ?? false }));
     },
   );
+  app.post("/me/security-code", zValidator("json", changeSecurityCodeBody, validationHook), async (c) => {
+    const body = c.req.valid("json");
+    return ok(
+      c,
+      await changeSecurityCode(deps, actorOf(c), {
+        password: body.password,
+        newSecurityCode: body.new_security_code,
+      }),
+    );
+  });
   app.post("/me/delete", zValidator("json", confirmDelete, validationHook), async (c) =>
     ok(c, await scheduleDeletion(deps, actorOf(c)), 202),
   );

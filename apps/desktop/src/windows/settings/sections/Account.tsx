@@ -1,5 +1,6 @@
 // 账号 / 同步（specs/06 §4.4–4.5、4.8）：登录等待态（20s 复制链接 / 60s 验证码降级 / 120s 失败）、退出、
-// 设备列表（GET /v1/me/devices · 逐个吊销 · 注销其他设备）、云端导出（/v1/me/export）、删除账号（/v1/me/delete）、同步错误列表。
+// 设备列表（GET /v1/me/devices · 逐个吊销 · 注销其他设备）、安全码（/v1/me/security-code，只用于 Web 端忘记密码）、
+// 云端导出（/v1/me/export）、删除账号（/v1/me/delete）、同步错误列表。
 import { Button, useToast } from "@bianfa/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +32,7 @@ import { useTauriEvent } from "../../../ipc/events.js";
 import type { LoginPhase } from "../../../ipc/types.js";
 import { queryKeys } from "../../../lib/query.js";
 import { relativeTime } from "../../../lib/time.js";
+import { SecurityCodeDialog } from "../SecurityCodeDialog.js";
 
 type LoginUi =
   | { phase: "idle" }
@@ -61,6 +63,7 @@ export function AccountSection() {
   const [deleteText, setDeleteText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
+  const [codeDialog, setCodeDialog] = useState(false);
   const timer = useRef<number | null>(null);
 
   useTauriEvent("auth:changed", (a) => {
@@ -281,6 +284,30 @@ export function AccountSection() {
               {t("settings.deviceRevokeOthers")}
             </Button>
           ) : null}
+
+          <h3 className="settings-subtitle">{t("settings.securityCode")}</h3>
+          <p className="settings-hint">{t("settings.securityCodeHint")}</p>
+          <div className="settings-inline">
+            <span className="settings-hint tabular">
+              {me.data?.securityCodeSetAt
+                ? t("settings.securityCodeSetAt", {
+                    date: new Date(me.data.securityCodeSetAt).toLocaleString(),
+                  })
+                : t("settings.securityCodeUnset")}
+            </span>
+            <Button size="sm" onClick={() => setCodeDialog(true)}>
+              {t("settings.securityCodeChange")}
+            </Button>
+          </div>
+          <SecurityCodeDialog
+            open={codeDialog}
+            onClose={() => setCodeDialog(false)}
+            onChanged={() => {
+              setCodeDialog(false);
+              void me.refetch();
+              toast({ message: t("settings.securityCodeChanged"), kind: "success" });
+            }}
+          />
         </>
       ) : (
         <div className="login-panel">

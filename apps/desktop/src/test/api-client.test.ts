@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { API_ERROR, apiJson, isApiError, toApiError } from "../api/http.js";
 import {
+  changeSecurityCode,
   fetchMe,
   listDevices,
   requestCloudExport,
@@ -312,6 +313,7 @@ describe("api/me：账号 / 设备 / 删除 / 导出", () => {
         active_devices: 2,
         current_device_id: "dev-1",
         deletion_due_at: null,
+        security_code_set_at: "2026-01-05T00:00:00.000Z",
         server_time: 1700000000000,
       }),
     );
@@ -323,6 +325,23 @@ describe("api/me：账号 / 设备 / 删除 / 导出", () => {
     expect(me.activeDevices).toBe(2);
     expect(me.currentDeviceId).toBe("dev-1");
     expect(me.deletionDueAt).toBeNull();
+    expect(me.securityCodeSetAt).toBe(Date.parse("2026-01-05T00:00:00.000Z"));
+  });
+
+  it("changeSecurityCode：POST /v1/me/security-code（新码 trim）→ security_code_set_at；403 invalid_password", async () => {
+    mockApi((req) => {
+      expect(req.method).toBe("POST");
+      expect(req.path).toBe("/v1/me/security-code");
+      const body = req.jsonBody as { password: string; new_security_code: string };
+      if (body.password !== "hunter22hunter") return json({ error: "invalid_password", server_time: 1 }, 403);
+      expect(body.new_security_code).toBe("my new code");
+      return json({ security_code_set_at: "2026-02-01T00:00:00.000Z", server_time: 1 });
+    });
+    const r = await changeSecurityCode({ password: "hunter22hunter", newSecurityCode: "  my new code  " });
+    expect(r.securityCodeSetAt).toBe(Date.parse("2026-02-01T00:00:00.000Z"));
+    await expect(
+      changeSecurityCode({ password: "wrong", newSecurityCode: "my new code" }),
+    ).rejects.toMatchObject({ code: API_ERROR.invalidPassword });
   });
 
   it("设备：列表映射、DELETE /v1/me/devices/:id、revoke-all 带 keep_current", async () => {

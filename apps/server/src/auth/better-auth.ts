@@ -10,10 +10,14 @@
 // * oauth-provider：不透明 access token（disableJwtPlugin: true → 不装 jwt 插件，撤销即时生效；public client 无 id_token）、
 //   storeTokens.hash = sha256 base64url（verify-bearer / desktop-plugin 用同一函数直查表）。
 // * 设备码走 oauthDeviceAuthorization（RFC 8628 grant，最终在 /oauth2/token 换 token，与 PKCE 路径同一组 token）。
+// * 账号模型不依赖邮件：注册 = 邮箱（只是登录标识）+ 密码 + 安全码（security-code.ts）；requireEmailVerification=false、
+//   sendOnSignUp=false、autoSignIn=true（注册即登录）。verify-email / request-password-reset 端点保留但无人链接；
+//   邮件 provider 仍在（缺 RESEND_API_KEY 时 console），注册 / 登录 / 重置任何一步都不等邮件。
 // =============================================================================
 import { DEVICE_CODE_GRANT_TYPE, oauthDeviceAuthorization, oauthProvider } from "@better-auth/oauth-provider";
 import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { hashPassword as scryptHash, verifyPassword as scryptVerify } from "better-auth/crypto";
 import { organization } from "better-auth/plugins/organization";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { sql } from "drizzle-orm";
@@ -36,6 +40,7 @@ import {
   REFRESH_TOKEN_TTL_SECONDS,
 } from "./oauth-tokens.js";
 import type { AuthSecondaryStorage } from "./redis.js";
+import { hashSecurityCodeForCreate, type PasswordHasher, securityCodePlugin } from "./security-code.js";
 
 export interface BuildAuthDeps {
   env: AuthEnv;
@@ -108,6 +113,9 @@ export function buildAuth(deps: BuildAuthDeps) {
     });
   }
 
+  /** 安全码与密码同一套哈希器；databaseHooks 拿不到 endpoint context 时的兜底（正常路径用 ctx.context.password） */
+  const fallbackHasher: PasswordHasher = deps.password ?? { hash: scryptHash, verify: scryptVerify };
+
   const rateLimitEnabled = env.isProduction || env.AUTH_RATE_LIMIT === "1";
   const trustedProxies = env.AUTH_TRUSTED_PROXIES?.split(",")
     .map((s) => s.trim())
@@ -145,10 +153,12 @@ export function buildAuth(deps: BuildAuthDeps) {
     ...(deps.secondaryStorage ? { secondaryStorage: deps.secondaryStorage } : {}),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      // 不验证邮箱：邮箱只是登录标识；忘记密码走 /v1/auth/reset-with-code（安全码）
+      requireEmailVerification: false,
       minPasswordLength: 8,
       maxPasswordLength: 128,
-      autoSignIn: false,
+      // 注册即登录（种 cookie）；带 oauth_query 时 oauth-provider 的 after hook 会接着把授权流程走完
+      autoSignIn: true,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: RESET_PASSWORD_TTL,
       ...(deps.password ? { password: deps.password } : {}),
@@ -172,7 +182,7 @@ export function buildAuth(deps: BuildAuthDeps) {
       },
     },
     emailVerification: {
-      sendOnSignUp: true,
+      sendOnSignUp: false,
       autoSignInAfterVerification: true,
       expiresIn: EMAIL_VERIFICATION_TTL,
       sendVerificationEmail: async ({ user, url, token }) => {
@@ -191,6 +201,11 @@ export function buildAuth(deps: BuildAuthDeps) {
         deletedAt: { type: "date", required: false, input: false },
         deletionDueAt: { type: "date", required: false, input: false },
         aiOptIn: { type: "boolean", required: false, defaultValue: false },
+        // 安全码：注册 body 里的明文（input: true，永不返回、永不落库），存储列只有 hash / set_at（input: false）。
+        // required 放宽为 false：社交登录建用户时没有安全码；邮箱注册的必填校验在 securityCodePlugin 的 before hook。
+        securityCode: { type: "string", required: false, input: true, returned: false },
+        securityCodeHash: { type: "string", required: false, input: false, returned: false },
+        securityCodeSetAt: { type: "date", required: false, input: false, returned: false },
       },
       changeEmail: {
         enabled: true,
@@ -208,6 +223,9 @@ export function buildAuth(deps: BuildAuthDeps) {
     databaseHooks: {
       user: {
         create: {
+          // 明文安全码 → hash（同一套密码哈希器）；返回 securityCode: undefined 让 adapter 跳过明文字段
+          before: async (user, context) =>
+            hashSecurityCodeForCreate(user, context?.context.password ?? fallbackHasher),
           after: async (user) => {
             await ensurePersonalWorkspace(db, user.id);
           },
@@ -252,7 +270,7 @@ export function buildAuth(deps: BuildAuthDeps) {
         membershipLimit: 100,
         invitationExpiresIn: INVITATION_EXPIRES_IN,
         invitationLimit: 100,
-        requireEmailVerificationOnInvitation: true,
+        requireEmailVerificationOnInvitation: false,
         dynamicAccessControl: { enabled: false },
         teams: { enabled: true, maximumTeams: 20, defaultTeam: { enabled: false } },
         sendInvitationEmail: async (data) => {
@@ -340,6 +358,7 @@ export function buildAuth(deps: BuildAuthDeps) {
         backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" },
       }),
       bianfaDesktopPlugin({ db, env, mail, log }),
+      securityCodePlugin(),
     ],
   });
 }

@@ -50,6 +50,13 @@ describe("/login", () => {
     expect(mocks.signInEmail).not.toHaveBeenCalled();
   });
 
+  it("忘记密码链接带上当前 search（桌面端授权参数 / next 能接着走）", async () => {
+    mockConfig([]);
+    render(<Login search="?next=%2Fdevice%3Fuser_code%3DABCDEFGH" />);
+    const link = screen.getByRole("link", { name: "忘记密码？" }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/forgot-password?next=%2Fdevice%3Fuser_code%3DABCDEFGH");
+  });
+
   it("凭据错误 → 提示；成功 → 跳 next", async () => {
     mockConfig([]);
     mocks.signInEmail.mockResolvedValueOnce({
@@ -98,26 +105,6 @@ describe("/login", () => {
         "http://127.0.0.1:4567/cb?code=xyz&state=s&iss=http%3A%2F%2F127.0.0.1%3A3000",
       ),
     );
-  });
-
-  it("未验证邮箱 → 重发验证邮件", async () => {
-    mockConfig([]);
-    mocks.signInEmail.mockResolvedValueOnce({
-      data: null,
-      error: { status: 403, code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
-    });
-    mocks.$fetch.mockResolvedValueOnce({ data: { status: true }, error: null });
-    render(<Login search="" />);
-    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "lin@example.com" } });
-    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "hunter22" } });
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
-    await waitFor(() => screen.getByRole("button", { name: "重发验证邮件" }));
-    fireEvent.click(screen.getByRole("button", { name: "重发验证邮件" }));
-    await waitFor(() => expect(screen.getByText("验证邮件已重新发送，请查收。")).toBeTruthy());
-    expect(mocks.$fetch).toHaveBeenCalledWith("/send-verification-email", {
-      method: "POST",
-      body: { email: "lin@example.com", callbackURL: "/account" },
-    });
   });
 
   it("社交按钮只按 /web-config.json 出现，点击后整页跳 provider", async () => {

@@ -24,6 +24,12 @@ export const API_ERROR = {
   exportRateLimited: "export_rate_limited",
   transferOwnershipFirst: "transfer_ownership_first",
   notFound: "not_found",
+  /** POST /v1/me/security-code：当前密码不对 */
+  invalidPassword: "invalid_password",
+  /** 安全码不能和密码相同（两端都校验） */
+  securityCodeEqualsPassword: "security_code_equals_password",
+  /** 社交登录账号没有密码，不能改安全码 */
+  noPassword: "no_password",
 } as const;
 
 function parseBody(text: string): Record<string, unknown> | null {

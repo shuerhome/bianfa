@@ -2,7 +2,8 @@
 //   /healthz                 SELECT 1 经 PgBouncer ≤ 2 s → 200，否则 503（Redis 可选，不参与判定）
 //   /login /device /invite/* …  Web 面静态页（apps/web 产物；src/http/web-static.ts）+ GET /web-config.json
 //   /api/auth/*              Better Auth handler（B1）
-//   /v1/*                    仅 Bearer（cookie 显式拒绝）；匿名白名单：/v1/notice、/v1/telemetry、/v1/invites/:token/preview
+//   /v1/*                    仅 Bearer（cookie 显式拒绝）；匿名白名单：/v1/notice、/v1/telemetry、/v1/invites/:token/preview、
+//                            /v1/auth/reset-with-code（安全码重置密码）
 //     B2 路由：workspaces / notes / shares / pins / comments / attachments / notifications / claim / sync/token / me/export
 //     B1 路由：deps.auth.v1Routes（/me、/orgs/**、/invites/**、/me/devices/**、/me/delete）
 // 每个 JSON 响应带 server_time（Unix ms）与 X-Request-Id；错误统一 { error: <code> }（规格 04 §5.3）。
@@ -41,7 +42,7 @@ export type { AppDeps, RouteEnv } from "./routes/context.js";
 
 export const HEALTHZ_DB_TIMEOUT_MS = 2000;
 
-const ANON_V1 = /^\/v1\/(notice|telemetry|invites\/[^/]+\/preview)$/;
+const ANON_V1 = /^\/v1\/(notice|telemetry|invites\/[^/]+\/preview|auth\/reset-with-code)$/;
 export function isAnonymousV1Path(path: string): boolean {
   return ANON_V1.test(path);
 }

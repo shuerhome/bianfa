@@ -62,7 +62,7 @@ export function App() {
       page = <Signup search={location.search} />;
       break;
     case "forgot-password":
-      page = <ForgotPassword />;
+      page = <ForgotPassword search={location.search} />;
       break;
     case "reset-password":
       page = <ResetPassword search={location.search} />;

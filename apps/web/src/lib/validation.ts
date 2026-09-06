@@ -1,6 +1,8 @@
-// 表单校验（与服务端 Better Auth 配置一致：密码 8–128；邮箱小写归一化）
+// 表单校验（与服务端一致：密码 8–128；安全码 trim 后 4–32 且 ≠ 密码；邮箱小写归一化）
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 128;
+export const SECURITY_CODE_MIN = 4;
+export const SECURITY_CODE_MAX = 32;
 export const USER_CODE_LENGTH = 8;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,6 +19,23 @@ export function isValidEmail(raw: string): boolean {
 export function passwordProblem(pw: string): "short" | "long" | null {
   if (pw.length < PASSWORD_MIN) return "short";
   if (pw.length > PASSWORD_MAX) return "long";
+  return null;
+}
+
+/** 安全码：只去首尾空白（服务端 normalizeSecurityCode 同规则） */
+export function normalizeSecurityCode(raw: string): string {
+  return raw.trim();
+}
+
+export function securityCodeProblem(
+  raw: string,
+  password: string,
+): "required" | "short" | "long" | "same_as_password" | null {
+  const code = normalizeSecurityCode(raw);
+  if (!code) return "required";
+  if (code.length < SECURITY_CODE_MIN) return "short";
+  if (code.length > SECURITY_CODE_MAX) return "long";
+  if (code === password) return "same_as_password";
   return null;
 }
 

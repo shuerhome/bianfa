@@ -5,7 +5,7 @@
 #   ARG SERVICE=api|sync 决定 CMD；worker 复用 api 镜像并由 compose 覆盖 command: node dist/worker.js
 #   USER 10001:10001；镜像内有 wget；只写 /tmp；Node 24.20.0（A2）
 # =============================================================================
-FROM node:24.20.0-alpine3.22 AS base
+FROM node:24.20.0-alpine3.23 AS base
 RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 WORKDIR /repo
 
@@ -33,7 +33,7 @@ RUN pnpm --filter ./apps/web... run build \
  && cp -r apps/server/dist /out/dist \
  && cp -r apps/server/public /out/public
 
-FROM node:24.20.0-alpine3.22 AS runtime
+FROM node:24.20.0-alpine3.23 AS runtime
 ARG SERVICE=api
 ENV NODE_ENV=production TZ=UTC SERVICE=${SERVICE}
 # busybox 自带 wget（healthcheck 契约）；tini 由 compose init: true 提供
