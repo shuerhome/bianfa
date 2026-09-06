@@ -1,0 +1,93 @@
+# 桌面端「开发构建」：不签名、不签 updater、不上传 R2 —— 只产出可安装的 Windows NSIS 安装包（与可选的 macOS .dmg）
+# 作为 Actions 产物，供内部试用。正式发布仍走 desktop.yml（tag v*，minisign 签名 + R2 + 更新 Worker）。
+# 触发：Actions 页面手动 Run workflow（选分支）。约 15–25 分钟（首次含 vendored OpenSSL 编译；Rust 缓存后更快）。
+name: desktop-dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: "同时构建 macOS（universal，自签名省略，安装后需右键打开）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.20.0
+  TAURI_DIR: apps/desktop/src-tauri
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            tauri_args: ""
+            bundle_glob: "apps/desktop/src-tauri/target/release/bundle/nsis/*.exe"
+          - os: macos-latest
+            target: universal-apple-darwin
+            tauri_args: --target universal-apple-darwin
+            bundle_glob: "apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - name: macOS 未勾选则跳过本 job
+        if: ${{ matrix.os == 'macos-latest' && !inputs.macos }}
+        run: echo "macos=false，跳过"; echo "SKIP=1" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.SKIP != '1' }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: ${{ env.SKIP != '1' }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ env.SKIP != '1' }}
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      # rust-toolchain.toml 钉了 1.98.1 与三目标；rustup 进入 src-tauri 目录时按文件自动安装
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
+        if: ${{ env.SKIP != '1' }}
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: ${{ env.SKIP != '1' }}
+        with:
+          workspaces: ${{ env.TAURI_DIR }}
+          cache-on-failure: true
+      - name: 安装依赖（--ignore-scripts）
+        if: ${{ env.SKIP != '1' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: 构建前端与依赖包（turbo：shared → tokens → ui → desktop）
+        if: ${{ env.SKIP != '1' }}
+        run: pnpm turbo run build --filter=@bianfa/desktop
+      - name: tauri build（关闭 updater 产物：开发构建没有签名私钥）
+        if: ${{ env.SKIP != '1' }}
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          pnpm tauri build ${{ matrix.tauri_args }} --config '{"bundle":{"createUpdaterArtifacts":false},"build":{"beforeBuildCommand":""}}'
+      - name: 收集产物
+        if: ${{ env.SKIP != '1' }}
+        shell: bash
+        run: |
+          mkdir -p out
+          shopt -s nullglob
+          files=( ${{ matrix.bundle_glob }} )
+          [ ${#files[@]} -gt 0 ] || { echo "::error::没有找到安装包：${{ matrix.bundle_glob }}"; ls -R "$TAURI_DIR/target" | head -100; exit 1; }
+          cp "${files[@]}" out/
+          ls -la out
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ env.SKIP != '1' }}
+        with:
+          name: bianfa-desktop-dev-${{ matrix.target }}
+          path: out/*
+          retention-days: 14
+          if-no-files-found: error

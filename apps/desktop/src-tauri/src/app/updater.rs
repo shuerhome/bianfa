@@ -27,6 +27,22 @@ pub async fn check(app: &AppHandle, manual: bool) -> IpcResult<UpdateCheck> {
             notes: None,
         });
     }
+    // updater 公钥仍是占位符（尚未 `tauri signer generate`）→ 功能关闭，静默返回「无更新」，不打日志刷屏
+    let pubkey_placeholder = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|v| v.get("pubkey"))
+        .and_then(|v| v.as_str())
+        .is_none_or(|k| k.is_empty() || k.starts_with("REPLACE_"));
+    if pubkey_placeholder {
+        return Ok(UpdateCheck {
+            available: false,
+            version: None,
+            notes: None,
+        });
+    }
     let channel = state.settings().channel;
     let updater = app
         .updater_builder()

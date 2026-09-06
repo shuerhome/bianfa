@@ -39,15 +39,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./notify.sh
 source "$SCRIPT_DIR/notify.sh"
 
-usage() { echo "用法: $0 <TAG> [--services \"api sync-ws worker\"] [--no-prune] [--skip-migrate] [--env-from FILE]"; }
+usage() { echo "用法: $0 <TAG> [--services \"api sync-ws worker\"] [--build] [--no-prune] [--skip-migrate] [--env-from FILE]"; }
 
 TAG_NEW="${1:-}"; shift || true
-NO_PRUNE=0; ENV_FROM=""; SKIP_MIGRATE=0
+NO_PRUNE=0; ENV_FROM=""; SKIP_MIGRATE=0; DO_BUILD=0
 while (( $# )); do
   case "$1" in
     --services) SERVICES="$2"; shift 2 ;;
     --no-prune) NO_PRUNE=1; shift ;;
     --skip-migrate) SKIP_MIGRATE=1; shift ;;
+    --build) DO_BUILD=1; shift ;;
     --env-from) ENV_FROM="$2"; shift 2 ;;
     -h|--help)  usage; exit 0 ;;
     *) usage >&2; exit 64 ;;
@@ -114,9 +115,21 @@ for s in $SERVICES; do
   grep -qx "$s" <<<"$known_services" || { logline "compose 里没有服务 ${s}（已有：$(tr '\n' ' ' <<<"$known_services")）"; notify_fail "deploy ${TAG_NEW} 中止：compose 里没有服务 ${s} / aborted: service ${s} not in compose"; exit 2; }
 done
 
-# 1) 拉镜像：失败则什么都没改，直接退出
+# 1) 取镜像：默认从 ghcr 拉；--build 则在本机用仓库代码构建 bianfa-api / bianfa-sync（不需要 CI、ghcr 登录与任何 GitHub 密钥，
+#    共存模式的 32 GB 机器上约 5–10 分钟）。失败则什么都没改，直接退出。
+REGISTRY=$(grep -E '^IMAGE_REGISTRY=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '"'); REGISTRY="${REGISTRY:-ghcr.io/shuerhome}"
+if [[ "$DO_BUILD" == 1 ]]; then
+  for svc in api sync; do
+    logline "docker build bianfa-${svc}:${TAG_NEW}（SERVICE=${svc}）"
+    if ! docker build --pull -f "$BIANFA_REPO/apps/server/Dockerfile" --build-arg "SERVICE=${svc}" \
+         -t "${REGISTRY}/bianfa-${svc}:${TAG_NEW}" "$BIANFA_REPO" >>"$LOG" 2>&1; then
+      logline "镜像构建失败（bianfa-${svc}），未改动任何容器"
+      notify_fail "deploy ${TAG_NEW} 中止：本机镜像构建失败 bianfa-${svc}（见 deploy.log） / aborted: local image build failed (see deploy.log)" "$(tail -n 25 "$LOG")"
+      exit 2
+    fi
+  done
 # shellcheck disable=SC2086
-if ! compose pull --quiet $SERVICES >>"$LOG" 2>&1; then
+elif ! compose pull --quiet $SERVICES >>"$LOG" 2>&1; then
   logline "镜像拉取失败，未改动任何容器"
   notify_fail "deploy ${TAG_NEW} 中止：镜像拉取失败（ghcr 不可达或 tag 不存在） / aborted: image pull failed (ghcr unreachable or tag missing)" "$(tail -n 15 "$LOG")"
   exit 2

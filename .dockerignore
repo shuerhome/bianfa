@@ -1,0 +1,15 @@
+# 构建上下文 = 仓库根（apps/server/Dockerfile 由 CI 与 deploy.sh --build 以根目录为 context）。
+# 只排除与服务端镜像无关的大目录；apps/server/.dockerignore 对根 context 不生效，规则在这里维护。
+.git
+.claude
+.github
+docs
+infra
+apps/desktop
+**/node_modules
+**/dist
+**/dist-tsc
+**/target
+apps/server/public/web
+**/.env*
+!**/.env.test
