@@ -309,11 +309,9 @@ services:
       QUERY_WAIT_TIMEOUT: "30"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits
     configs:
+      # uid/gid/mode 在这台机器的 compose 上被忽略（WARN not supported），属主由渲染脚本在宿主机上设为 70:70 / 0400
       - source: pgbouncer_userlist
         target: /etc/pgbouncer-auth/userlist.txt
-        uid: "70"
-        gid: "70"
-        mode: 0440
     deploy:
       resources:
         limits:
