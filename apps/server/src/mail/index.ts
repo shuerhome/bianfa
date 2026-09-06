@@ -31,5 +31,9 @@ export function createMailProvider(opts: CreateMailProviderOptions): MailProvide
   if (apiKey && opts.env.NODE_ENV !== "test") {
     return createResendMailProvider({ apiKey, from, log: opts.log });
   }
-  return createConsoleMailProvider({ from, log: opts.log });
+  return createConsoleMailProvider({
+    from,
+    log: opts.log,
+    printLinks: opts.env.MAIL_CONSOLE_LINKS === "1",
+  });
 }
