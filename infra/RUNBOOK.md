@@ -372,7 +372,10 @@ docker run --rm -u postgres "${ENVS[@]}" \
   bianfa-pg pgbackrest --stanza=bianfa --log-level-console=info restore            # 最新；或加 --type=time --target='2026-09-05 02:00:00+00' --target-action=promote
 docker run -d --name drill -u postgres "${ENVS[@]}" \
   -v /tmp/drill/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro -v /tmp/drill/pgdata:/var/lib/postgresql/18/docker bianfa-pg \
-  postgres -c archive_mode=off -c restore_command='pgbackrest --stanza=bianfa archive-get %f "%p"'   # restore_command 要读同一份 conf 与 PGBACKREST_* 环境变量
+  postgres -c archive_mode=off -c restore_command='pgbackrest --stanza=bianfa archive-get %f "%p"' \
+    -c max_connections=120 -c max_worker_processes=8 -c shared_preload_libraries=pg_stat_statements,pg_bigm
+#   ↑ restore_command 要读同一份 conf 与 PGBACKREST_* 环境变量；后三项必须 ≥ prod 的 pg/postgresql.conf（它挂在容器外、不在备份里），
+#     否则回放第一段 WAL 就 FATAL "recovery aborted because of insufficient parameter settings"（首台机器演练实测：默认 100 < prod 120）
 until docker exec drill pg_isready -q; do sleep 2; done
 until [ "$(docker exec drill psql -X -tA -c 'select pg_is_in_recovery()')" = f ]; do sleep 5; done   # 回放完成
 docker exec drill pg_amcheck --all
