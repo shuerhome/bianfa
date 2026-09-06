@@ -362,8 +362,9 @@ services:
       # pgBackRest 敏感项一律走环境变量（规则 PGBACKREST_<OPTION>，大写、- 换 _；已核实 reference.xml），不写进 pgbackrest.conf。
       # archive_command 由 PG 进程执行，所以这些变量必须在 postgres 容器里；`compose exec postgres pgbackrest` 也继承。
       # 变量名与 .env.prod 同名直通（backup.sh / restore.sh / RUNBOOK 都按这三个名字找）。
-      # bianfa-backups 建在 EU 法域（r2.md §2）→ 端点必须带 .eu.（首台机器实测：默认端点对法域桶报 NoSuchBucket）
-      PGBACKREST_REPO1_S3_ENDPOINT: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}.eu.r2.cloudflarestorage.com
+      # 端点取决于桶怎么建的：控制台选「自动 / 位置提示」= 普通桶 → 默认端点；选「指定管辖区 EU」= 法域桶 → 必须走 .eu. 端点，
+      # 两种端点互不可见（首台机器实测各报一次 NoSuchBucket）。R2_BACKUPS_JURISDICTION 留空 = 普通桶；填 eu = 法域桶。
+      PGBACKREST_REPO1_S3_ENDPOINT: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID 未设置}${R2_BACKUPS_JURISDICTION:+.${R2_BACKUPS_JURISDICTION}}.r2.cloudflarestorage.com
       PGBACKREST_REPO1_S3_KEY: ${PGBACKREST_REPO1_S3_KEY:?PGBACKREST_REPO1_S3_KEY 未设置}
       PGBACKREST_REPO1_S3_KEY_SECRET: ${PGBACKREST_REPO1_S3_KEY_SECRET:?PGBACKREST_REPO1_S3_KEY_SECRET 未设置}
       PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?PGBACKREST_REPO1_CIPHER_PASS 未设置}
