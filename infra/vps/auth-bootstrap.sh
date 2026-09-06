@@ -7,4 +7,8 @@ BIANFA_REPO="${BIANFA_REPO:-$BIANFA_ROOT/app}"
 COMPOSE_DIR="${COMPOSE_DIR:-$BIANFA_REPO/infra/docker}"
 ENV_FILE="${ENV_FILE:-$BIANFA_ROOT/.env.prod}"
 compose() { docker compose --project-directory "$COMPOSE_DIR" --env-file "$ENV_FILE" "$@"; }
+# 用当前已部署的 tag（deploy.sh 成功后写 .tag.current），而不是 .env.prod 里可能过时的 TAG
+CUR="$(tr -d '[:space:]' < "$BIANFA_ROOT/.tag.current" 2>/dev/null || true)"
+[[ -n "$CUR" ]] && export TAG="$CUR"
+echo "使用镜像 tag：${TAG:-<.env.prod 中的 TAG>}"
 compose run --rm --no-deps -T api node dist/auth-bootstrap.js

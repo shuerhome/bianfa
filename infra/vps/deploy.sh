@@ -145,10 +145,10 @@ elif ! compose pull --quiet $SERVICES >>"$LOG" 2>&1; then
   exit 2
 fi
 
-# 1b) 数据库迁移（drizzle，幂等）：用刚拉下来的 api 镜像里的 dist/migrate.js，以超级用户直连 postgres（不经 PgBouncer）。
+# 1b) 数据库迁移（drizzle，幂等）。注意：SERVICES 是一行多词，判断用词匹配而不是 grep -x（首台机器实测 grep -x 永远不中，迁移被跳过）：用刚拉下来的 api 镜像里的 dist/migrate.js，以超级用户直连 postgres（不经 PgBouncer）。
 #     失败即中止——此时旧容器仍在跑，无需回滚。迁移与代码同一镜像 tag，回滚代码不回滚 schema（迁移只增不删，规格 01）。
 #     --skip-migrate 仅供演练/回滚旧 tag 时使用。
-if [[ "$SKIP_MIGRATE" != 1 ]] && grep -qx api <<<"$SERVICES"; then
+if [[ "$SKIP_MIGRATE" != 1 ]] && [[ " $SERVICES " == *" api "* ]]; then
   PGPW=$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '"')
   PGDB=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '"'); PGDB="${PGDB:-bianfa}"
   logline "migrate: node dist/migrate.js（超级用户直连 postgres:5432/${PGDB}）"
@@ -191,7 +191,7 @@ fi
 
 # 3) 二次确认：容器内直接打 /healthz。用 node -e fetch 而不是 wget —— 与 compose 的 healthcheck 同一条命令，
 #    不假设 node:24-alpine 镜像里有 wget（stack 审查指出两者不一致会误判回滚）。node 不存在（126/127）只记日志。
-if grep -qx api <<<"$SERVICES" && compose ps --services --status running 2>/dev/null | grep -qx api; then
+if [[ " $SERVICES " == *" api "* ]] && compose ps --services --status running 2>/dev/null | grep -qx api; then
   rc=0
   compose exec -T api node -e "fetch('http://127.0.0.1:3000/healthz',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1 || rc=$?
   case "$rc" in
