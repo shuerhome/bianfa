@@ -81,7 +81,13 @@ if [[ -n "$ENV_FROM" ]]; then
 fi
 
 [[ -r "$ENV_FILE" ]] || { echo "缺少 $ENV_FILE" >&2; exit 1; }
-if grep -q 'REPLACE_ME' "$ENV_FILE"; then echo "$ENV_FILE 仍含 REPLACE_ME 占位符，拒绝部署" >&2; exit 1; fi
+# 占位符检查：可选功能（监控 Grafana、Sentry、计费 Stripe、健康 Worker 的 CF_*、第三方登录、LLM）留着占位符只告警；
+# 其余任何 REPLACE_ME 都拒绝部署（它们会被拼进 DSN / 密钥）。
+OPTIONAL_KEY_RE='^(GRAFANA_CLOUD_|SENTRY_|STRIPE_|CF_ACCOUNT_ID|CF_TUNNEL_ID|CF_API_TOKEN|ANTHROPIC_|OPENAI_|AZURE_|GOOGLE_|APPLE_|GOOGLE_GENERATIVE|DESKTOP_DOWNLOAD_URL|ACME_EMAIL|VPS_HOSTNAME)'
+ph_keys=$( { grep -E '^[A-Z_]+=.*REPLACE_ME' "$ENV_FILE" || true; } | cut -d= -f1)
+bad_keys=$( { grep -vE "$OPTIONAL_KEY_RE" <<<"$ph_keys" || true; } | grep -v '^$' || true)
+if [[ -n "$bad_keys" ]]; then echo "$ENV_FILE 仍含 REPLACE_ME 占位符（必填项）：$(tr '\n' ' ' <<<"$bad_keys")，拒绝部署" >&2; exit 1; fi
+opt_keys=$( { grep -E "$OPTIONAL_KEY_RE" <<<"$ph_keys" || true; } | grep -v '^$' || true)
 ln -sfn "$ENV_FILE" "$COMPOSE_DIR/.env.prod"     # compose 的 env_file: [.env.prod] 相对 compose 目录解析；.gitignore 要忽略它
 
 compose() { docker compose --project-directory "$COMPOSE_DIR" --env-file "$ENV_FILE" "$@"; }
@@ -99,6 +105,7 @@ ACTOR="${SUDO_USER:-${USER:-root}}@${SSH_FROM}"
 START=$(date +%s)
 
 [[ "$TAG_PREV" == "$TAG_NEW" ]] && logline "TAG 未变化（$TAG_NEW），仍执行 up 以修复漂移"
+[[ -z "$opt_keys" ]] || logline "提示：以下可选项仍是占位符（对应功能未启用）：$(tr '\n' ' ' <<<"$opt_keys")"
 logline "deploy start: ${TAG_PREV:-<none>} -> ${TAG_NEW} by ${ACTOR} services=[${SERVICES}]"
 notify_info "deploy 开始：${TAG_PREV:-<none>} → ${TAG_NEW}（${SERVICES}）by ${ACTOR}"
 
