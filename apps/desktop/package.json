@@ -1,0 +1,14 @@
+{
+  "name": "@bianfa/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "typecheck": "echo skeleton",
+    "lint": "echo skeleton",
+    "test": "echo skeleton",
+    "build": "echo skeleton"
+  },
+  "devDependencies": { "@tauri-apps/cli": "2.11.4" }
+}

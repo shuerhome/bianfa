@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+# CI 用 --ignore-scripts 安装（backend.yml / desktop.yml）。esbuild 的 postinstall 只做自检，
+# 平台二进制来自 optionalDependencies，显式不允许它跑脚本，pnpm 就不再报 ERR_PNPM_IGNORED_BUILDS。
+allowBuilds:
+  esbuild: false
+# pnpm 11 供应链策略：刚发布的版本默认延迟安装；下面是显式放行的（自动维护，允许追加）
+minimumReleaseAgeExclude:
+  - '@better-auth/core@1.7.3'
+  - '@better-auth/drizzle-adapter@1.7.3'
+  - '@better-auth/kysely-adapter@1.7.3'
+  - '@better-auth/memory-adapter@1.7.3'
+  - '@better-auth/mongo-adapter@1.7.3'
+  - '@better-auth/prisma-adapter@1.7.3'
+  - '@better-auth/telemetry@1.7.3'
+  - better-auth@1.7.3
