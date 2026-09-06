@@ -1,6 +1,8 @@
 // 鉴权接缝（seam）：B1 代理实现 createAuth（Better Auth 1.7.3），B2 代理只依赖这里导出的类型与 requireBearer。
 // 约定：/v1/* 只认 Bearer（cookie 显式拒绝）；本文件的导出签名固定，实现可换。
-import type { Context, MiddlewareHandler } from "hono";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
+import type { Logger } from "pino";
+import type { Db } from "../db/client.js";
 
 /** 一次已认证请求的主体（不含任何 token） */
 export interface AuthContext {
@@ -22,6 +24,11 @@ export interface AuthRuntime {
   /** 挂到 `/api/auth/*`（Better Auth handler，含 oauth2/device/organization 端点） */
   handler: (request: Request) => Promise<Response>;
   verifyBearer: BearerVerifier;
+  /**
+   * 账号/组织/团队/邀请/设备相关的 `/v1` 子路由（B1 实现，内部已用 requireBearer 保护）：
+   * /me（用户部分）、/orgs/**、/invites/**、/me/devices/**、/me/delete。装配层 `app.route('/v1', v1Routes)`。
+   */
+  v1Routes: Hono<{ Variables: AuthVariables }>;
   /** 进程退出时释放（Redis 等） */
   close: () => Promise<void>;
 }
@@ -55,10 +62,15 @@ export async function createAuth(_deps: CreateAuthDeps): Promise<AuthRuntime> {
   return {
     handler: async () => Response.json({ error: "auth_not_configured" }, { status: 501 }),
     verifyBearer: async () => null,
+    v1Routes: new Hono<{ Variables: AuthVariables }>(),
     close: async () => {},
   };
 }
 
 export interface CreateAuthDeps {
   env: NodeJS.ProcessEnv;
+  db: Db;
+  /** 限流计数与 Better Auth secondaryStorage；缺省 = 进程内存（仅测试/单副本） */
+  redisUrl?: string;
+  log: Logger;
 }
