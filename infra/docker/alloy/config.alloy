@@ -19,7 +19,7 @@
 //   3 PgBouncer 等待连接 > 0 持续 1m → ⚠ Alloy 没有内建 pgbouncer exporter，见文末「已知缺口」
 //   4 pgBackRest 24h 无成功归档     → pg_stat_archiver_last_archive_age_seconds（pg-queries.yaml 自定义查询）
 //                                     + bianfa_backup_last_run_success（backup.sh 写的 textfile，见 unix exporter）
-//   5 WebSocket 活跃连接骤降 >50%   → 需 sync-ws 进程暴露 /metrics（契约：bianfa_ws_active_connections），下方 apps 抓取
+//   5 WebSocket 活跃连接骤降 >50%   → 需 sync-ws 进程暴露 /metrics（契约：bianfa_ws_connections，规格 03 裁定 C-5），下方 apps 抓取
 //   6 LLM 月度花费达预算 80%        → 需 api 进程暴露 /metrics（契约：bianfa_llm_cost_usd_total），下方 apps 抓取
 //   7 cloudflared 健康 connector <2 → cloudflared_tunnel_ha_connections（cloudflared :2000/metrics）
 // =============================================================================
