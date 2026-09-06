@@ -1,7 +1,8 @@
 <!--
   文件作用：bianfa 生产环境运维手册（给运维者 = 开发者自己）。事故当天照着敲，不需要再翻方案文档。
             架构一图 → 首次部署 30 天 → 日常发版 → 备份恢复 → 7 条告警 → 6 类故障 → 密钥清单 → 升级决策 → 演练日历。
-  来源章节：第 1 章 0.3 S3/S5、0.4 架构图；第 3 章 2.4（签名 / updater / 灰度）；第 9 章 8.4–8.13；第 10 章 9.3.5（kill switch）、
+  来源章节：第 1 章 0.3 S3/S5、0.4 架构图；第 3 章 2.4（签名 / updater / 灰度）+ docs/ADR-001（v1 不买代码签名，macOS 自签名）；
+            第 9 章 8.4–8.13；第 10 章 9.3.5（kill switch）、
             9.4.5（容器加固）；第 17 章 #28/#29/#30/#74；以及 infra/vps/*、infra/cloudflare/* 里已经写好的脚本与手册。
             与第 9/10 章正文冲突处，以第 1 章跨模块裁定为准（Tunnel 架构、pg-boss、Redis 纯 ephemeral、三把 R2 key）。
   本文每一条命令的参数都对照了脚本源码（deploy.sh / backup.sh / restore.sh / bootstrap.sh / break-glass.sh / notify.sh /
@@ -147,18 +148,20 @@ flowchart TB
 
 ## 2. 首次部署 30 天顺序（第 9 章 8.13 展开成命令）
 
-> 顺序按**前置期**排，不按兴趣排。D1 的两件事各有 1–20 个工作日的审核期，卡住就没有 Windows / macOS 发布。
+> 顺序按**前置期**排，不按兴趣排。D1 原来的两项签名身份申请（各有 1–20 个工作日审核期）按 **ADR-001** 改为**可选**：v1 不买，
+> 替代动作是 1 分钟生成一张 macOS 自签名证书。以后要买时再回来做那两行，流水线不用改。
 
 | 天 | 做什么 | 具体动作 | 完成判据 |
 |---|---|---|---|
-| **D1** | 提交 Windows 托管签名身份验证 | Azure 门户 → 创建 **Azure Artifact Signing** 账户（曾用名 Trusted Signing / Code Signing）→ Identity validation（个人 / 组织，**先定主体**）→ 建 Certificate profile（Public Trust）→ App registration 拿 `AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID`。存 GitHub Environment `release`。本地 `cargo install artifact-signing-cli` 验证工具可装 | 身份验证进入 In progress；到期日 + **60 天提前提醒**进日历（到期不续 = 证书停发 = 发版中断） |
-| **D1** | 注册 Apple Developer Program | developer.apple.com 注册（1–2 周审核）→ 拿到后建 `Developer ID Application` 证书（有效 5 年）→ App Store Connect → Users and Access → Integrations → **API Key**（不要 app-specific password）→ 记下 Key ID / Issuer ID / `.p8` | `.p12`（base64）+ 密码、`AuthKey.p8` 进 GitHub Environment `release`；证书到期日进日历 |
+| **D1** | **macOS 自签名证书**（ADR-001，必做，1 分钟） | 本机跑 `infra/ci/make-selfsign-cert.sh`（需 openssl）→ 终端打印三个 secret，填 GitHub Environment `release`：`MACOS_SELFSIGN_P12` / `MACOS_SELFSIGN_P12_PASSWORD` / `MACOS_SELFSIGN_IDENTITY` → `selfsign/key.pem` 与 `selfsign.p12` 存密码管理器 → `rm -rf selfsign/`。**为什么不能省**：Apple Silicon 必须签名，没身份时 Tauri 用 ad-hoc，ad-hoc 身份每次构建都变 → 用户每次自动更新后 Keychain 登录态与通知权限丢失 | 三个 secret 存在；密码管理器有 `.p12` 副本；证书到期日（默认 10 年）进日历。**这把私钥就是 app 身份**：丢了换一张 = 存量用户在那次更新后重新登录一次 |
+| **D1（可选，v1 不做）** | 提交 Windows 托管签名身份验证 | Azure 门户 → 创建 **Azure Artifact Signing** 账户（曾用名 Trusted Signing / Code Signing）→ Identity validation（个人 / 组织，**先定主体**）→ 建 Certificate profile（Public Trust）→ App registration 拿 `AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID`。存 GitHub Environment `release`。本地 `cargo install artifact-signing-cli` 验证工具可装 | 身份验证进入 In progress；到期日 + **60 天提前提醒**进日历（到期不续 = 证书停发 = 发版中断） |
+| **D1（可选，v1 不做）** | 注册 Apple Developer Program（ADR-001 §5 任一条件成立时再来） | developer.apple.com 注册（1–2 周审核）→ 拿到后建 `Developer ID Application` 证书（有效 5 年）→ App Store Connect → Users and Access → Integrations → **API Key**（不要 app-specific password）→ 记下 Key ID / Issuer ID / `.p8` | `.p12`（base64）+ 密码、`AuthKey.p8` 进 GitHub Environment `release`；证书到期日进日历 |
 | **D2** | 决定仓库公开 / 私有 | 公开仓 Actions 免费（macOS runner 10× 计费的唯一解法）。决定后写进 README | 决定已落字 |
 | **D3** | VPS 初始化（阶段 A，不锁防火墙） | Hostinger 开 KVM 2（Ubuntu 24.04）。**root 口令先存密码管理器**（浏览器 Terminal 逃生口要用）。`ssh root@<REPLACE_ME:vps-ip>` 后：<br/>`git clone <REPLACE_ME:repo-url> /tmp/bianfa && OPS_SSH_PUBKEY='<REPLACE_ME:ops-user-ed25519-public-key>' bash /tmp/bianfa/infra/vps/bootstrap.sh --prepare`<br/>`su - ops -c 'git clone <REPLACE_ME:repo-url> /srv/bianfa/app'`（`/srv/bianfa` 属主 ops，bootstrap 建好的）<br/>手工填 `/srv/bianfa/.env.prod`（bootstrap 已放模板；至少 `CF_TUNNEL_TOKEN` / `BIANFA_DOMAIN` / `ACME_EMAIL` / `TG_BOT_TOKEN` / `TG_CHAT_ID`） | `/var/lib/bianfa/prepared` 存在；`sudo docker compose version` 正常；`sudo /srv/bianfa/app/infra/vps/notify.sh ok "vps up"` 在 Telegram 收到 |
 | **D3** | 建两条 Tunnel | 业务：按 `infra/vps/tunnel-setup.md` §1–2：Zero Trust → Networking → Tunnels → `bianfa-prod`（token 进 `.env.prod` 的 `CF_TUNNEL_TOKEN`）；`dc up -d cloudflared`；Public hostname `api → http://caddy:80`、`ws → http://caddy:80`。<br/>SSH：按 `infra/cloudflare/access-ssh.md` §1：`bianfa-ssh` 宿主机 `sudo cloudflared service install <REPLACE_ME:tunnel-token-ssh>`，Public hostname `ssh → ssh://localhost:22` | 控制台两条 Tunnel 均 Healthy；`bianfa-prod` 有 **2 个 connector**（Overview 里两个 connector ID、同一 Origin IP） |
 | **D4** | Access 保护 SSH | `access-ssh.md` §2：Self-hosted 应用 `bianfa-ssh`（域 `ssh.<REPLACE_ME:domain>`），Policy `admin`（Allow，Emails = `<REPLACE_ME:admin-email>` 精确匹配）+ Policy `ci-deploy`（**Service Auth**，Service Token = `bianfa-ci-deploy`）；§5 建 service token → GitHub Environment `prod` 的 `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`。笔记本 `cloudflared access ssh-config --hostname ssh.<REPLACE_ME:domain>` 输出写进 `~/.ssh/config`（Host 别名 `bianfa-prod`，User ops） | **从笔记本** `ssh bianfa-prod` 成功（不是 IP 直连）；Zero Trust → Logs → Access 里看到这次登录 |
 | **D4** | 锁防火墙 | 上一步成功后：`sudo /srv/bianfa/app/infra/vps/bootstrap.sh --lockdown`（要输入确认短语 `I HAVE TESTED CLOUDFLARED SSH`）。hPanel → VPS → Firewall 再加一条「拒绝全部入站」（出站不要限：7844 udp/tcp、443、R2、Telegram 都是出站） | `nc -vz -w 5 <REPLACE_ME:vps-ip> 22` 从外网超时；`sudo ufw status` 只有 `172.20.0.0/14 → 22/tcp` 一条 allow；`/var/lib/bianfa/locked_down` 存在；**再登录一次**确认没把自己锁外面 |
-| **D5** | break-glass 演练 | Cloudflare → SSL/TLS → 模式 **Full (strict)**（提前设好，后面橙云回切要它）。<br/>季度型：`sudo /srv/bianfa/app/infra/vps/break-glass.sh --drill` → `sudo /srv/bianfa/app/infra/vps/break-glass.sh --revert --drill`（不改 DNS、Caddy 自签、~2 分钟）。<br/>完整型：`sudo /srv/bianfa/app/infra/vps/break-glass.sh --staging`（LE staging，不消耗正式限速）→ 按屏幕提示把 `api` 的 CNAME 改成 **A `<REPLACE_ME:vps-ip>`，DNS only（灰云）** → 轮询通过 → `--revert` → DNS 改回 CNAME | 两次都 healthz 200；**从执行到 200 的秒数记在 §10 的演练表里**；`git -C /srv/bianfa/app status` 干净；`sudo ufw status | grep 443` 为空 |
+| **D5** | break-glass 演练 | Cloudflare → SSL/TLS → 模式 **Full (strict)**（提前设好，后面橙云回切要它）。<br/>季度型：`sudo /srv/bianfa/app/infra/vps/break-glass.sh --drill` → `sudo /srv/bianfa/app/infra/vps/break-glass.sh --revert --drill`（不改 DNS、Caddy 自签、~2 分钟）。<br/>完整型：`sudo /srv/bianfa/app/infra/vps/break-glass.sh --staging`（LE staging，不消耗正式限速）→ 按屏幕提示把 `api` 的 CNAME 改成 **A `<REPLACE_ME:vps-ip>`，DNS only（灰云）** → 轮询通过 → `--revert` → DNS 改回 CNAME | 两次都 healthz 200；**从执行到 200 的秒数记在 §10 的演练表里**；`git -C /srv/bianfa/app status` 干净；`sudo ufw status \| grep 443` 为空 |
 | **D6–7** | 自建 pg 镜像 + 起基础设施 | `dc build postgres`（基于 `pgvector/pgvector:0.8.6-pg18-trixie` + pg_bigm + PGDG 的 pgbackrest，约 5–10 分钟）。`dc up -d postgres pgbouncer redis caddy`。验证：<br/>`dc exec -T -u postgres postgres psql -X -c "show shared_preload_libraries"` → 含 `pg_stat_statements,pg_bigm`<br/>`dc exec -T -u postgres postgres psql -X -c "show io_method"` → `worker`<br/>`dc exec -T -u postgres postgres psql -X -c "create extension if not exists vector; create extension if not exists pg_bigm; create extension if not exists pg_stat_statements;"`<br/>`dc exec -T redis redis-cli config get maxmemory-policy` → `allkeys-lru`；`dc exec -T redis redis-cli config get appendonly` → `no` | 4 个基础容器 healthy；`dc exec -T postgres pgbackrest version` 打印 **2.59.x**（PGDG apt 当前发布版；2.60.0 尚未发布，见附录 A） |
 | **D8** | 起应用栈（空壳镜像也行） | CI 先出一版 `ghcr.io/<REPLACE_ME:ghcr-org>/bianfa-api:v0.0.1` 与 `bianfa-sync:v0.0.1`（只需 `/healthz`）。`sudo /srv/bianfa/app/infra/vps/deploy.sh v0.0.1` | `curl -fsS https://api.<REPLACE_ME:domain>/healthz` → 200；Telegram 收到「deploy 完成」 |
 | **D9** | pgBackRest 建仓 + 第一份全量 | 按 `infra/cloudflare/r2.md` §2/§4：`npx wrangler r2 bucket create bianfa-backups --jurisdiction eu`；建 Account API token `bianfa-backups-rw`（Object Read & Write，只限该桶）；生成 32 字节口令 `openssl rand -hex 32` → **先写进密码管理器 + 一份离线介质**，再填 `.env.prod` 的 `PGBACKREST_REPO1_CIPHER_PASS / PGBACKREST_REPO1_S3_KEY / PGBACKREST_REPO1_S3_KEY_SECRET`（backup.sh 从这三个键校验，且要求 postgres 容器 env 里也有——compose 的 postgres 服务需 `env_file: [.env.prod]`）；`dc up -d postgres`（重载 env）。<br/>`dc exec -T -u postgres postgres pgbackrest --stanza=bianfa --log-level-console=info stanza-create`<br/>`sudo /srv/bianfa/app/infra/vps/backup.sh check`<br/>`sudo /srv/bianfa/app/infra/vps/backup.sh full` | `backup.sh info` 显示 1 个 full；`dc exec -T -u postgres postgres psql -X -c "select last_archived_wal from pg_stat_archiver"` 非空。<br/>注：第 9 章 8.7「口令不存 VPS」在 archive_command 由 PG 进程执行的前提下做不到（`.env.prod` 里必须有一份）；能做到的是**权威副本在 VPS 之外**，VPS 丢了不等于备份不可解密 |
@@ -168,8 +171,8 @@ flowchart TB
 | **D13** | R2 发布桶 + 更新 Worker | `r2.md` §2/§3：建 `bianfa-releases`（`--location weur`）、`bianfa-attachments`（`--jurisdiction eu`）、自定义域 `cdn.`、CORS、lifecycle；三把 token 各限一桶。`cd infra/cloudflare/update-worker && npx wrangler kv namespace create ROLLOUT`（id 填 wrangler.toml）→ `npx wrangler kv key put --namespace-id <REPLACE_ME:kv-namespace-id> --remote KILL_SWITCH 0` → `npx wrangler kv key put --namespace-id <REPLACE_ME:kv-namespace-id> --remote ROLLOUT_PERCENT 0` → `npx wrangler deploy` | `curl -i https://update.<REPLACE_ME:domain>/healthz` → `ok`；`curl -i https://update.<REPLACE_ME:domain>/windows/x86_64/0.0.1` → 204 且响应头 `x-bianfa-update: no-manifest` |
 | **D14** | CI 部署链路打通 | `.github/workflows/backend.yml`（触发：`push` 到 `main`，镜像 tag = `sha-<40hex>`；**不用 `pull_request_target`**；所有 `uses:` pin 到 commit SHA；Environment `prod`）：build → push ghcr → `ssh bianfa-prod current`（记回滚目标）→ `ssh bianfa-prod deploy sha-…` → 经 Cloudflare 冒烟 `/healthz`，失败回滚上一 tag。**日常部署不重推 `.env.prod`**；首次与密钥变更时人工执行 `ssh bianfa-prod deploy-with-env <tag> < rendered.env.prod`（forced command 下 scp 走不通，也不需要）。CI 身份按 `access-ssh.md` §5：VPS 建 `deploy` 用户（bootstrap.sh 完成），公钥带 forced command → `infra/vps/deploy-entry.sh`（只认 `current` / `deploy <tag>` / `deploy-with-env <tag>`），私钥进 Environment `prod` 的 `VPS_DEPLOY_SSH_KEY`；主机指纹放 repository variable `VPS_SSH_HOST_KEY`（VPS 上 `cat /etc/ssh/ssh_host_ed25519_key.pub`），换机 / restore.sh 后要更新 | 合并一次 main 走完整流水线，Telegram 收到 deploy 消息 |
 | **D15–24** | 业务代码 | 上面全是一次性成本，之后不再占时间 | — |
-| **D25** | **updater 密钥与 kill-switch 密钥**（发第一版前必做） | `pnpm tauri signer generate -w ~/.tauri/bianfa.key`（会要口令）。私钥 + 口令 → GitHub Environment `release`（required reviewers）`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；**两处离线介质**（U 盘 / 纸质 QR）+ 密码管理器；`rm ~/.tauri/bianfa.key`。公钥进 `tauri.conf.json > plugins.updater.pubkey`。<br/>再生成 **第二对** Ed25519（kill switch，`/v1/notice` 验签，第 10 章 9.3.5）：私钥只留离线介质 + 密码管理器，**永不进 CI**；公钥编译进客户端 | 第 17 章 #74 的「巴士因子文档」写完：两对密钥 + 签名身份 + Apple 账号 + 域名 + R2 + DNS 的恢复路径，一个信任的人能取到 |
-| **D26** | 发版 CI 全流程计时 | 用 `v0.1.0-rc.1` 跑一次完整 release（签名 + 公证 + 上传 R2 + latest.json），**记录总耗时**——这就是 hotfix 前滚的最短时间（第 17 章 #30 要求 ≤ 30 分钟） | 耗时写进 §10 |
+| **D25** | **updater 密钥与 kill-switch 密钥**（发第一版前必做） | `pnpm tauri signer generate -w ~/.tauri/bianfa.key`（会要口令）。私钥 + 口令 → GitHub Environment `release`（required reviewers）`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；**两处离线介质**（U 盘 / 纸质 QR）+ 密码管理器；`rm ~/.tauri/bianfa.key`。公钥进 `tauri.conf.json > plugins.updater.pubkey`。<br/>再生成 **第二对** Ed25519（kill switch，`/v1/notice` 验签，第 10 章 9.3.5）：私钥只留离线介质 + 密码管理器，**永不进 CI**；公钥编译进客户端 | 第 17 章 #74 的「巴士因子文档」写完：两对密钥 + macOS 自签名证书 +（若已购买）签名身份 / Apple 账号 + 域名 + R2 + DNS 的恢复路径，一个信任的人能取到 |
+| **D26** | 发版 CI 全流程计时 | 用 `v0.1.0-rc.1` 跑一次完整 release（构建 + 自签名 + updater 签名 + 上传 R2 + latest.json），**记录总耗时**——这就是 hotfix 前滚的最短时间（第 17 章 #30 要求 ≤ 30 分钟） | 耗时写进 §10 |
 | **D27–29** | 灰度发第一版 | §4.2 的顺序，ROLLOUT_PERCENT 5 → 25 → 100 | 至少一台真机走 updater 完成升级 |
 | **D30** | 复核 | 走一遍 §0.1 三条不变量、`r2.md` §8、`dns-and-waf.md` §6、`access-ssh.md` §6 的核对清单 | 全部打勾 |
 
@@ -248,8 +251,10 @@ dc exec -T -u postgres postgres psql -X -c "select state, count(*) from pg_stat_
 git tag v1.4.2 && git push origin v1.4.2
 # → .github/workflows/desktop.yml（environment: release，required reviewers；触发仅 tag push；uses: 全部 pin SHA）：
 #    matrix windows-latest（x86_64；aarch64 待第 17 章 #56）/ macos-latest（universal）
-#    Windows：artifact-signing-cli 签 exe（signCommand 必含 %1，漏了会静默不签）
-#    macOS：APPLE_SIGNING_IDENTITY + APPLE_API_KEY/ISSUER/KEY_PATH → 签名 + notarytool 公证 + stapler
+#    签名模式（ADR-001：有则签、无则退；workflow 第一步 `判定签名模式` 会在日志里打印）：
+#      Windows：只有 AZURE_CLIENT_ID/SECRET/TENANT_ID 三个都在才用 artifact-signing-cli 签 exe（signCommand 必含 %1）；**v1 不签**
+#      macOS：APPLE_CERTIFICATE（Developer ID）优先，否则 MACOS_SELFSIGN_P12（自签名）；两者都没有 → 直接失败（禁 ad-hoc）
+#             只有 APPLE_API_KEY/ISSUER/KEY_P8 齐了才 notarytool 公证 + stapler；**v1 自签名、不公证**
 #    updater：TAURI_SIGNING_PRIVATE_KEY(+_PASSWORD) 生成 .sig，写进 latest.json
 #    断言：产物中不得出现字符串 "untrusted comment: minisign"（私钥泄进前端产物的信号，第 10 章 9.3.5）
 
@@ -581,9 +586,10 @@ for c in $(dc ps -q cloudflared); do ip=$(sudo docker inspect -f '{{range .Netwo
 
 | 过期的东西 | 症状 | 处置 |
 |---|---|---|
-| Azure Artifact Signing **身份验证**（可提前 60 天续，审核 1–20 个工作日） | release 工作流 Windows 签名步骤失败，证书停发（证书本身每日轮换、72 小时有效，自动） | 立即在 Azure 门户 → Artifact Signing → Identity validation → Renew；期间 Windows 不能发新版，macOS 不受影响。**日历提醒 60 天前** |
-| Apple Developer Program 会员（年费） | 公证失败；已发出的版本继续可用 | 续费；API Key 不变 |
-| Apple `Developer ID Application` 证书（5 年） | 签名失败；已签发的 app 继续有效 | Certificates → 新建 → 导出 `.p12` → 更新 GitHub secret |
+| **macOS 自签名证书**（`make-selfsign-cert.sh` 默认 3650 天） | release 工作流 macOS 签名步骤失败（codesign 拒用过期证书）；已发出的版本继续可用 | 重跑 `make-selfsign-cert.sh` → 换三个 `MACOS_SELFSIGN_*` secret。**身份会变**：那一次更新后用户重新登录一次、通知权限重问一次；发版说明里提前写 |
+| （仅在启用 Windows 签名时）Azure Artifact Signing **身份验证**（可提前 60 天续，审核 1–20 个工作日） | release 工作流 Windows 签名步骤失败，证书停发（证书本身每日轮换、72 小时有效，自动） | 立即在 Azure 门户 → Artifact Signing → Identity validation → Renew；期间 Windows 不能发新版，macOS 不受影响。**日历提醒 60 天前** |
+| （仅在启用 Developer ID 时）Apple Developer Program 会员（年费） | 公证失败；已发出的版本继续可用 | 续费；API Key 不变 |
+| （仅在启用 Developer ID 时）Apple `Developer ID Application` 证书（5 年） | 签名失败；已签发的 app 继续有效 | Certificates → 新建 → 导出 `.p12` → 更新 GitHub secret |
 | Apple Sign-in 的 client secret JWT（最长 6 个月，第 6 章） | **用户 Apple 登录失败**（这是唯一影响线上的一条） | 轮换 pg-boss 任务应自动生成；失败时手工用 `.p8` 签新 JWT 写入 Better Auth 配置并 `deploy.sh` 当前 tag |
 | Cloudflare Access service token `bianfa-ci-deploy`（1 年） | CI 部署 `bad handshake` | Zero Trust → Service tokens → Refresh（延 1 年）；泄露则 Rotate secret |
 | break-glass ACME 模式的 Let's Encrypt（90 天） | 只在长期处于 break-glass 时才相关；Caddy 自动续（灰云期间才能续） | 尽快 `--revert` 回 Tunnel |
@@ -591,7 +597,7 @@ for c in $(dc ps -q cloudflared); do ip=$(sudo docker inspect -f '{{range .Netwo
 
 ```sh
 # 快速核对到期日（本地）
-openssl pkcs12 -in DeveloperID.p12 -nokeys -passin pass:"$P12_PASSWORD" | openssl x509 -noout -enddate
+openssl pkcs12 -in selfsign.p12 -nokeys -passin pass:"$P12_PASSWORD" | openssl x509 -noout -enddate   # Developer ID 的 .p12 同理
 ```
 
 ### 7.5 updater 私钥泄露 → kill switch（第 10 章 9.3.5 泄漏预案，上线前必须演练一次）
@@ -638,8 +644,8 @@ openssl pkcs12 -in DeveloperID.p12 -nokeys -passin pass:"$P12_PASSWORD" | openss
 |---|---|---|---|---|---|
 | 1 | **updater minisign 私钥 + 口令** | GitHub Environment `release`（required reviewers）· 两处离线介质 · 密码管理器 | 你；信任的第二人可取离线件 | 不主动轮换；泄露走 §7.5 | **存量用户永远无法自动更新**，只能手动重装。全项目唯一不可逆项 |
 | 2 | **kill-switch 第二 Ed25519 私钥** | 仅离线介质 + 密码管理器；**永不进 CI / VPS** | 同上 | 不轮换 | 泄露后无法向旧版本推公告；只能靠官网 |
-| 3 | Azure Artifact Signing：`AZURE_CLIENT_ID/SECRET/TENANT_ID` | GitHub Environment `release` | CI | client secret 按 Azure App registration 到期（建议 1 年）；身份验证到期前 60 天续 | Windows 不能发版 |
-| 4 | Apple：`.p12` + 密码、App Store Connect API `.p8` + Key ID + Issuer | GitHub Environment `release`；`.p8` 只能下载一次，密码管理器留副本 | CI | 证书 5 年；API Key 无期限（泄露即吊销重建） | macOS 不能签名 / 公证 |
+| 3 | **macOS 自签名证书** `.p12` + 密码（`MACOS_SELFSIGN_P12/_P12_PASSWORD/_IDENTITY`，ADR-001） | GitHub Environment `release` + 密码管理器（`key.pem` 与 `.p12`） | CI | 不主动轮换（默认 10 年）；泄露 → 重生成换 secret，用户那次更新后重登录一次 | 换证书 = 身份变 = 存量用户重新登录一次；不丢数据 |
+| 4 | （可选，v1 未启用）Azure Artifact Signing `AZURE_CLIENT_ID/SECRET/TENANT_ID`；Apple Developer ID `.p12` + 密码、App Store Connect API `.p8` + Key ID + Issuer | GitHub Environment `release`；`.p8` 只能下载一次，密码管理器留副本 | CI | Azure client secret 建议 1 年、身份验证到期前 60 天续；Apple 证书 5 年、API Key 无期限 | 有则回退到不签 / 自签名（workflow 自动），并非不能发版 |
 | 5 | Apple Sign-in `.p8`（生成 client secret JWT 用） | `.env.prod`（api 需要签 JWT）+ 密码管理器 | api 进程 | JWT ≤ 6 个月，pg-boss 任务自动轮换 | 用户 Apple 登录失败 |
 | 6 | R2 `bianfa-releases-ci`（`R2_RELEASES_ACCESS_KEY_ID/_SECRET_ACCESS_KEY`） | GitHub Environment `release` | CI | 180 天 | 不能发桌面端；吊销即可 |
 | 7 | R2 `bianfa-backups-rw`（`PGBACKREST_REPO1_S3_KEY/_S3_KEY_SECRET`） | `.env.prod` → postgres 容器 | pgBackRest | 事故后立即，否则每年；同时换口令需 §5.5 | 备份中断（告警 4） |
@@ -706,7 +712,7 @@ sudo -u ops git -C /srv/bianfa/app pull --ff-only && dc up -d postgres && dc res
 | 每半年 | kill switch 全流程（beta 渠道） | `KILL_SWITCH 1` → 一台测试机确认 204 → notice 验签 → `KILL_SWITCH 0` | 到 204 的秒数（≤ 60） |
 | 每年 | 完整 DR：新机 restore.sh | §5.4 场景 A（用临时机，完成后销毁） | RTO 实测 |
 | 每次发版 | hotfix 前滚耗时 | release 工作流总时长 | 是否 ≤ 30 分钟 |
-| 每次 macOS 大版本后 | 签名与公证仍有效 | `codesign --verify --deep --strict` + `spctl -a -vvv` + `stapler validate` | — |
+| 每次 macOS 大版本后 | 自签名 app 仍能按用户手册 §2.2 的步骤打开（Gatekeeper 文案 / 入口是否变了） | 干净的测试机：浏览器下载 .dmg → 双击 → 走一遍「系统设置 → 隐私与安全性 → 仍要打开」；`codesign --verify --deep --strict` 仍通过。（自签名下 `spctl -a` 预期 rejected、无 stapler；买了 Developer ID 后再加 `spctl -a -vvv` + `stapler validate`） | 手册 §2.2 是否需要改 |
 
 实测记录（往下追加）：
 

@@ -42,17 +42,19 @@ infra/
 │  ├─ restore-checks.sql     业务校验，restore.sh 与 restore-drill.yml 共用；**表名待 apps/api schema 定稿后核对**
 │  ├─ break-glass.sh         Tunnel 全挂时 5 分钟内直连恢复（--drill 演练 / --staging / --revert）；**平时必须演练过**
 │  └─ notify.sh              Telegram 通知函数（其余脚本 source）
-└─ cloudflare/
-   ├─ dns-and-waf.md         DNS 记录表、WAF 规则、100 秒源站超时对 SSE 的含义
-   ├─ r2.md                  三个桶 + token 最小权限矩阵 + CORS + 法域
-   ├─ attachments-cors.json  R2 API 形状（S3 形状会被 wrangler 拒绝）
-   ├─ access-ssh.md          Access 保护 SSH：应用 / 策略 / 短时证书 / CI service token
-   ├─ update-worker/         latest.json 路由 + 按 installId 灰度 + KV KILL_SWITCH
-   └─ healthcheck-worker/    每分钟打 /healthz，连续 2 次失败推 Telegram
+├─ cloudflare/
+│  ├─ dns-and-waf.md         DNS 记录表、WAF 规则、100 秒源站超时对 SSE 的含义
+│  ├─ r2.md                  三个桶 + token 最小权限矩阵 + CORS + 法域
+│  ├─ attachments-cors.json  R2 API 形状（S3 形状会被 wrangler 拒绝）
+│  ├─ access-ssh.md          Access 保护 SSH：应用 / 策略 / 短时证书 / CI service token
+│  ├─ update-worker/         latest.json 路由 + 按 installId 灰度 + KV KILL_SWITCH
+│  └─ healthcheck-worker/    每分钟打 /healthz，连续 2 次失败推 Telegram
+└─ ci/
+   └─ make-selfsign-cert.sh 一次性生成 macOS 自签名代码签名证书（ADR-001），输出三个 MACOS_SELFSIGN_* secret
 
 .github/workflows/
 ├─ backend.yml       PR：lint/typecheck/单测/集成测试（ephemeral PG+Redis，代替 staging）；main：build → ghcr → ssh deploy → 冒烟 → 失败回滚
-├─ desktop.yml       tag v*：Windows（Azure Artifact Signing）/ macOS（Developer ID + 公证）→ minisign → R2 → latest.json；含「产物不含私钥」断言
+├─ desktop.yml       tag v*：构建 → 代码签名**可选**（ADR-001：Windows 有 AZURE_* 才签；macOS Developer ID 优先、否则自签名、禁 ad-hoc；有 API Key 才公证）→ minisign → R2 → latest.json；含「产物不含私钥」「非 ad-hoc」断言
 ├─ restore-drill.yml 每月 1 号：runner 上从 R2 恢复 → pg_amcheck → 业务 SQL → Telegram（没演练过的备份等于没有备份）
 └─ security.yml      gitleaks 全历史 / cargo deny / npm audit / Trivy
 ```
@@ -61,7 +63,7 @@ infra/
 
 ## 2. 首次部署怎么走
 
-按 `RUNBOOK.md` §2 的 D1–D14 顺序，**不要按兴趣排**：D1 提交代码签名身份（前置期最长）→ D3–5 建 Tunnel + `bootstrap.sh --prepare` + 验证 Access SSH + **演练一次 break-glass** → `--lockdown` → D6–8 自建 pg 镜像起栈 → D9–10 配 pgBackRest 并**立刻做一次 restore 演练** → D11–12 Alloy + 7 条告警 → D13+ 业务代码。
+按 `RUNBOOK.md` §2 的 D1–D14 顺序，**不要按兴趣排**：D1 生成 macOS 自签名证书（ADR-001；Azure / Apple 签名身份申请改为可选）→ D3–5 建 Tunnel + `bootstrap.sh --prepare` + 验证 Access SSH + **演练一次 break-glass** → `--lockdown` → D6–8 自建 pg 镜像起栈 → D9–10 配 pgBackRest 并**立刻做一次 restore 演练** → D11–12 Alloy + 7 条告警 → D13+ 业务代码。
 
 日常：合并 `main` → `backend.yml` 自动部署（镜像 tag `sha-<40hex>`，**不重推 `.env.prod`**）；打 `v*` tag → `desktop.yml` 发桌面端。密钥变更走人工 `ssh bianfa-prod deploy-with-env <tag> < rendered.env.prod`。
 
@@ -113,7 +115,6 @@ infra/
 | `<REPLACE_ME:ops-email-for-lets-encrypt>` | infra/vps/bootstrap.sh |
 | `<REPLACE_ME:pages-project>` | infra/cloudflare/dns-and-waf.md |
 | `<REPLACE_ME:postgres-superuser-password>` | infra/vps/bootstrap.sh |
-| `<REPLACE_ME:publisher-name>` | docs/用户手册-安装与使用.md |
 | `<REPLACE_ME:r2-bianfa-backups-rw-access-key-id>` | infra/vps/bootstrap.sh |
 | `<REPLACE_ME:r2-bianfa-backups-rw-secret-access-key>` | infra/vps/bootstrap.sh |
 | `<REPLACE_ME:repo-url>` | infra/RUNBOOK.md |

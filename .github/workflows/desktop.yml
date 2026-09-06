@@ -1,11 +1,21 @@
 # =============================================================================
-# .github/workflows/desktop.yml —— 桌面端（Tauri 2.11.5）签名、公证、updater 签名、发布到 R2
+# .github/workflows/desktop.yml —— 桌面端（Tauri 2.11.5）构建、（可选）签名与公证、updater 签名、发布到 R2
+#
+# ⚠ 签名策略见 docs/ADR-001-代码签名策略.md（2026-09-06 采纳）：v1 不买 Windows / Apple 签名身份。
+#   本 workflow 是「有则签、无则退」：
+#     Windows  有 AZURE_* → Authenticode；没有 → 不签（用户手册 §2.1 写明 SmartScreen 两道怎么点过去）
+#     macOS    有 APPLE_CERTIFICATE → Developer ID；否则用 MACOS_SELFSIGN_P12（自签名，身份跨构建稳定）；
+#              两者都没有 → 直接失败（Tauri 会退到 ad-hoc，ad-hoc 身份每次构建都变 → 用户每次更新后被登出，ADR §4 禁止）
+#              公证只在有 APPLE_API_KEY 时做
+#     updater  minisign 签名永远必需（与代码签名无关）
 #
 # 来源章节
-#   - 第 3 章 2.4.1（Windows：Azure Artifact Signing，signCommand 必须含 %1 否则静默不签名；工具 artifact-signing-cli，
+#   - docs/ADR-001-代码签名策略.md（两平台签名均可选；macOS 自签名兜底；本文件的签名模式判定步骤）
+#   - 第 3 章 2.4.1（Windows：以后买了 Azure Artifact Signing 时，signCommand 必须含 %1 否则静默不签名；工具 artifact-signing-cli，
 #     已核实 tauri-docs distribute/Sign/windows.mdx 与 crates.io：0.11.0，trusted-signing-cli 已标 DEPRECATED）
 #   - 第 3 章 2.4.2（macOS：Developer ID .p12 + App Store Connect API Key，不用 app-specific password；
-#     tauri-macos-sign 的 Keychain::with_certificate 建临时 keychain 并在 Drop 时 delete-keychain，已核实源码）
+#     tauri-macos-sign 的 Keychain::with_certificate 建临时 keychain 并在 Drop 时 delete-keychain，已核实源码——
+#     同一条路径对自签名 .p12 同样成立：APPLE_CERTIFICATE 只是「一个 base64 的 .p12」，Tauri 不检查签发者）
 #   - 第 3 章 2.4.3（tauri-plugin-updater 2.11.0 / minisign；私钥丢失不可恢复；latest.json 由 R2 + Worker 提供并做灰度）
 #   - 第 3 章 2.4.4（Windows 主发 NSIS .exe per-user；macOS 发 .dmg + universal .app.tar.gz）
 #   - 第 9 章 8.9（matrix windows-latest / macos-latest；aws s3 cp --endpoint-url 到 releases/{channel}/{version}/）
@@ -24,11 +34,17 @@
 #     TAURI_SIGNING_PRIVATE_KEY           updater 私钥：`tauri signer generate` 输出文件的内容（已核实 tauri-cli 源码：文件是 base64 编码的
 #                                         minisign SecretKeyBox；给内容或路径都可）。全项目唯一不可恢复的单点
 #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD  可为空字符串
-#     AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID   Azure Artifact Signing 的 App Registration（artifact-signing-cli 读取）
-#     APPLE_CERTIFICATE                   Developer ID Application 证书 .p12 的 base64
+#     —— macOS 必填其一（ADR-001）——
+#     MACOS_SELFSIGN_P12                  自签名证书 .p12 的 base64（infra/ci/make-selfsign-cert.sh 生成）
+#     MACOS_SELFSIGN_P12_PASSWORD         其密码
+#     MACOS_SELFSIGN_IDENTITY             证书 CN（脚本默认 "bianfa Self-Signed"）
+#     —— 以下全部可选：以后买了签名身份再填，流水线不用改 ——
+#     AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID   Azure Artifact Signing 的 App Registration（artifact-signing-cli 读取）；
+#                                         三个都有 → Windows 签名；否则不签
+#     APPLE_CERTIFICATE                   Developer ID Application 证书 .p12 的 base64（有则优先于 MACOS_SELFSIGN_P12）
 #     APPLE_CERTIFICATE_PASSWORD          .p12 密码
 #     APPLE_SIGNING_IDENTITY              "Developer ID Application: <Name> (<TEAMID>)"，须与 .p12 一致
-#     APPLE_API_KEY                       App Store Connect API Key ID
+#     APPLE_API_KEY                       App Store Connect API Key ID（有则公证；没有则跳过公证与 stapler 断言）
 #     APPLE_API_ISSUER                    Issuer UUID
 #     APPLE_API_KEY_P8                    AuthKey_<KEYID>.p8 的文件内容（本 workflow 写到临时文件并设 APPLE_API_KEY_PATH）
 #   Environment "release-publish"（上传）
@@ -44,7 +60,7 @@
 #   release
 #     - Required reviewers：至少 1 人（开启 "Prevent self-review"）—— 任何人 push 一个 v* tag 都不能单独拿到签名密钥
 #     - Deployment branches and tags：仅 tag 模式 `v*`
-#     - 这里只放签名 / 公证类密钥
+#     - 这里只放签名 / 公证类密钥（updater 私钥、自签名 .p12，以及以后可能有的 Azure / Apple 身份）
 #   release-publish
 #     - 不设 reviewers（避免同一次发布审批两次），只限 tag `v*`。r2.md 把 R2 releases key 写在 `release` 里，本文件把它拆到
 #       `release-publish`：这把 key 最多能上传垃圾文件，客户端 minisign 验签会拒绝，不构成代码执行风险，不值得二次审批
@@ -52,7 +68,8 @@
 # 其他模块的契约
 #   - apps/desktop/src-tauri/tauri.conf.json：version（或 Cargo.toml [package].version）= tag 去掉 v；
 #     bundle.createUpdaterArtifacts = true（v2 产物：NSIS 安装包 + .sig、.app.tar.gz + .sig；默认 false，不设就没有 .sig）；
-#     bundle.windows.signCommand 含 %1；plugins.updater.pubkey 与 endpoints 已配置；frontendDist 指向 apps/desktop/dist
+#     bundle.windows.signCommand **仅在启用 Windows 签名时**配置且含 %1（ADR-001 下省略）；plugins.updater.pubkey 与 endpoints 已配置；
+#     frontendDist 指向 apps/desktop/dist
 #   - 根 package.json "packageManager": "pnpm@11.25.0"；apps/desktop 有 `tauri` script（pnpm tauri）
 #   - apps/desktop/src-tauri/rust-toolchain.toml 建议钉住 Rust 版本（本文件的 toolchain: stable 只保证能编译）
 #   - Worker（/update）读 R2 `releases/{channel}/latest.json` 并按 installId 做灰度；**发版前先把 KV ROLLOUT_PERCENT 调低**
@@ -115,7 +132,7 @@ jobs:
             echo "tag=$TAG"; echo "version=$VERSION"; echo "channel=$CHANNEL"
           } >> "$GITHUB_OUTPUT"
           echo "tag=$TAG version=$VERSION channel=$CHANNEL"
-      - name: 配置门禁（版本一致、createUpdaterArtifacts、signCommand 含 %1、updater 公钥与 endpoints 存在）
+      - name: 配置门禁（版本一致、createUpdaterArtifacts、signCommand 若存在须含 %1、updater 公钥与 endpoints 存在）
         env:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
@@ -131,11 +148,16 @@ jobs:
           jq -e '.bundle.createUpdaterArtifacts == true' "$CONF" >/dev/null \
             || { echo "::error::bundle.createUpdaterArtifacts 必须为 true（v1Compatible 会产出 .nsis.zip，与本 workflow 的收集规则不符）"; exit 1; }
           # 第 3 章 2.4.1：signCommand 缺 %1 会静默不签名；支持字符串与 {cmd,args} 两种写法（已核实 config.rs）
-          jq -e '
-            (.bundle.windows.signCommand // empty)
-            | if type == "string" then test("%1")
-              else ((.args // []) | join(" ") | test("%1")) end
-          ' "$CONF" >/dev/null || { echo "::error::bundle.windows.signCommand 缺失或不含 %1"; exit 1; }
+          # ADR-001：signCommand 可以不配（= Windows 不签）；配了就必须含 %1
+          if jq -e '.bundle.windows.signCommand != null' "$CONF" >/dev/null; then
+            jq -e '
+              .bundle.windows.signCommand
+              | if type == "string" then test("%1")
+                else ((.args // []) | join(" ") | test("%1")) end
+            ' "$CONF" >/dev/null || { echo "::error::bundle.windows.signCommand 存在但不含 %1（会静默不签名）"; exit 1; }
+          else
+            echo "::warning::tauri.conf.json 未配置 bundle.windows.signCommand —— Windows 产物将不做 Authenticode 签名（ADR-001）"
+          fi
           jq -e '.plugins.updater.pubkey | strings | length > 0' "$CONF" >/dev/null \
             || { echo "::error::plugins.updater.pubkey 缺失（公钥必须编译进二进制）"; exit 1; }
           jq -e '.plugins.updater.endpoints | arrays | length > 0' "$CONF" >/dev/null \
@@ -187,8 +209,50 @@ jobs:
       - name: 安装依赖（--ignore-scripts）
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: 判定签名模式（ADR-001：有则签、无则退；macOS 禁止 ad-hoc）
+        id: sign
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          MACOS_SELFSIGN_P12: ${{ secrets.MACOS_SELFSIGN_P12 }}
+          MACOS_SELFSIGN_IDENTITY: ${{ secrets.MACOS_SELFSIGN_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          win=false; mac=none; notarize=false
+          if [ -n "$AZURE_CLIENT_ID" ] || [ -n "$AZURE_CLIENT_SECRET" ] || [ -n "$AZURE_TENANT_ID" ]; then
+            if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_TENANT_ID" ]; then win=true
+            else echo "::error::AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID 只填了一部分——要么三个都填，要么都删"; exit 1; fi
+          fi
+          if [ -n "$APPLE_CERTIFICATE" ] || [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then mac=developer-id
+            else echo "::error::APPLE_CERTIFICATE 与 APPLE_SIGNING_IDENTITY 必须同时存在"; exit 1; fi
+          elif [ -n "$MACOS_SELFSIGN_P12" ] || [ -n "$MACOS_SELFSIGN_IDENTITY" ]; then
+            if [ -n "$MACOS_SELFSIGN_P12" ] && [ -n "$MACOS_SELFSIGN_IDENTITY" ]; then mac=self-signed
+            else echo "::error::MACOS_SELFSIGN_P12 与 MACOS_SELFSIGN_IDENTITY 必须同时存在（infra/ci/make-selfsign-cert.sh 会一起输出）"; exit 1; fi
+          fi
+          if [ -n "$APPLE_API_KEY" ] || [ -n "$APPLE_API_ISSUER" ] || [ -n "$APPLE_API_KEY_P8" ]; then
+            if [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY_P8" ]; then notarize=true
+            else echo "::error::APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_P8 只填了一部分"; exit 1; fi
+          fi
+          if [ "$notarize" = true ] && [ "$mac" != developer-id ]; then
+            echo "::error::配置了公证 API Key 但没有 Developer ID 证书——Apple 不会公证自签名的 app"; exit 1
+          fi
+          {
+            echo "win=$win"; echo "mac=$mac"; echo "notarize=$notarize"
+          } >> "$GITHUB_OUTPUT"
+          echo "签名模式：windows=$win macos=$mac notarize=$notarize"
+          [ "$win" = true ] || echo "::notice::Windows 产物不签名（ADR-001）；用户第一次安装会经过 SmartScreen「更多信息 → 仍要运行」"
+          [ "$mac" != self-signed ] || echo "::notice::macOS 用自签名身份（ADR-001）；用户第一次打开需「系统设置 → 隐私与安全性 → 仍要打开」"
+
       - name: "[Windows] 安装 artifact-signing-cli（第 3 章 2.4.1：官方文档给的工具；crates.io 0.11.0，2026-05-17）"
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.sign.outputs.win == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -197,8 +261,8 @@ jobs:
           fi
           artifact-signing-cli --version || true
 
-      - name: "[macOS] 写入 App Store Connect API Key（.p8）"
-        if: runner.os == 'macOS'
+      - name: "[macOS] 写入 App Store Connect API Key（.p8）—— 仅在启用公证时"
+        if: runner.os == 'macOS' && steps.sign.outputs.notarize == 'true'
         shell: bash
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -209,27 +273,23 @@ jobs:
           printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
           echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
 
-      - name: 断言签名密钥已注入（缺任何一项都不要烧 macOS 分钟）
+      - name: 断言必需密钥已注入（缺任何一项都不要烧 macOS 分钟）
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          MAC_MODE: ${{ steps.sign.outputs.mac }}
         run: |
           set -euo pipefail
-          need=(TAURI_SIGNING_PRIVATE_KEY)
-          case "$RUNNER_OS" in
-            Windows) need+=(AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID) ;;
-            macOS)   need+=(APPLE_CERTIFICATE APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER) ;;
-          esac
-          for v in "${need[@]}"; do [ -n "${!v:-}" ] || { echo "::error::Environment release 缺少 secret $v"; exit 1; }; done
+          # updater 私钥：两端永远必需（与代码签名无关；缺了 .sig 为空，publish 阶段也会拒）
+          [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || { echo "::error::Environment release 缺少 secret TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
+          # macOS：必须有一个稳定签名身份（ADR-001 §4）。没有 → Tauri 退到 ad-hoc → 每次构建身份都变 → 用户每次更新后 Keychain 登录态与通知权限丢失
+          if [ "$RUNNER_OS" = macOS ] && [ "$MAC_MODE" = none ]; then
+            echo "::error::macOS 没有签名身份：请按 infra/ci/make-selfsign-cert.sh 生成自签名证书并填入 MACOS_SELFSIGN_P12 / MACOS_SELFSIGN_P12_PASSWORD / MACOS_SELFSIGN_IDENTITY（ADR-001 禁止 ad-hoc）"
+            exit 1
+          fi
+          echo "必需密钥齐全（macOS 模式：${MAC_MODE:-n/a}）"
 
-      - name: tauri build（签名 / 公证 / updater 签名全部由 Tauri 按环境变量自动完成）
+      - name: tauri build（签名 / 公证 / updater 签名全部由 Tauri 按环境变量自动完成；空变量 = 该步不做）
         # 不设 tagName / releaseId：只构建，不创建 GitHub Release；产物走 R2（第 3 章 2.4.3 带宽理由）
         # inputs 已对照 tauri-action v1.0.0 action.yml 核实：projectPath / tauriScript / args / uploadWorkflowArtifacts / uploadUpdaterJson / retryAttempts
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
@@ -244,14 +304,17 @@ jobs:
           # updater（两端）
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Windows：Azure Artifact Signing（endpoint / account / profile 在 tauri.conf.json 的 signCommand 里）
+          # Windows：Azure Artifact Signing（endpoint / account / profile 在 tauri.conf.json 的 signCommand 里）。
+          # 未配置 → 三个为空 + signCommand 不存在 → Tauri 不签（ADR-001）
           AZURE_CLIENT_ID: ${{ runner.os == 'Windows' && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ runner.os == 'Windows' && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ runner.os == 'Windows' && secrets.AZURE_TENANT_ID || '' }}
-          # macOS：Developer ID + notarytool（API Key 三件套；APPLE_API_KEY_PATH 由上一步写入 GITHUB_ENV）
-          APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          # macOS：Developer ID 优先，否则自签名 .p12（ADR-001）。Tauri 只看 APPLE_CERTIFICATE 这三个变量名——它把 base64 .p12
+          # 导入临时 keychain 后按 APPLE_SIGNING_IDENTITY 调 codesign，不检查证书是谁签发的（tauri-macos-sign keychain.rs）
+          APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && (secrets.APPLE_CERTIFICATE || secrets.MACOS_SELFSIGN_P12) || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && (secrets.APPLE_CERTIFICATE_PASSWORD || secrets.MACOS_SELFSIGN_P12_PASSWORD) || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && (secrets.APPLE_SIGNING_IDENTITY || secrets.MACOS_SELFSIGN_IDENTITY) || '' }}
+          # 公证（notarytool）：API Key 三件套；APPLE_API_KEY_PATH 由上一步写入 GITHUB_ENV。没有 API Key 时 Tauri 跳过公证
           APPLE_API_KEY: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY || '' }}
           APPLE_API_ISSUER: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
 
@@ -275,8 +338,8 @@ jobs:
             test -s "$f.sig" || { echo "::error::缺少 updater 签名 $f.sig"; exit 1; }
           done
 
-      - name: "[Windows] 断言 Authenticode 签名有效（安装包 + 主程序）"
-        if: runner.os == 'Windows'
+      - name: "[Windows] 断言 Authenticode 签名有效（安装包 + 主程序）—— 仅在启用 Windows 签名时"
+        if: runner.os == 'Windows' && steps.sign.outputs.win == 'true'
         shell: pwsh
         run: |
           $targets = @(Get-ChildItem out\*.exe) + @(Get-ChildItem "$env:TAURI_DIR\target\release\*.exe")
@@ -290,15 +353,30 @@ jobs:
             Write-Host "签名 OK: $($f.Name) <- $($sig.SignerCertificate.Subject)"
           }
 
-      - name: "[macOS] 断言 codesign / 公证装订 / universal 二进制"
+      - name: "[macOS] 断言 codesign 有效且非 ad-hoc / （若公证）装订 / universal 二进制"
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          MAC_MODE: ${{ steps.sign.outputs.mac }}
+          NOTARIZE: ${{ steps.sign.outputs.notarize }}
         run: |
           set -euo pipefail
           APP="$(find "$TAURI_DIR/target/universal-apple-darwin/release/bundle/macos" -maxdepth 1 -name '*.app' | head -1)"
           test -n "$APP" || { echo "::error::找不到 .app"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$APP"
-          xcrun stapler validate "$APP"
+          # ADR-001 §4：签名必须来自证书（Developer ID 或自签名），不能是 ad-hoc（`Signature=adhoc`，无 Authority 行）
+          INFO="$(codesign -dv --verbose=4 "$APP" 2>&1)"
+          if grep -q 'Signature=adhoc' <<<"$INFO" || ! grep -q '^Authority=' <<<"$INFO"; then
+            echo "::error::.app 是 ad-hoc 签名（身份每次构建都变，用户每次更新后会被登出）——检查 MACOS_SELFSIGN_* / APPLE_* secrets 是否生效"
+            grep -E '^(Identifier|TeamIdentifier|Authority|Signature)=' <<<"$INFO" || true
+            exit 1
+          fi
+          grep -E '^(Identifier|TeamIdentifier|Authority)=' <<<"$INFO"
+          if [ "$NOTARIZE" = true ]; then
+            xcrun stapler validate "$APP"
+          else
+            echo "::notice::未公证（模式 $MAC_MODE，ADR-001）：跳过 stapler validate；Gatekeeper 会拦第一次打开，见用户手册 §2.2"
+          fi
           BIN="$(find "$APP/Contents/MacOS" -type f | head -1)"
           ARCHS="$(lipo -archs "$BIN")"; echo "archs: $ARCHS"
           grep -q arm64 <<<"$ARCHS" && grep -q x86_64 <<<"$ARCHS" || { echo "::error::不是 universal 二进制"; exit 1; }

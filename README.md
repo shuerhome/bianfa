@@ -16,9 +16,9 @@
 
 **技术栈**：Tauri 2.11.5 桌面壳（Rust + WebView）· Yjs 13.6.32 CRDT 离线优先同步 · Node 24.20.0 LTS + PostgreSQL 18.6 跑在 Hostinger VPS · Cloudflare 只做零状态边缘 · provider-agnostic 的 LLM 网关。
 
-**工期**：MVP（本地可用版，P0 功能）约 **34 人天 / 4–7 周**。完整产品（含团队、AI、计费、代码签名分发）单人现实档约 **190–230 人日 / 10 个月**——这已扣除「一年只有 250 个工作日、上线后客服吃掉 15% 时间」。
+**工期**：MVP（本地可用版，P0 功能）约 **34 人天 / 4–7 周**。完整产品（含团队、AI、计费、自动更新分发）单人现实档约 **190–230 人日 / 10 个月**——这已扣除「一年只有 250 个工作日、上线后客服吃掉 15% 时间」。
 
-**成本**：0 用户时固定成本约 **$35–60/月**，外加首年一次性的代码签名与开发者账号投入。AI 默认 BYOK（用户自带 Key），平台代付只作有硬熔断的试用额度。
+**成本**：0 用户时固定成本约 **$35–60/月**。**不含代码签名**：v1 不买 Windows / Apple 签名身份（[ADR-001](docs/ADR-001-代码签名策略.md)），代价是用户第一次安装时多点几步，自动更新不受影响。AI 默认 BYOK（用户自带 Key），平台代付只作有硬熔断的试用额度。
 
 **难点不在写代码**，在三件没有 SDK 兜底的事：Windows/macOS 的窗口层级 hack（未文档化，随系统更新可能失效）、CRDT 同步的正确性（错了不报错，只是用户的字悄悄没了）、以及一个人扛 10 个月还要做分发。
 
@@ -145,13 +145,14 @@ CRUD、关闭≠删除、无边框拖拽、7 色 + 深色、5 项富文本 + 待
 ### 部署与运维（可直接执行）
 | | |
 |---|---|
-| [infra/README.md](infra/README.md) | **目录入口**：三条铁律、文件地图、44 个占位符清单、与裁定的已知偏差、待核实项 |
+| [infra/README.md](infra/README.md) | **目录入口**：三条铁律、文件地图、43 个占位符清单、与裁定的已知偏差、待核实项 |
 | [infra/RUNBOOK.md](infra/RUNBOOK.md) | **运维手册**：30 天首次部署 → 日常发版 → 备份恢复演练 → 7 条告警 → 故障手册 → 密钥清单 |
 | [infra/docker/](infra/docker/) | compose（`docker compose config` 已通过）· Caddyfile · 自建 PG 镜像 · pgBackRest · Redis · Alloy |
 | [infra/vps/](infra/vps/) | bootstrap / deploy / backup / restore / break-glass 脚本（全部 shellcheck 通过）+ Tunnel 手册 |
 | [infra/cloudflare/](infra/cloudflare/) | DNS/WAF · R2 三桶与 token 矩阵 · Access SSH · 更新 Worker（灰度 + kill switch）· 健康探测 Worker |
-| [.github/workflows/](.github/workflows/) | backend（PR 测试 + main 部署）· desktop（签名发布）· restore-drill（每月恢复演练）· security |
+| [.github/workflows/](.github/workflows/) | backend（PR 测试 + main 部署）· desktop（构建 + updater 签名 + 发布；代码签名有 secrets 则签）· restore-drill（每月恢复演练）· security |
 | [用户手册](docs/用户手册-安装与使用.md) | 给最终用户：安装、首次启动、登录同步、快捷键、更新、常见问题 |
+| [ADR-001 · 代码签名策略](docs/ADR-001-代码签名策略.md) | v1 不买签名证书：Windows 不签、macOS 自签名（禁 ad-hoc 的理由）；用户会看到什么；什么时候回头买 |
 
 ### 补充
 | | |
@@ -172,7 +173,7 @@ CRUD、关闭≠删除、无边框拖拽、7 色 + 深色、5 项富文本 + 待
 | **D1 上午** | 在 2–3 台不同补丁级别的真机上 dump `plum.sqlite`，`PRAGMA table_info` 跑五张表，DDL 存档进仓库 | 列漂移已被实证（18 列 vs 19 列），必须按列名匹配而非位置 |
 | **D1 下午** | 工具链就绪性检查（半天 time-box）：Tauri 三平台出包、TS7 下 lint/drizzle/Vite 链不炸 | 任一失败即回落上一个大版本，**不阻塞** |
 | **D1–D3** | 🔴 **贴桌面 spike —— 项目生死判定** | **3 天做不出「沉底后还能打中文」→ 降级为三档置顶，并重新定义卖点** |
-| **D3** | 提交代码签名身份申请（Azure Artifact Signing + Apple Developer） | 这是整条发布链上**前置期最长**的一环，放到发版前申请必然延期 |
+| **D3** | 跑 `infra/ci/make-selfsign-cert.sh` 生成 macOS 自签名证书，三个 secret 填进 GitHub `release` 环境 | ADR-001：v1 **不申请** Azure / Apple 签名身份；自签名是为了让 macOS 登录态跨更新保留（ad-hoc 做不到）。以后要买，只需填 secrets |
 | **D4** | 20 个便笺窗口内存 spike | 绿 <350MB 继续；黄上窗口池；红才考虑单窗口多画布（真实成本 22–30 人日） |
 | **D4–D5** | 🔴 **CRDT 端到端 spike**：两进程各离线编辑 200 次后合并，输出必须 byte-identical | **语料必须含中文和 emoji**；产出冻结的 Y.Doc 结构 ADR |
 | **D5** | 生成 updater minisign 密钥对并**双离线备份**；查商标与域名；逐条核对所有 `[待核实]` 价格 | 见下方 ⚠️ |
