@@ -221,8 +221,17 @@ logline "deploy ok: ${TAG_NEW}（prev=${TAG_PREV:-<none>}）"
 # 6) 清理镜像。-a：连带删除 7 天内没被任何容器使用的带 tag 旧镜像（只删 dangling 的话磁盘照样满）。
 #    上一个 tag 的镜像通常 < 7 天，会保留；若已超期被删，回滚时从 ghcr 重新拉取。
 if (( ! NO_PRUNE )); then
-  docker image prune -af --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
-  docker builder prune -f --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
+  if [[ -e /var/lib/bianfa/coexist ]]; then
+    # 共存模式：同机还有别的项目，`image prune -a` 会删掉它们暂时没在跑的镜像（首台机器实测 untag 了一个 ruby 镜像）。
+    # 只删自己的旧镜像（保留当前与上一个 tag），不碰构建缓存。
+    docker images --format '{{.Repository}}:{{.Tag}}' \
+      | grep -E "^${REGISTRY}/bianfa-(api|sync):" \
+      | grep -vE ":(${TAG_NEW}|${TAG_PREV:-__none__})$" \
+      | xargs -r docker image rm >>"$LOG" 2>&1 || true
+  else
+    docker image prune -af --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
+    docker builder prune -f --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
+  fi
 fi
 
 ELAPSED=$(( $(date +%s) - START ))
