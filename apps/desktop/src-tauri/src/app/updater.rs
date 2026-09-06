@@ -77,15 +77,13 @@ pub async fn check(app: &AppHandle, manual: bool) -> IpcResult<UpdateCheck> {
 /// Downloads + installs the pending update, then restarts (Windows passive mode exits the app).
 pub async fn install(app: &AppHandle) -> IpcResult<()> {
     let state = app.state::<AppState>();
-    let pending = state
-        .pending_update
-        .lock()
-        .ok()
-        .and_then(|g| g.clone());
+    let pending = state.pending_update.lock().ok().and_then(|g| g.clone());
     let update = match pending {
         Some(u) => u,
         None => match check(app, true).await? {
-            UpdateCheck { available: true, .. } => state
+            UpdateCheck {
+                available: true, ..
+            } => state
                 .pending_update
                 .lock()
                 .ok()

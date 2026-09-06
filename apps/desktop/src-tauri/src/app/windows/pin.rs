@@ -55,7 +55,9 @@ pub fn apply(app: &AppHandle, win: &WebviewWindow, z_mode: i64) -> IpcResult<()>
             #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 let _ = app;
-                Err(IpcError::unsupported("pin-to-desktop is not available on this platform"))
+                Err(IpcError::unsupported(
+                    "pin-to-desktop is not available on this platform",
+                ))
             }
         }
         _ => Err(IpcError::invalid("zMode must be 0, 1 or 2")),
@@ -79,17 +81,20 @@ pub fn on_focus(app: &AppHandle, label: &str, focused: bool) {
 pub fn desktop_edit(app: &AppHandle, win: &WebviewWindow, editing: bool) -> IpcResult<()> {
     #[cfg(target_os = "macos")]
     {
-        return platform::desktop_edit(app, win, editing);
+        platform::desktop_edit(app, win, editing)
     }
+    // Windows notes are always editable while docked (05 §3.2 Editing state).
     #[cfg(target_os = "windows")]
     {
         let _ = (app, win, editing);
-        return Ok(()); // Windows notes are always editable while docked (05 §3.2 Editing state)
+        Ok(())
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (app, win, editing);
-        Err(IpcError::unsupported("pin-to-desktop is not available on this platform"))
+        Err(IpcError::unsupported(
+            "pin-to-desktop is not available on this platform",
+        ))
     }
 }
 

@@ -25,9 +25,14 @@ pub const UPDATE_HISTORY_MS: i64 = 7 * 24 * 3600 * 1000;
 #[derive(Debug)]
 pub enum OpenError {
     /// `PRAGMA user_version` is newer than this build supports (17-#32).
-    NewerVersion { found: i64, supported: i64 },
+    NewerVersion {
+        found: i64,
+        supported: i64,
+    },
     /// `integrity_check` failed after an unclean exit; the file was renamed aside.
-    Corrupt { moved_to: PathBuf },
+    Corrupt {
+        moved_to: PathBuf,
+    },
     /// Wrong key or not a SQLCipher database.
     BadKey,
     Other(IpcError),
@@ -137,7 +142,9 @@ impl Db {
 
     fn apply_key(&mut self, key_hex: &str) -> Result<(), OpenError> {
         if key_hex.len() != 64 || !key_hex.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(OpenError::Other(IpcError::keyring("db key must be 32 bytes hex")));
+            return Err(OpenError::Other(IpcError::keyring(
+                "db key must be 32 bytes hex",
+            )));
         }
         // Raw key syntax; cipher_page_size / kdf_iter deliberately left at SQLCipher defaults (05 §7.3).
         self.conn
@@ -147,7 +154,9 @@ impl Db {
 
     fn key_check(&self) -> rusqlite::Result<()> {
         self.conn
-            .query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
+            .query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })
             .map(|_| ())
     }
 
@@ -188,7 +197,9 @@ impl Db {
         }
         let v: Option<String> = self
             .conn
-            .query_row("SELECT v FROM meta WHERE k='last_clean_exit'", [], |r| r.get(0))
+            .query_row("SELECT v FROM meta WHERE k='last_clean_exit'", [], |r| {
+                r.get(0)
+            })
             .optional()?;
         Ok(v.as_deref() == Some("1"))
     }
@@ -281,7 +292,8 @@ pub fn cloud_folder_hint(path: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
-pub(crate) const TEST_KEY: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+pub(crate) const TEST_KEY: &str =
+    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
 #[cfg(test)]
 mod tests {

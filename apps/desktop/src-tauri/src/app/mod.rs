@@ -114,7 +114,8 @@ pub fn run() {
             commands::files::notice_ack,
         ])
         .setup(move |app| {
-            setup(app.handle().clone(), is_autostart).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            setup(app.handle().clone(), is_autostart)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         });
 
     let app = builder
@@ -123,16 +124,16 @@ pub fn run() {
 
     app.run(|app, event| match event {
         // Closing the last window keeps the app alive in the tray (05 §2.3).
-        RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        RunEvent::ExitRequested {
+            code: None, api, ..
+        } => api.prevent_exit(),
         RunEvent::Exit => shutdown(app),
         #[cfg(target_os = "macos")]
         RunEvent::Reopen {
-            has_visible_windows,
+            has_visible_windows: false,
             ..
         } => {
-            if !has_visible_windows {
-                let _ = windows::open_main(app, None);
-            }
+            let _ = windows::open_main(app, None);
         }
         _ => {}
     });
@@ -169,7 +170,10 @@ fn setup(app: AppHandle, is_autostart: bool) -> Result<(), IpcError> {
     let paths = Paths::new(data_dir);
     paths.ensure_dirs()?;
     FileLogger::install(&paths.logs_dir);
-    log::info!("bianfa {} starting (autostart={is_autostart})", app.package_info().version);
+    log::info!(
+        "bianfa {} starting (autostart={is_autostart})",
+        app.package_info().version
+    );
 
     let install_id = settings::install_id(&paths);
     let settings = settings::load(&paths);
@@ -229,18 +233,21 @@ fn setup(app: AppHandle, is_autostart: bool) -> Result<(), IpcError> {
         let app2 = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let st = app2.state::<AppState>();
-            match st.with_tx(crate::db::notes::purge_expired) {
+            match st.with_tx(|tx| crate::db::notes::purge_expired(tx)) {
                 Ok(n) if n > 0 => log::info!("purged {n} expired notes"),
                 Err(e) => log::warn!("purge: {e}"),
                 _ => {}
             }
             let backups = st.paths.backups_dir.clone();
-            if let Ok(g) = st.db.lock() {
-                if let Some(db) = g.as_ref() {
-                    match db.backup_daily(&backups) {
-                        Ok(Some(p)) => log::info!("backup written: {}", p.display()),
-                        Err(e) => log::warn!("backup: {e}"),
-                        _ => {}
+            {
+                let guard = st.db.lock();
+                if let Ok(g) = guard {
+                    if let Some(db) = g.as_ref() {
+                        match db.backup_daily(&backups) {
+                            Ok(Some(p)) => log::info!("backup written: {}", p.display()),
+                            Err(e) => log::warn!("backup: {e}"),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -327,7 +334,7 @@ fn setup(app: AppHandle, is_autostart: bool) -> Result<(), IpcError> {
                 n += 1;
                 let a = app2.clone();
                 let _ = app2.run_on_main_thread(move || windows::pin::tick(&a));
-                if n % 10 == 0 {
+                if n.is_multiple_of(10) {
                     let a = app2.clone();
                     let _ = app2.run_on_main_thread(move || windows::hidden_tick(&a));
                 }
@@ -365,7 +372,11 @@ fn check_webview_runtime(app: &AppHandle) {
     {
         use tauri_plugin_notification::NotificationExt;
         if let Ok(v) = tauri::webview_version() {
-            let major: u32 = v.split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let major: u32 = v
+                .split('.')
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
             if major > 0 && major < 140 {
                 log::warn!("WebView2 runtime {v} is older than 140");
                 let _ = app
@@ -430,7 +441,9 @@ pub fn handle_deep_link(app: &AppHandle, link: &str) {
                 }
             });
         }
-        Some("auth") => log::info!("bianfa://auth callback received (loopback is the primary path)"),
+        Some("auth") => {
+            log::info!("bianfa://auth callback received (loopback is the primary path)")
+        }
         other => log::info!("ignored deep link host {other:?}"),
     }
 }
@@ -468,7 +481,12 @@ pub fn wipe_local(app: &AppHandle) {
         s.push(suffix);
         let _ = std::fs::remove_file(std::path::PathBuf::from(s));
     }
-    for d in [&p.attachments_dir, &p.imports_dir, &p.backups_dir, &p.secrets_dir] {
+    for d in [
+        &p.attachments_dir,
+        &p.imports_dir,
+        &p.backups_dir,
+        &p.secrets_dir,
+    ] {
         let _ = std::fs::remove_dir_all(d);
     }
     auth::secrets_wipe(&state.secrets);

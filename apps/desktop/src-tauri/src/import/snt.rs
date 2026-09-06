@@ -22,7 +22,9 @@ fn ms_of(t: SystemTime) -> Option<i64> {
     }
 }
 
-fn note_storages<F: Read + std::io::Seek>(cfb: &cfb::CompoundFile<F>) -> Vec<(PathBuf, SystemTime, SystemTime)> {
+fn note_storages<F: Read + std::io::Seek>(
+    cfb: &cfb::CompoundFile<F>,
+) -> Vec<(PathBuf, SystemTime, SystemTime)> {
     cfb.walk()
         .filter(|e| e.is_storage() && !e.is_root())
         .filter(|e| {
@@ -38,7 +40,10 @@ pub fn count(path: &Path) -> IpcResult<i64> {
     Ok(note_storages(&cfb).len() as i64)
 }
 
-fn read_stream<F: Read + std::io::Seek>(cfb: &mut cfb::CompoundFile<F>, p: &Path) -> Option<Vec<u8>> {
+fn read_stream<F: Read + std::io::Seek>(
+    cfb: &mut cfb::CompoundFile<F>,
+    p: &Path,
+) -> Option<Vec<u8>> {
     let mut s = cfb.open_stream(p).ok()?;
     let mut buf = Vec::new();
     s.read_to_end(&mut buf).ok()?;
@@ -47,8 +52,10 @@ fn read_stream<F: Read + std::io::Seek>(cfb: &mut cfb::CompoundFile<F>, p: &Path
 
 fn utf16le(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     String::from_utf16_lossy(&units)
         .trim_end_matches('\0')
@@ -96,7 +103,7 @@ pub fn parse(path: &Path) -> IpcResult<Vec<PlumExportNote>> {
             import_degraded: degraded,
         });
     }
-    notes.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    notes.sort_by_key(|n| std::cmp::Reverse(n.updated_at_ms));
     Ok(notes)
 }
 
@@ -113,7 +120,10 @@ mod tests {
             let mut c = cfb::create(&p).unwrap();
             c.create_storage("/{A}").unwrap();
             let mut s = c.create_stream("/{A}/3").unwrap();
-            let text: Vec<u8> = "你好\r\n第二行".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            let text: Vec<u8> = "你好\r\n第二行"
+                .encode_utf16()
+                .flat_map(|u| u.to_le_bytes())
+                .collect();
             s.write_all(&text).unwrap();
             drop(s);
             c.create_storage("/{B}").unwrap();

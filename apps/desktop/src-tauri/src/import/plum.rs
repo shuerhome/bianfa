@@ -50,11 +50,15 @@ fn copy_dir(from: &Path, to: &Path) -> IpcResult<()> {
 fn open_ro(path: &Path) -> IpcResult<Connection> {
     let uri = format!(
         "file:{}?mode=ro",
-        path.to_string_lossy().replace('\\', "/").replace('?', "%3F")
+        path.to_string_lossy()
+            .replace('\\', "/")
+            .replace('?', "%3F")
     );
     Ok(Connection::open_with_flags(
         uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?)
 }
 
@@ -151,7 +155,11 @@ pub fn parse(db_path: &Path) -> IpcResult<Vec<PlumExportNote>> {
     if tabs.contains("Media") {
         let mc = table_columns(&conn, "Media");
         if mc.contains("ParentId") && mc.contains("LocalFileRelativePath") {
-            let mime = if mc.contains("MimeType") { "\"MimeType\"" } else { "NULL" };
+            let mime = if mc.contains("MimeType") {
+                "\"MimeType\""
+            } else {
+                "NULL"
+            };
             let mut stmt = conn.prepare(&format!(
                 "SELECT \"ParentId\", \"LocalFileRelativePath\", {mime} FROM \"Media\""
             ))?;
@@ -164,7 +172,10 @@ pub fn parse(db_path: &Path) -> IpcResult<Vec<PlumExportNote>> {
             })?;
             for (pid, path, mime) in rows.flatten() {
                 if let (Some(pid), Some(path)) = (pid, path) {
-                    media.entry(pid).or_default().push(PlumAttachment { path, mime });
+                    media
+                        .entry(pid)
+                        .or_default()
+                        .push(PlumAttachment { path, mime });
                 }
             }
         }
@@ -172,7 +183,11 @@ pub fn parse(db_path: &Path) -> IpcResult<Vec<PlumExportNote>> {
     let mut ink: HashSet<String> = HashSet::new();
     if tabs.contains("Stroke") && table_columns(&conn, "Stroke").contains("ParentId") {
         let mut stmt = conn.prepare("SELECT DISTINCT \"ParentId\" FROM \"Stroke\"")?;
-        for id in stmt.query_map([], |r| r.get::<_, Option<String>>(0))?.flatten().flatten() {
+        for id in stmt
+            .query_map([], |r| r.get::<_, Option<String>>(0))?
+            .flatten()
+            .flatten()
+        {
             ink.insert(id);
         }
     }
@@ -234,7 +249,7 @@ pub fn parse(db_path: &Path) -> IpcResult<Vec<PlumExportNote>> {
             import_degraded: degraded,
         });
     }
-    notes.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    notes.sort_by_key(|n| std::cmp::Reverse(n.updated_at_ms));
     Ok(notes)
 }
 
@@ -261,7 +276,11 @@ mod tests {
 
     fn build(path: &Path, extra_col: bool) {
         let c = Connection::open(path).unwrap();
-        let extra = if extra_col { ", \"PendingInsightsScan\" integer" } else { "" };
+        let extra = if extra_col {
+            ", \"PendingInsightsScan\" integer"
+        } else {
+            ""
+        };
         c.execute_batch(&format!(
             "CREATE TABLE \"Note\"(\"Text\" varchar, \"WindowPosition\" varchar, \"IsOpen\" integer, \"IsAlwaysOnTop\" integer,
              \"CreationNoteIdAnchor\" varchar, \"Theme\" varchar, \"IsFutureNote\" integer, \"RemoteId\" varchar,
@@ -273,14 +292,78 @@ mod tests {
         ))
         .unwrap();
         let server_json = r#"{"document":{"blocks":[{"content":[{"text":"服务器续费"},{"text":"Hostinger KVM 4 到期 11/20"}]}]}}"#;
-        let rows: Vec<(&str, Option<&str>, i64, i64, &str, Option<&str>, &str, i64, Option<i64>, i64)> = vec![
-            (r"\id=8f14e45f-ceea-467a-9b0a-1c2d3e4f5a6b 周三 14:00 \b产品评审\b0\par确认 OKLCH 色板 v2.3\par\i下周补 macOS 验证\i0",
-             Some("ManagedPosition=DeviceId:{DISPLAY1};Position=340,180;Size=320,320"), 1, 1, "Yellow", None, "n-001", ticks(1756000000000), None, ticks(1756800000000)),
-            (r"\id=aaaa1111-2222-3333-4444-555566667777 取快递\par丰巢 8-2211，取件码 4471",
-             Some("ManagedPosition=DeviceId:{DISPLAY2};Position=-1600,-240;Size=180,140"), 1, 0, "Pink", None, "n-002", ticks(1755000000000), None, ticks(1755500000000)),
-            (r"\id=bbbb 这段应该被忽略", Some("ManagedPosition=DeviceId:{DISPLAY1};Position=900,120;Size=220,260"), 0, 0, "Blue", Some(server_json), "n-003", ticks(1754000000000), None, ticks(1756100000000)),
-            (r"\id=cccc 这条已删除", None, 0, 0, "Green", None, "n-004", ticks(1753000000000), Some(ticks(1756000000000)), ticks(1756000000000)),
-            (r"\id=dddd 买菜\par\zzz西红柿 2 斤\par\strike已买\strike0 牛奶", None, 1, 0, "Teal", None, "n-005", ticks(1752000000000), None, ticks(1752500000000)),
+        let rows: Vec<(
+            &str,
+            Option<&str>,
+            i64,
+            i64,
+            &str,
+            Option<&str>,
+            &str,
+            i64,
+            Option<i64>,
+            i64,
+        )> = vec![
+            (
+                r"\id=8f14e45f-ceea-467a-9b0a-1c2d3e4f5a6b 周三 14:00 \b产品评审\b0\par确认 OKLCH 色板 v2.3\par\i下周补 macOS 验证\i0",
+                Some("ManagedPosition=DeviceId:{DISPLAY1};Position=340,180;Size=320,320"),
+                1,
+                1,
+                "Yellow",
+                None,
+                "n-001",
+                ticks(1756000000000),
+                None,
+                ticks(1756800000000),
+            ),
+            (
+                r"\id=aaaa1111-2222-3333-4444-555566667777 取快递\par丰巢 8-2211，取件码 4471",
+                Some("ManagedPosition=DeviceId:{DISPLAY2};Position=-1600,-240;Size=180,140"),
+                1,
+                0,
+                "Pink",
+                None,
+                "n-002",
+                ticks(1755000000000),
+                None,
+                ticks(1755500000000),
+            ),
+            (
+                r"\id=bbbb 这段应该被忽略",
+                Some("ManagedPosition=DeviceId:{DISPLAY1};Position=900,120;Size=220,260"),
+                0,
+                0,
+                "Blue",
+                Some(server_json),
+                "n-003",
+                ticks(1754000000000),
+                None,
+                ticks(1756100000000),
+            ),
+            (
+                r"\id=cccc 这条已删除",
+                None,
+                0,
+                0,
+                "Green",
+                None,
+                "n-004",
+                ticks(1753000000000),
+                Some(ticks(1756000000000)),
+                ticks(1756000000000),
+            ),
+            (
+                r"\id=dddd 买菜\par\zzz西红柿 2 斤\par\strike已买\strike0 牛奶",
+                None,
+                1,
+                0,
+                "Teal",
+                None,
+                "n-005",
+                ticks(1752000000000),
+                None,
+                ticks(1752500000000),
+            ),
         ];
         for (text, pos, open, top, theme, server, id, created, deleted, updated) in rows {
             if extra_col {
@@ -291,8 +374,13 @@ mod tests {
                     rusqlite::params![text, pos, open, top, theme, server, id, created, deleted, updated]).unwrap();
             }
         }
-        c.execute("INSERT INTO \"Media\" VALUES ('m1','n-001','image/png','media/abc123.png',0,0)", []).unwrap();
-        c.execute("INSERT INTO \"Stroke\" VALUES ('s1','n-002')", []).unwrap();
+        c.execute(
+            "INSERT INTO \"Media\" VALUES ('m1','n-001','image/png','media/abc123.png',0,0)",
+            [],
+        )
+        .unwrap();
+        c.execute("INSERT INTO \"Stroke\" VALUES ('s1','n-002')", [])
+            .unwrap();
     }
 
     fn run_case(extra_col: bool) {
@@ -308,20 +396,32 @@ mod tests {
         let notes = parse(&copy).unwrap();
         let by = |id: &str| notes.iter().find(|n| n.external_id == id).unwrap();
         assert_eq!(notes.len(), 4);
-        assert_eq!(by("n-001").markdown, "周三 14:00 **产品评审**\n确认 OKLCH 色板 v2.3\n*下周补 macOS 验证*");
+        assert_eq!(
+            by("n-001").markdown,
+            "周三 14:00 **产品评审**\n确认 OKLCH 色板 v2.3\n*下周补 macOS 验证*"
+        );
         assert!(notes.iter().all(|n| !n.markdown.contains("\\id=")));
         assert_eq!(by("n-005").markdown, "买菜\n西红柿 2 斤\n~~已买~~牛奶");
         assert!(by("n-005").import_degraded);
         let w = by("n-002").window.clone().unwrap();
-        assert_eq!((w.x, w.y, w.w, w.h), (Some(-1600), Some(-240), Some(180), Some(140)));
+        assert_eq!(
+            (w.x, w.y, w.w, w.h),
+            (Some(-1600), Some(-240), Some(180), Some(140))
+        );
         assert_eq!(w.display_id.as_deref(), Some("{DISPLAY2}"));
         assert_eq!(by("n-003").content_source, "LastServerVersion");
-        assert!(by("n-003").text.contains("服务器续费") && !by("n-003").text.contains("应该被忽略"));
+        assert!(
+            by("n-003").text.contains("服务器续费") && !by("n-003").text.contains("应该被忽略")
+        );
         assert!(notes.iter().all(|n| n.external_id != "n-004"));
         assert!(by("n-001").pinned && !by("n-002").pinned);
         assert_eq!(by("n-001").color, "citron");
         assert_eq!(by("n-005").color, "citron");
-        assert!(by("n-001").created_at.as_deref().unwrap().starts_with("2025-"));
+        assert!(by("n-001")
+            .created_at
+            .as_deref()
+            .unwrap()
+            .starts_with("2025-"));
         assert_eq!(by("n-001").attachments[0].path, "media/abc123.png");
         assert!(by("n-002").has_ink && !by("n-001").has_ink);
         assert_eq!(by("n-001").title, "周三 14:00 产品评审");

@@ -1,7 +1,7 @@
 //! macOS levels (05 §3.1 / §3.3). Window level for "pinned to desktop" is looked up at runtime
 //! (`CGWindowLevelForKey(kCGDesktopIconWindowLevelKey) + 1`), never hard-coded.
 
-use super::super::state::AppState;
+use crate::app::state::AppState;
 use crate::error::{IpcError, IpcResult};
 use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
 use std::collections::HashSet;
@@ -21,9 +21,7 @@ const NS_FLOATING_WINDOW_LEVEL: isize = 3;
 static DESKTOP_PINNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 fn pinned() -> std::sync::MutexGuard<'static, Option<HashSet<String>>> {
-    DESKTOP_PINNED
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
+    DESKTOP_PINNED.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 pub fn desktop_level() -> isize {
@@ -31,7 +29,12 @@ pub fn desktop_level() -> isize {
     (unsafe { CGWindowLevelForKey(K_CG_DESKTOP_ICON_WINDOW_LEVEL_KEY) }) as isize + 1
 }
 
-fn apply_level(app: &AppHandle, win: &WebviewWindow, level: isize, behavior: NSWindowCollectionBehavior) -> IpcResult<()> {
+fn apply_level(
+    app: &AppHandle,
+    win: &WebviewWindow,
+    level: isize,
+    behavior: NSWindowCollectionBehavior,
+) -> IpcResult<()> {
     let w = win.clone();
     app.run_on_main_thread(move || {
         if let Ok(ptr) = w.ns_window() {
@@ -45,13 +48,22 @@ fn apply_level(app: &AppHandle, win: &WebviewWindow, level: isize, behavior: NSW
 }
 
 pub fn set_normal(app: &AppHandle, win: &WebviewWindow) -> IpcResult<()> {
-    pinned().get_or_insert_with(HashSet::new).remove(win.label());
-    apply_level(app, win, NS_NORMAL_WINDOW_LEVEL, NSWindowCollectionBehavior::Default)
+    pinned()
+        .get_or_insert_with(HashSet::new)
+        .remove(win.label());
+    apply_level(
+        app,
+        win,
+        NS_NORMAL_WINDOW_LEVEL,
+        NSWindowCollectionBehavior::Default,
+    )
 }
 
 /// Always-on-top: floating level + joins all spaces / stays over full-screen apps.
 pub fn set_floating(app: &AppHandle, win: &WebviewWindow) -> IpcResult<()> {
-    pinned().get_or_insert_with(HashSet::new).remove(win.label());
+    pinned()
+        .get_or_insert_with(HashSet::new)
+        .remove(win.label());
     apply_level(
         app,
         win,
@@ -65,7 +77,9 @@ pub fn set_floating(app: &AppHandle, win: &WebviewWindow) -> IpcResult<()> {
 /// Pinned to desktop: just above desktop icons, stationary (Mission Control / "show desktop"
 /// leave it alone), ignored by ⌘` cycling.
 pub fn set_desktop(app: &AppHandle, win: &WebviewWindow) -> IpcResult<()> {
-    pinned().get_or_insert_with(HashSet::new).insert(win.label().to_string());
+    pinned()
+        .get_or_insert_with(HashSet::new)
+        .insert(win.label().to_string());
     apply_level(
         app,
         win,

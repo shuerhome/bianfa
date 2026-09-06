@@ -74,7 +74,13 @@ mod tests {
         set_error(c, "n", None, None).unwrap();
         assert!(errors(c).unwrap().is_empty());
         set_acked(c, "n", 3).unwrap();
-        let acked: i64 = c.query_row("SELECT acked_seq FROM sync_state WHERE note_id='n'", [], |r| r.get(0)).unwrap();
+        let acked: i64 = c
+            .query_row(
+                "SELECT acked_seq FROM sync_state WHERE note_id='n'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(acked, 3);
     }
 }

@@ -11,7 +11,8 @@ use crate::model::{
 use crate::util::{b64_encode, excerpt, now_ms, title_of};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
-const LIST_COLUMNS: &str = "n.id, n.content_text, n.color, n.z_mode, n.created_at, n.updated_at, n.deleted_at,
+const LIST_COLUMNS: &str =
+    "n.id, n.content_text, n.color, n.z_mode, n.created_at, n.updated_at, n.deleted_at,
     n.workspace_id, n.head_seq, n.body_html, n.schema_version,
     COALESCE(w.is_open, 0), COALESCE(s.acked_seq, 0)";
 
@@ -72,7 +73,9 @@ pub fn list(
     sql.push_str(ORDER);
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), row_to_record)?;
-    Ok(rows.map(|r| r.map(|rec| rec.item)).collect::<Result<_, _>>()?)
+    Ok(rows
+        .map(|r| r.map(|rec| rec.item))
+        .collect::<Result<_, _>>()?)
 }
 
 fn escape_like(s: &str) -> String {
@@ -128,7 +131,11 @@ pub fn search(
         None => {}
     }
     if let Some(p) = filters.pinned {
-        sql.push_str(if p { " AND n.z_mode = 1" } else { " AND n.z_mode <> 1" });
+        sql.push_str(if p {
+            " AND n.z_mode = 1"
+        } else {
+            " AND n.z_mode <> 1"
+        });
     }
     if let Some(c) = filters.color {
         sql.push_str(" AND n.color = ?");
@@ -140,7 +147,9 @@ pub fn search(
     args.push(Box::new(limit));
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), row_to_record)?;
-    Ok(rows.map(|r| r.map(|rec| rec.item)).collect::<Result<_, _>>()?)
+    Ok(rows
+        .map(|r| r.map(|rec| rec.item))
+        .collect::<Result<_, _>>()?)
 }
 
 pub fn get(conn: &Connection, id: &str) -> IpcResult<NoteRecord> {
@@ -223,7 +232,9 @@ pub fn create(
 
 pub fn load_doc(conn: &Connection, id: &str) -> IpcResult<NoteDocBundle> {
     let head_seq: i64 = conn
-        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| r.get(0))
+        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
         .optional()?
         .ok_or_else(|| IpcError::not_found(format!("note {id} not found")))?;
     let snapshot: Option<(i64, Vec<u8>)> = conn
@@ -248,7 +259,9 @@ pub fn load_doc(conn: &Connection, id: &str) -> IpcResult<NoteDocBundle> {
 
 pub fn updates_since(conn: &Connection, id: &str, after_seq: i64) -> IpcResult<UpdatesSince> {
     let head_seq: i64 = conn
-        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| r.get(0))
+        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
         .optional()?
         .ok_or_else(|| IpcError::not_found(format!("note {id} not found")))?;
     let mut stmt = conn.prepare(
@@ -274,7 +287,9 @@ pub fn append_update(
     projection: Option<&NoteProjection>,
 ) -> IpcResult<i64> {
     let head_seq: i64 = conn
-        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| r.get(0))
+        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
         .optional()?
         .ok_or_else(|| IpcError::not_found(format!("note {id} not found")))?;
     let seq = head_seq + 1;
@@ -320,7 +335,9 @@ pub fn full_state(conn: &Connection, id: &str) -> IpcResult<Vec<u8>> {
         parts.push(u?);
     }
     if parts.is_empty() {
-        return Err(IpcError::not_found(format!("note {id} has no document data")));
+        return Err(IpcError::not_found(format!(
+            "note {id} has no document data"
+        )));
     }
     if parts.len() == 1 {
         return Ok(parts.pop().unwrap_or_default());
@@ -361,7 +378,9 @@ pub fn write_snapshot(
 /// Merges snapshot + updates with `yrs::merge_updates_v2` into a new snapshot at `head_seq`.
 pub fn compact(conn: &Connection, id: &str) -> IpcResult<i64> {
     let head_seq: i64 = conn
-        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| r.get(0))
+        .query_row("SELECT head_seq FROM notes WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
         .optional()?
         .ok_or_else(|| IpcError::not_found(format!("note {id} not found")))?;
     let state = full_state(conn, id)?;
@@ -550,9 +569,39 @@ pub(crate) mod tests {
         let db = Db::open_in_memory(TEST_KEY).unwrap();
         let c = db.conn();
         let u = empty_update_v2();
-        create(c, "n1", &u, &proj("你好世界", None), None, None, None, "local").unwrap();
-        create(c, "n2", &u, &proj("hello world", None), None, None, None, "local").unwrap();
-        create(c, "n3", &u, &proj("trashed", Some(5000)), None, None, None, "local").unwrap();
+        create(
+            c,
+            "n1",
+            &u,
+            &proj("你好世界", None),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
+        create(
+            c,
+            "n2",
+            &u,
+            &proj("hello world", None),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
+        create(
+            c,
+            "n3",
+            &u,
+            &proj("trashed", Some(5000)),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
         let all = list(c, false, None).unwrap();
         assert_eq!(all.len(), 2);
         assert!(!all[0].synced);
@@ -562,7 +611,15 @@ pub(crate) mod tests {
         assert_eq!(rec.head_seq, 1);
         assert!(get(c, "nope").is_err());
         // bigram FTS
-        let hits = search(c, "好世", Some(&crate::import::text::bigram_shingles("好世")), false, 50, &SearchFilters::default()).unwrap();
+        let hits = search(
+            c,
+            "好世",
+            Some(&crate::import::text::bigram_shingles("好世")),
+            false,
+            50,
+            &SearchFilters::default(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "n1");
         // LIKE path, single char
@@ -570,7 +627,10 @@ pub(crate) mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "n2");
         // trashed filter
-        let f = SearchFilters { trashed: Some(true), ..Default::default() };
+        let f = SearchFilters {
+            trashed: Some(true),
+            ..Default::default()
+        };
         let hits = search(c, "trash", None, false, 50, &f).unwrap();
         assert_eq!(hits.len(), 1);
     }
@@ -620,7 +680,17 @@ pub(crate) mod tests {
         let t2 = get(c, "t2").unwrap();
         assert_eq!(t2.content_text, "");
         assert!(list(c, true, None).unwrap().is_empty());
-        create(c, "t3", &u, &proj("z", Some(now_ms())), None, None, None, "local").unwrap();
+        create(
+            c,
+            "t3",
+            &u,
+            &proj("z", Some(now_ms())),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
         assert_eq!(purge_expired(c).unwrap(), 0);
         assert_eq!(trash_empty(c).unwrap(), 1);
     }

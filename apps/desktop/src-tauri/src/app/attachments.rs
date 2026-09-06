@@ -87,7 +87,12 @@ fn prepare(bytes: Vec<u8>, hint: Option<&str>) -> IpcResult<Prepared> {
         resized
             .write_to(&mut buf, fmt)
             .map_err(|e| IpcError::invalid(format!("re-encode failed: {e}")))?;
-        (buf.into_inner(), m.to_string(), resized.width(), resized.height())
+        (
+            buf.into_inner(),
+            m.to_string(),
+            resized.width(),
+            resized.height(),
+        )
     } else {
         (bytes, mime, w, h)
     };

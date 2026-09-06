@@ -127,10 +127,7 @@ impl AppState {
     }
 
     pub fn settings(&self) -> Settings {
-        self.settings
-            .read()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.settings.read().map(|s| s.clone()).unwrap_or_default()
     }
 
     pub fn set_settings(&self, s: Settings) {

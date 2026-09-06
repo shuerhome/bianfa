@@ -42,7 +42,11 @@ pub fn note_window_set_zmode(app: AppHandle, note_id: String, z_mode: i64) -> Ip
 }
 
 #[tauri::command]
-pub fn note_window_set_collapsed(app: AppHandle, note_id: String, collapsed: bool) -> IpcResult<()> {
+pub fn note_window_set_collapsed(
+    app: AppHandle,
+    note_id: String,
+    collapsed: bool,
+) -> IpcResult<()> {
     windows::set_collapsed(&app, &note_id, collapsed)
 }
 
@@ -77,20 +81,26 @@ pub fn window_state_save(
     if !exists {
         return Ok(()); // fresh note that has not been created yet
     }
-    events::mutate(&app, "local", &["note_window_state"], vec![note_id.clone()], |tx| {
-        window_state::save_geometry(
-            tx,
-            &note_id,
-            &window_state::Geometry {
-                x,
-                y,
-                w,
-                h,
-                monitor_key,
-                scale,
-            },
-        )
-    })
+    events::mutate(
+        &app,
+        "local",
+        &["note_window_state"],
+        vec![note_id.clone()],
+        |tx| {
+            window_state::save_geometry(
+                tx,
+                &note_id,
+                &window_state::Geometry {
+                    x,
+                    y,
+                    w,
+                    h,
+                    monitor_key,
+                    scale,
+                },
+            )
+        },
+    )
 }
 
 #[tauri::command]

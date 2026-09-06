@@ -74,7 +74,11 @@ pub fn note_create(
     import_external_id: Option<String>,
 ) -> IpcResult<NoteRecord> {
     let update = b64_decode(&update_v2_b64)?;
-    let origin = if import_source.is_some() { "import" } else { "local" };
+    let origin = if import_source.is_some() {
+        "import"
+    } else {
+        "local"
+    };
     let has_window = windows::note_window(&app, &note_id).is_some();
     let rec = events::mutate(
         &app,
@@ -188,9 +192,13 @@ pub fn note_discard_if_empty(app: AppHandle, note_id: String) -> IpcResult<serde
 
 #[tauri::command]
 pub fn note_set_synced(app: AppHandle, note_id: String, head_seq: i64) -> IpcResult<()> {
-    events::mutate(&app, "system", &["sync_state", "notes"], vec![note_id.clone()], |tx| {
-        notes::set_synced(tx, &note_id, head_seq)
-    })
+    events::mutate(
+        &app,
+        "system",
+        &["sync_state", "notes"],
+        vec![note_id.clone()],
+        |tx| notes::set_synced(tx, &note_id, head_seq),
+    )
 }
 
 #[tauri::command]
@@ -200,13 +208,17 @@ pub fn notes_pending_sync(state: State<'_, AppState>) -> IpcResult<Vec<PendingSy
 
 #[tauri::command]
 pub fn trash_empty(app: AppHandle) -> IpcResult<serde_json::Value> {
-    let purged = events::mutate(&app, "local", &["notes"], vec![], notes::trash_empty)?;
+    let purged = events::mutate(&app, "local", &["notes"], vec![], |tx| {
+        notes::trash_empty(tx)
+    })?;
     Ok(serde_json::json!({ "purged": purged }))
 }
 
 #[tauri::command]
 pub fn notes_purge_expired(app: AppHandle) -> IpcResult<serde_json::Value> {
-    let purged = events::mutate(&app, "system", &["notes"], vec![], notes::purge_expired)?;
+    let purged = events::mutate(&app, "system", &["notes"], vec![], |tx| {
+        notes::purge_expired(tx)
+    })?;
     Ok(serde_json::json!({ "purged": purged }))
 }
 
@@ -230,7 +242,10 @@ pub fn note_version_save(
 }
 
 #[tauri::command]
-pub fn note_versions_list(state: State<'_, AppState>, note_id: String) -> IpcResult<Vec<VersionItem>> {
+pub fn note_versions_list(
+    state: State<'_, AppState>,
+    note_id: String,
+) -> IpcResult<Vec<VersionItem>> {
     state.with_db(|c| versions::list(c, &note_id))
 }
 
@@ -247,9 +262,13 @@ pub fn sync_state_set_error(
     err_code: Option<String>,
     message: Option<String>,
 ) -> IpcResult<()> {
-    events::mutate(&app, "system", &["sync_state"], vec![note_id.clone()], |tx| {
-        sync_state::set_error(tx, &note_id, err_code.as_deref(), message.as_deref())
-    })
+    events::mutate(
+        &app,
+        "system",
+        &["sync_state"],
+        vec![note_id.clone()],
+        |tx| sync_state::set_error(tx, &note_id, err_code.as_deref(), message.as_deref()),
+    )
 }
 
 #[tauri::command]
@@ -278,6 +297,9 @@ pub fn sync_status_report(
 }
 
 #[tauri::command]
-pub fn window_state_get(state: State<'_, AppState>, note_id: String) -> IpcResult<Option<WindowState>> {
+pub fn window_state_get(
+    state: State<'_, AppState>,
+    note_id: String,
+) -> IpcResult<Option<WindowState>> {
     state.with_db(|c| crate::db::window_state::get(c, &note_id))
 }

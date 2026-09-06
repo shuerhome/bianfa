@@ -82,7 +82,9 @@ fn accelerator_text() -> &'static str {
     }
 }
 
-fn build_menu(app: &AppHandle) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> {
+fn build_menu(
+    app: &AppHandle,
+) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> {
     let t = strings(app);
     let state = app.state::<AppState>();
     let warn_text = state
@@ -101,7 +103,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<(Menu<tauri::Wry>, MenuItem<taur
                 .ok()
                 .and_then(|g| g.as_ref().map(|_| t.update_ready.to_string()))
         });
-    let warn = MenuItem::with_id(app, "warn", warn_text.clone().unwrap_or_default(), true, None::<&str>)?;
+    let warn = MenuItem::with_id(
+        app,
+        "warn",
+        warn_text.clone().unwrap_or_default(),
+        true,
+        None::<&str>,
+    )?;
     let new_note = MenuItem::with_id(app, "new", t.new_note, true, Some(accelerator_text()))?;
     let open_list = MenuItem::with_id(app, "list", t.open_list, true, None::<&str>)?;
     let show_all = MenuItem::with_id(app, "show-all", t.show_all, true, None::<&str>)?;
@@ -154,8 +162,9 @@ fn handle_menu(app: &AppHandle, id: &str) {
     match id {
         "new" => {
             tauri::async_runtime::spawn(async move {
+                let inner = app.clone();
                 let _ = app.run_on_main_thread(move || {
-                    if let Err(e) = windows::new_note(&app, true, None) {
+                    if let Err(e) = windows::new_note(&inner, true, None) {
                         log::warn!("tray new note: {e}");
                     }
                 });
@@ -265,7 +274,10 @@ pub fn refresh(app: &AppHandle) {
         }
         Err(e) => log::warn!("tray menu rebuild: {e}"),
     }
-    let _ = tray.set_tooltip(Some(format!("bianfa · {}", status_text(app).trim_start_matches("● "))));
+    let _ = tray.set_tooltip(Some(format!(
+        "bianfa · {}",
+        status_text(app).trim_start_matches("● ")
+    )));
 }
 
 /// Sync status from the JS sync layer (`sync:status` event or `sync_status_report`).

@@ -61,9 +61,8 @@ pub fn utc_day(ms: i64) -> String {
 pub fn ms_to_iso(ms: i64) -> Option<String> {
     let secs = ms.div_euclid(1000);
     let t = time::OffsetDateTime::from_unix_timestamp(secs).ok()?;
-    let fmt = time::macros::format_description!(
-        "[year]-[month]-[day]T[hour]:[minute]:[second]+00:00"
-    );
+    let fmt =
+        time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]+00:00");
     t.format(&fmt).ok()
 }
 
@@ -104,7 +103,10 @@ mod tests {
     #[test]
     fn day_and_iso() {
         assert_eq!(utc_day(0), "1970-01-01");
-        assert_eq!(ms_to_iso(1_700_000_000_000).as_deref(), Some("2023-11-14T22:13:20+00:00"));
+        assert_eq!(
+            ms_to_iso(1_700_000_000_000).as_deref(),
+            Some("2023-11-14T22:13:20+00:00")
+        );
     }
 
     #[test]

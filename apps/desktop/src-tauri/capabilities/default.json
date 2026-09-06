@@ -2,9 +2,32 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for all bianfa windows (main, settings, login, sync host, note windows).",
-  "windows": ["main", "settings", "login", "sync", "note-*"],
+  "windows": [
+    "main",
+    "settings",
+    "login",
+    "sync",
+    "note-*"
+  ],
   "permissions": [
     "core:default",
+    "core:window:allow-is-minimized",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-enabled",
+    "core:window:allow-set-skip-taskbar",
+    "core:window:allow-set-visible-on-all-workspaces",
+    "core:window:allow-cursor-position",
+    "core:window:allow-monitor-from-point",
+    "core:window:allow-inner-position",
+    "core:window:allow-set-shadow",
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-resizable",
+    "core:window:allow-set-max-size",
+    "core:window:allow-start-resize-dragging",
+    "core:app:default",
+    "core:webview:default",
+    "core:event:default",
+    "core:window:default",
     "core:window:allow-start-dragging",
     "core:window:allow-show",
     "core:window:allow-hide",
@@ -36,7 +59,17 @@
     "notification:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://*" }, { "url": "http://*" }, { "url": "mailto:*" }]
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        },
+        {
+          "url": "mailto:*"
+        }
+      ]
     }
   ]
 }

@@ -12,12 +12,12 @@ use crate::error::{IpcError, IpcResult};
 use crate::model::WindowState;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
+use tauri::webview::Color;
 use tauri::webview::PageLoadEvent;
 use tauri::{
     AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
-use tauri_utils::config::Color;
 
 pub const MAIN: &str = "main";
 pub const SETTINGS: &str = "settings";
@@ -128,11 +128,11 @@ fn rect_center_inside(rect: &Rect, m: &Monitor) -> bool {
 
 /// Centre of the primary (or first) monitor's work area for a window of `w`×`h` physical px.
 fn centered_on_primary(app: &AppHandle, w: u32, h: u32) -> (i32, i32) {
-    let m = app
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| app.available_monitors().ok().and_then(|v| v.into_iter().next()));
+    let m = app.primary_monitor().ok().flatten().or_else(|| {
+        app.available_monitors()
+            .ok()
+            .and_then(|v| v.into_iter().next())
+    });
     match m {
         Some(m) => {
             let wa = m.work_area();
@@ -225,7 +225,12 @@ fn cascade_rect(app: &AppHandle, w: u32, h: u32) -> Rect {
 // Note windows
 // ---------------------------------------------------------------------------------------------
 
-fn build_note_window(app: &AppHandle, label: &str, url: &str, color: NoteColor) -> tauri::Result<WebviewWindow> {
+fn build_note_window(
+    app: &AppHandle,
+    label: &str,
+    url: &str,
+    color: NoteColor,
+) -> tauri::Result<WebviewWindow> {
     let s = ui_scale(app);
     WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title("便笺 · bianfa")
@@ -306,20 +311,9 @@ pub fn open_note(app: &AppHandle, note_id: &str, opts: OpenOpts) -> IpcResult<St
     let pooled = with_registry(app, |r| r.pool.take());
     let win = match pooled.and_then(|l| app.get_webview_window(&l)) {
         Some(w) => {
-            let target = app
-                .config()
-                .build
-                .dev_url
-                .clone()
-                .map(|u| u.join(&url).ok())
-                .flatten();
-            match target {
-                Some(t) => w.navigate(t)?,
-                None => {
-                    let base = w.url()?;
-                    w.navigate(base.join(&url)?)?;
-                }
-            }
+            // Same origin as the pool page (dev server or tauri://localhost), new query.
+            let base = w.url()?;
+            w.navigate(base.join(&url)?)?;
             let _ = w.set_background_color(Some(paper_color(app, color)));
             w
         }
@@ -387,9 +381,13 @@ pub fn open_note(app: &AppHandle, note_id: &str, opts: OpenOpts) -> IpcResult<St
 
     // Persist is_open = 1 (fresh notes get their row once JS calls note_create).
     if !opts.fresh {
-        let _ = events::mutate(app, "local", &["note_window_state"], vec![note_id.to_string()], |tx| {
-            window_state::set_is_open(tx, note_id, true)
-        });
+        let _ = events::mutate(
+            app,
+            "local",
+            &["note_window_state"],
+            vec![note_id.to_string()],
+            |tx| window_state::set_is_open(tx, note_id, true),
+        );
     }
     // The window shows itself on PageLoadEvent::Finished (see on_page_load); a freshly created
     // window that already loaded (pool navigate is async too) is covered by that hook.
@@ -416,9 +414,13 @@ pub fn new_note(app: &AppHandle, at_cursor: bool, color: Option<NoteColor>) -> I
 pub fn close_note(app: &AppHandle, note_id: &str) -> IpcResult<()> {
     let state = app.state::<AppState>();
     if state.with_db(|c| notes::exists(c, note_id))? {
-        events::mutate(app, "local", &["note_window_state"], vec![note_id.to_string()], |tx| {
-            window_state::set_is_open(tx, note_id, false)
-        })?;
+        events::mutate(
+            app,
+            "local",
+            &["note_window_state"],
+            vec![note_id.to_string()],
+            |tx| window_state::set_is_open(tx, note_id, false),
+        )?;
     }
     if let Some(win) = note_window(app, note_id) {
         save_window_geometry(app, win.label());
@@ -431,10 +433,16 @@ pub fn set_z_mode(app: &AppHandle, note_id: &str, z_mode: i64) -> IpcResult<()> 
     if !(0..=2).contains(&z_mode) {
         return Err(IpcError::invalid("zMode must be 0, 1 or 2"));
     }
-    events::mutate(app, "local", &["note_window_state", "notes"], vec![note_id.to_string()], |tx| {
-        window_state::set_z_mode(tx, note_id, z_mode)?;
-        notes::set_z_mode(tx, note_id, z_mode)
-    })?;
+    events::mutate(
+        app,
+        "local",
+        &["note_window_state", "notes"],
+        vec![note_id.to_string()],
+        |tx| {
+            window_state::set_z_mode(tx, note_id, z_mode)?;
+            notes::set_z_mode(tx, note_id, z_mode)
+        },
+    )?;
     if let Some(win) = note_window(app, note_id) {
         pin::apply(app, &win, z_mode)?;
     }
@@ -458,30 +466,40 @@ pub fn set_collapsed(app: &AppHandle, note_id: &str, collapsed: bool) -> IpcResu
     });
     if collapsed {
         // Remember the expanded height before shrinking to the title bar.
-        let _ = events::mutate(app, "local", &["note_window_state"], vec![note_id.to_string()], |tx| {
-            if let Ok(pos) = win.outer_position() {
-                window_state::save_geometry(
-                    tx,
-                    note_id,
-                    &window_state::Geometry {
-                        x: pos.x as i64,
-                        y: pos.y as i64,
-                        w: size.width as i64,
-                        h: size.height as i64,
-                        monitor_key: None,
-                        scale: Some(scale),
-                    },
-                )?;
-            }
-            window_state::set_collapsed(tx, note_id, true)
-        });
+        let _ = events::mutate(
+            app,
+            "local",
+            &["note_window_state"],
+            vec![note_id.to_string()],
+            |tx| {
+                if let Ok(pos) = win.outer_position() {
+                    window_state::save_geometry(
+                        tx,
+                        note_id,
+                        &window_state::Geometry {
+                            x: pos.x as i64,
+                            y: pos.y as i64,
+                            w: size.width as i64,
+                            h: size.height as i64,
+                            monitor_key: None,
+                            scale: Some(scale),
+                        },
+                    )?;
+                }
+                window_state::set_collapsed(tx, note_id, true)
+            },
+        );
         let bar = (NOTE_TITLEBAR_H * s * scale) as u32;
         let _ = win.set_min_size(Some(LogicalSize::new(NOTE_MIN.0 * s, NOTE_TITLEBAR_H * s)));
         win.set_size(PhysicalSize::new(size.width, bar.max(1)))?;
     } else {
-        events::mutate(app, "local", &["note_window_state"], vec![note_id.to_string()], |tx| {
-            window_state::set_collapsed(tx, note_id, false)
-        })?;
+        events::mutate(
+            app,
+            "local",
+            &["note_window_state"],
+            vec![note_id.to_string()],
+            |tx| window_state::set_collapsed(tx, note_id, false),
+        )?;
         let h = saved
             .and_then(|st| st.h)
             .map(|h| h as u32)
@@ -502,15 +520,20 @@ pub fn set_color(app: &AppHandle, note_id: &str, color: NoteColor) -> IpcResult<
 }
 
 pub fn repaint_note_backgrounds(app: &AppHandle, dark: bool) {
-    let entries: Vec<(String, NoteColor)> =
-        with_registry(app, |r| r.colors.iter().map(|(l, c)| (l.clone(), *c)).collect());
+    let entries: Vec<(String, NoteColor)> = with_registry(app, |r| {
+        r.colors.iter().map(|(l, c)| (l.clone(), *c)).collect()
+    });
     for (label, color) in entries {
         if let Some(w) = app.get_webview_window(&label) {
             let (r, g, b) = color.paper_rgb(dark);
             let _ = w.set_background_color(Some(Color(r, g, b, 255)));
         }
     }
-    let dark_theme = if dark { tauri::Theme::Dark } else { tauri::Theme::Light };
+    let dark_theme = if dark {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    };
     let _ = dark_theme;
 }
 
@@ -522,16 +545,24 @@ pub fn save_window_geometry(app: &AppHandle, label: &str) {
     let Some(win) = app.get_webview_window(label) else {
         return;
     };
-    let (Ok(pos), Ok(size), Ok(scale)) = (win.outer_position(), win.inner_size(), win.scale_factor()) else {
+    let (Ok(pos), Ok(size), Ok(scale)) =
+        (win.outer_position(), win.inner_size(), win.scale_factor())
+    else {
         return;
     };
     if size.width == 0 || size.height == 0 {
         return;
     }
     let collapsed = with_registry(app, |r| r.collapsed.contains(label));
-    let mkey = win.current_monitor().ok().flatten().map(|m| monitor_key(&m));
+    let mkey = win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| monitor_key(&m));
     let state = app.state::<AppState>();
-    let known = state.with_db(|c| notes::exists(c, &note_id)).unwrap_or(false);
+    let known = state
+        .with_db(|c| notes::exists(c, &note_id))
+        .unwrap_or(false);
     if !known {
         return; // fresh note that was never created
     }
@@ -597,9 +628,10 @@ pub fn hide_all(app: &AppHandle) -> IpcResult<()> {
 
 /// Hidden-for-10-minutes → `close()` (05 §2.3; keeps `is_open = 1` so Show All restores them).
 pub fn hidden_tick(app: &AppHandle) {
-    let expired = with_registry(app, |r| {
-        matches!(r.hidden_since, Some(t) if t.elapsed() >= HIDE_AUTO_CLOSE)
-    });
+    let expired = with_registry(
+        app,
+        |r| matches!(r.hidden_since, Some(t) if t.elapsed() >= HIDE_AUTO_CLOSE),
+    );
     if !expired {
         return;
     }
@@ -639,7 +671,8 @@ fn schedule_prewarm(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(600)).await;
-        let _ = app.run_on_main_thread(move || prewarm(&app));
+        let inner = app.clone();
+        let _ = app.run_on_main_thread(move || prewarm(&inner));
     });
 }
 
@@ -675,7 +708,12 @@ pub fn focus_note(app: &AppHandle, note_id: &str) -> IpcResult<()> {
             ..Default::default()
         },
     )?;
-    events::emit_to(app, &label, events::NOTE_FOCUS_REQUEST, serde_json::json!({ "noteId": note_id }));
+    events::emit_to(
+        app,
+        &label,
+        events::NOTE_FOCUS_REQUEST,
+        serde_json::json!({ "noteId": note_id }),
+    );
     Ok(())
 }
 
@@ -709,7 +747,9 @@ fn singleton(
     }
     #[cfg(target_os = "macos")]
     {
-        b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+        b = b
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
     }
     Ok(b.build()?)
 }
@@ -722,7 +762,12 @@ pub fn open_main(app: &AppHandle, section: Option<&str>) -> IpcResult<()> {
     }
     let w = singleton(app, MAIN, url, MAIN_DEFAULT, Some(MAIN_MIN), true)?;
     if let Some(s) = section {
-        events::emit_to(app, MAIN, "main:navigate", serde_json::json!({ "section": s }));
+        events::emit_to(
+            app,
+            MAIN,
+            "main:navigate",
+            serde_json::json!({ "section": s }),
+        );
     }
     let _ = w.set_focus();
     Ok(())
@@ -734,15 +779,34 @@ pub fn open_settings(app: &AppHandle, section: Option<&str>) -> IpcResult<()> {
         url.push('#');
         url.push_str(s);
     }
-    singleton(app, SETTINGS, url, SETTINGS_DEFAULT, Some(SETTINGS_MIN), true)?;
+    singleton(
+        app,
+        SETTINGS,
+        url,
+        SETTINGS_DEFAULT,
+        Some(SETTINGS_MIN),
+        true,
+    )?;
     if let Some(s) = section {
-        events::emit_to(app, SETTINGS, "settings:navigate", serde_json::json!({ "section": s }));
+        events::emit_to(
+            app,
+            SETTINGS,
+            "settings:navigate",
+            serde_json::json!({ "section": s }),
+        );
     }
     Ok(())
 }
 
 pub fn open_login(app: &AppHandle) -> IpcResult<()> {
-    singleton(app, LOGIN, "settings.html#login".into(), LOGIN_SIZE, None, false)?;
+    singleton(
+        app,
+        LOGIN,
+        "settings.html#login".into(),
+        LOGIN_SIZE,
+        None,
+        false,
+    )?;
     Ok(())
 }
 
@@ -791,12 +855,33 @@ pub fn on_page_load(webview: &tauri::Webview, payload: &tauri::webview::PageLoad
     if !mapped || hidden {
         return; // pool window or hide-all in effect
     }
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.show();
-        if focus {
-            let _ = w.set_focus();
+    // The page shows itself after its first paint (`getCurrentWindow().show()`); this is only a
+    // safety net for a broken page, plus focus routing once the window is actually visible.
+    tauri::async_runtime::spawn(async move {
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let Some(w) = app.get_webview_window(&label) else {
+                return;
+            };
+            if w.is_visible().unwrap_or(false) {
+                if focus {
+                    let _ = w.set_focus();
+                }
+                return;
+            }
         }
-    }
+        let still_hidden_all = with_registry(&app, |r| r.hidden_since.is_some());
+        if still_hidden_all {
+            return;
+        }
+        if let Some(w) = app.get_webview_window(&label) {
+            log::warn!("{label} never showed itself; forcing show()");
+            let _ = w.show();
+            if focus {
+                let _ = w.set_focus();
+            }
+        }
+    });
 }
 
 pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {

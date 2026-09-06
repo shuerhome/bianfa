@@ -124,24 +124,56 @@ mod tests {
     fn roundtrip() {
         let db = Db::open_in_memory(TEST_KEY).unwrap();
         let c = db.conn();
-        crate::db::notes::create(c, "n1", &empty_update_v2(), &proj("t", None), None, None, None, "local").unwrap();
+        crate::db::notes::create(
+            c,
+            "n1",
+            &empty_update_v2(),
+            &proj("t", None),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
         assert!(get(c, "n1").unwrap().is_none());
         save_geometry(
             c,
             "n1",
-            &Geometry { x: 10, y: 20, w: 300, h: 200, monitor_key: Some("m1".into()), scale: Some(1.5) },
+            &Geometry {
+                x: 10,
+                y: 20,
+                w: 300,
+                h: 200,
+                monitor_key: Some("m1".into()),
+                scale: Some(1.5),
+            },
         )
         .unwrap();
         set_z_mode(c, "n1", 2).unwrap();
         set_collapsed(c, "n1", true).unwrap();
         let s = get(c, "n1").unwrap().unwrap();
-        assert_eq!((s.x, s.y, s.w, s.h), (Some(10), Some(20), Some(300), Some(200)));
+        assert_eq!(
+            (s.x, s.y, s.w, s.h),
+            (Some(10), Some(20), Some(300), Some(200))
+        );
         assert_eq!(s.home_display_id.as_deref(), Some("m1"));
         assert_eq!(s.home_bounds.as_deref(), Some("10,20,300,200"));
         assert_eq!(s.z_mode, 2);
         assert!(s.collapsed && s.is_open);
         // home_* is not overwritten by later moves (17-#48)
-        save_geometry(c, "n1", &Geometry { x: 1, y: 2, w: 3, h: 4, monitor_key: Some("m2".into()), scale: None }).unwrap();
+        save_geometry(
+            c,
+            "n1",
+            &Geometry {
+                x: 1,
+                y: 2,
+                w: 3,
+                h: 4,
+                monitor_key: Some("m2".into()),
+                scale: None,
+            },
+        )
+        .unwrap();
         let s = get(c, "n1").unwrap().unwrap();
         assert_eq!(s.home_display_id.as_deref(), Some("m1"));
         assert_eq!(s.monitor_key.as_deref(), Some("m2"));

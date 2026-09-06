@@ -43,9 +43,10 @@ pub fn attachment_local_url(id: String) -> IpcResult<serde_json::Value> {
 #[tauri::command]
 pub async fn import_scan(app: AppHandle) -> IpcResult<serde_json::Value> {
     let scratch = app.state::<AppState>().paths.imports_dir.clone();
-    let sources: Vec<ImportSource> = tauri::async_runtime::spawn_blocking(move || import::scan(&scratch))
-        .await
-        .map_err(|e| IpcError::internal(e.to_string()))?;
+    let sources: Vec<ImportSource> =
+        tauri::async_runtime::spawn_blocking(move || import::scan(&scratch))
+            .await
+            .map_err(|e| IpcError::internal(e.to_string()))?;
     Ok(serde_json::json!({ "sources": sources }))
 }
 
@@ -63,7 +64,10 @@ fn source_kind(path: &str) -> IpcResult<&'static str> {
 
 /// Imported window rects are logical pixels from the old app; convert with the primary
 /// monitor's scale, then run the usual on-screen check (02 §7).
-fn imported_geometry(app: &AppHandle, w: &crate::model::ImportWindow) -> Option<window_state::Geometry> {
+fn imported_geometry(
+    app: &AppHandle,
+    w: &crate::model::ImportWindow,
+) -> Option<window_state::Geometry> {
     let (x, y, wd, ht) = (w.x?, w.y?, w.w?, w.h?);
     let scale = app
         .primary_monitor()
@@ -151,7 +155,13 @@ pub fn import_commit(
                             .map(|s| s > existing_updated_at)
                             .unwrap_or(false);
                         if newer {
-                            notes::append_update(tx, &existing_id, bytes, "import", Some(&it.projection))?;
+                            notes::append_update(
+                                tx,
+                                &existing_id,
+                                bytes,
+                                "import",
+                                Some(&it.projection),
+                            )?;
                             r.updated += 1;
                         } else {
                             r.skipped += 1;

@@ -224,7 +224,14 @@ pub fn rtf_to_text(rtf: &str) -> String {
                     }
                     if matches!(
                         word.as_str(),
-                        "fonttbl" | "colortbl" | "stylesheet" | "info" | "pict" | "object" | "header" | "footer"
+                        "fonttbl"
+                            | "colortbl"
+                            | "stylesheet"
+                            | "info"
+                            | "pict"
+                            | "object"
+                            | "header"
+                            | "footer"
                     ) {
                         skip_depth.get_or_insert(depth);
                     }
@@ -311,7 +318,10 @@ pub fn rtf_to_text(rtf: &str) -> String {
 pub fn bigram_shingles(text: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     for token in text.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation()) {
-        let chars: Vec<char> = token.chars().map(|c| c.to_lowercase().next().unwrap_or(c)).collect();
+        let chars: Vec<char> = token
+            .chars()
+            .map(|c| c.to_lowercase().next().unwrap_or(c))
+            .collect();
         if chars.len() < 2 {
             if chars.len() == 1 {
                 out.push(chars[0].to_string());
@@ -332,7 +342,10 @@ mod tests {
     #[test]
     fn ticks() {
         let ms = 1_756_000_000_000i64;
-        assert_eq!(ticks_to_ms(Some((ms + TICKS_EPOCH_OFFSET_MS) * 10_000)), Some(ms));
+        assert_eq!(
+            ticks_to_ms(Some((ms + TICKS_EPOCH_OFFSET_MS) * 10_000)),
+            Some(ms)
+        );
         assert_eq!(ticks_to_ms(Some(12345)), None);
         assert_eq!(ticks_to_ms(None), None);
         assert_eq!(ticks_to_ms(Some(0)), None);
@@ -344,7 +357,10 @@ mod tests {
             "ManagedPosition=DeviceId:{DISPLAY2};Position=-1600,-240;Size=180,140",
         ))
         .unwrap();
-        assert_eq!((w.x, w.y, w.w, w.h), (Some(-1600), Some(-240), Some(180), Some(140)));
+        assert_eq!(
+            (w.x, w.y, w.w, w.h),
+            (Some(-1600), Some(-240), Some(180), Some(140))
+        );
         assert_eq!(w.display_id.as_deref(), Some("{DISPLAY2}"));
         assert!(parse_window_position(Some("garbage")).is_none());
         assert!(parse_window_position(None).is_none());
@@ -355,11 +371,19 @@ mod tests {
         let p = parse_text_field(Some(
             r"\id=8f14e45f-ceea-467a-9b0a-1c2d3e4f5a6b 周三 14:00 \b产品评审\b0\par确认 OKLCH 色板 v2.3\par\i下周补 macOS 验证\i0",
         ));
-        assert_eq!(p.markdown, "周三 14:00 **产品评审**\n确认 OKLCH 色板 v2.3\n*下周补 macOS 验证*");
-        assert_eq!(p.plain, "周三 14:00 产品评审\n确认 OKLCH 色板 v2.3\n下周补 macOS 验证");
+        assert_eq!(
+            p.markdown,
+            "周三 14:00 **产品评审**\n确认 OKLCH 色板 v2.3\n*下周补 macOS 验证*"
+        );
+        assert_eq!(
+            p.plain,
+            "周三 14:00 产品评审\n确认 OKLCH 色板 v2.3\n下周补 macOS 验证"
+        );
         assert!(!p.degraded);
 
-        let p = parse_text_field(Some(r"\id=dddd 买菜\par\zzz西红柿 2 斤\par\strike已买\strike0 牛奶"));
+        let p = parse_text_field(Some(
+            r"\id=dddd 买菜\par\zzz西红柿 2 斤\par\strike已买\strike0 牛奶",
+        ));
         assert_eq!(p.markdown, "买菜\n西红柿 2 斤\n~~已买~~牛奶");
         assert!(p.degraded);
 
@@ -371,7 +395,10 @@ mod tests {
     #[test]
     fn server_version_walk() {
         let j = r#"{"document":{"blocks":[{"content":[{"text":"服务器续费"},{"text":"到期 11/20"}]}]}}"#;
-        assert_eq!(parse_server_version(Some(j)).as_deref(), Some("服务器续费\n到期 11/20"));
+        assert_eq!(
+            parse_server_version(Some(j)).as_deref(),
+            Some("服务器续费\n到期 11/20")
+        );
         assert!(parse_server_version(Some("not json")).is_none());
         assert!(parse_server_version(Some(r#"{"a":[]}"#)).is_none());
     }

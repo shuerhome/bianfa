@@ -20,8 +20,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HWND_BOTTOM, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, PBT_APMRESUMEAUTOMATIC,
     SET_WINDOW_POS_FLAGS, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
     SWP_NOSENDCHANGING, SWP_NOSIZE, WINDOW_EX_STYLE, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WM_POWERBROADCAST, WM_WTSSESSION_CHANGE, WNDCLASSW,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WTS_CONSOLE_CONNECT, WTS_SESSION_UNLOCK,
+    WINEVENT_SKIPOWNPROCESS, WM_POWERBROADCAST, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_POPUP, WTS_CONSOLE_CONNECT, WTS_SESSION_UNLOCK,
 };
 
 const PROBE_CLASS: PCWSTR = w!("BianfaZProbe");
@@ -116,7 +116,10 @@ fn desktop_icons_host() -> isize {
             return shell.0 as isize;
         }
         let mut found: isize = 0;
-        let _ = EnumWindows(Some(enum_workerw), LPARAM(&mut found as *mut isize as isize));
+        let _ = EnumWindows(
+            Some(enum_workerw),
+            LPARAM(&mut found as *mut isize as isize),
+        );
         if found != 0 {
             return found;
         }
@@ -190,7 +193,12 @@ unsafe extern "system" fn on_foreground(
     update_show_desktop(show);
 }
 
-unsafe extern "system" fn probe_wndproc(h: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn probe_wndproc(
+    h: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     let taskbar_created = reg().as_ref().map(|r| r.taskbar_created_msg).unwrap_or(0);
     match msg {
         WM_WTSSESSION_CHANGE => {
@@ -364,8 +372,9 @@ pub fn on_focus(app: &AppHandle, label: &str, focused: bool) {
     let label = label.to_string();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
+        let inner = app.clone();
         let _ = app.run_on_main_thread(move || {
-            let still_unfocused = app
+            let still_unfocused = inner
                 .get_webview_window(&label)
                 .map(|w| !w.is_focused().unwrap_or(false))
                 .unwrap_or(false);
@@ -384,12 +393,18 @@ fn is_lifted(h: isize) -> bool {
     let (docked, host, probe) = {
         let g = reg();
         let r = g.as_ref().expect("registry");
-        (r.docked.keys().copied().collect::<Vec<_>>(), r.host, r.probe)
+        (
+            r.docked.keys().copied().collect::<Vec<_>>(),
+            r.host,
+            r.probe,
+        )
     };
     unsafe {
         let mut cur = hwnd(h);
         for _ in 0..256 {
-            let Ok(next) = GetWindow(cur, GW_HWNDNEXT) else { break };
+            let Ok(next) = GetWindow(cur, GW_HWNDNEXT) else {
+                break;
+            };
             if next.0.is_null() {
                 break;
             }
@@ -406,7 +421,10 @@ fn is_lifted(h: isize) -> bool {
                 continue;
             }
             let cls = class_name(next);
-            if matches!(cls.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+            if matches!(
+                cls.as_str(),
+                "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+            ) {
                 continue;
             }
             return true;

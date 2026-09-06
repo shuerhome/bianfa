@@ -23,7 +23,9 @@ const COLS: &str = "id, content_hash, byte_size, mime, width, height, blurhash, 
 
 pub fn insert(conn: &Connection, a: &AttachmentRow) -> IpcResult<()> {
     conn.execute(
-        &format!("INSERT INTO attachments ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"),
+        &format!(
+            "INSERT INTO attachments ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+        ),
         params![
             a.id,
             a.content_hash,
@@ -42,7 +44,11 @@ pub fn insert(conn: &Connection, a: &AttachmentRow) -> IpcResult<()> {
 
 pub fn get(conn: &Connection, id: &str) -> IpcResult<Option<AttachmentRow>> {
     Ok(conn
-        .query_row(&format!("SELECT {COLS} FROM attachments WHERE id = ?1"), [id], row)
+        .query_row(
+            &format!("SELECT {COLS} FROM attachments WHERE id = ?1"),
+            [id],
+            row,
+        )
         .optional()?)
 }
 

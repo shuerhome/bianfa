@@ -26,7 +26,11 @@ pub fn settings_set(app: AppHandle, patch: serde_json::Value) -> IpcResult<Setti
     }
     if next.autostart != before.autostart {
         let al = app.autolaunch();
-        let r = if next.autostart { al.enable() } else { al.disable() };
+        let r = if next.autostart {
+            al.enable()
+        } else {
+            al.disable()
+        };
         if let Err(e) = r {
             log::warn!("autostart toggle: {e}");
         }
@@ -119,7 +123,9 @@ pub fn hotkey_set(app: AppHandle, accelerator: String) -> IpcResult<serde_json::
 pub fn open_external(app: AppHandle, url: String) -> IpcResult<()> {
     let parsed = url::Url::parse(&url)?;
     if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
-        return Err(IpcError::invalid("only http(s) and mailto links can be opened"));
+        return Err(IpcError::invalid(
+            "only http(s) and mailto links can be opened",
+        ));
     }
     app.opener().open_url(url, None::<&str>)?;
     Ok(())

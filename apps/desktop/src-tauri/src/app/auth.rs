@@ -178,7 +178,11 @@ pub fn init(app: &AppHandle) {
             match ensure_access_token(&app).await {
                 Ok(Some(_)) => {
                     let _ = fetch_me(&app).await;
-                    events::emit(&app, events::AUTH_CHANGED, app.state::<AppState>().auth.status());
+                    events::emit(
+                        &app,
+                        events::AUTH_CHANGED,
+                        app.state::<AppState>().auth.status(),
+                    );
                 }
                 Ok(None) => {}
                 Err(e) => log::warn!("startup token refresh failed: {e}"),
@@ -385,7 +389,11 @@ fn loopback_serve(
                 let parsed = url::Url::parse(&format!("http://127.0.0.1{path}")).ok();
                 let params: HashMap<String, String> = parsed
                     .as_ref()
-                    .map(|u| u.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect())
+                    .map(|u| {
+                        u.query_pairs()
+                            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let path_ok = parsed.as_ref().map(|u| u.path() == "/cb").unwrap_or(false);
                 if !path_ok || params.get("state") != Some(&expected_state) {
@@ -417,7 +425,9 @@ fn loopback_serve(
 pub fn login_start(app: &AppHandle) -> IpcResult<LoginStart> {
     let state = app.state::<AppState>();
     if state.network_blocked.load(Ordering::Relaxed) {
-        return Err(IpcError::unsupported("network features are disabled by a service notice"));
+        return Err(IpcError::unsupported(
+            "network features are disabled by a service notice",
+        ));
     }
     let verifier = b64url_encode(&random_bytes(48));
     let challenge = b64url_encode(&<sha2::Sha256 as sha2::Digest>::digest(verifier.as_bytes()));
@@ -563,7 +573,9 @@ fn default_interval() -> i64 {
 pub async fn login_device_start(app: &AppHandle) -> IpcResult<DeviceStart> {
     let state = app.state::<AppState>();
     if state.network_blocked.load(Ordering::Relaxed) {
-        return Err(IpcError::unsupported("network features are disabled by a service notice"));
+        return Err(IpcError::unsupported(
+            "network features are disabled by a service notice",
+        ));
     }
     let resp = state
         .http
@@ -574,7 +586,9 @@ pub async fn login_device_start(app: &AppHandle) -> IpcResult<DeviceStart> {
     let status = resp.status();
     let text = resp.text().await?;
     if !status.is_success() {
-        return Err(IpcError::auth(format!("device code request failed ({status})")));
+        return Err(IpcError::auth(format!(
+            "device code request failed ({status})"
+        )));
     }
     let dc: DeviceCodeResponse = serde_json::from_str(&text)?;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -703,7 +717,9 @@ pub async fn api_request(
     }
     let state = app.state::<AppState>();
     if state.network_blocked.load(Ordering::Relaxed) {
-        return Err(IpcError::unsupported("network features are disabled by a service notice"));
+        return Err(IpcError::unsupported(
+            "network features are disabled by a service notice",
+        ));
     }
     let method = reqwest::Method::from_bytes(method.to_ascii_uppercase().as_bytes())
         .map_err(|_| IpcError::invalid("bad HTTP method"))?;
@@ -713,9 +729,14 @@ pub async fn api_request(
         let mut req = state
             .http
             .request(method.clone(), &url)
-            .timeout(Duration::from_millis(timeout_ms.unwrap_or(30_000).clamp(1_000, 300_000)))
+            .timeout(Duration::from_millis(
+                timeout_ms.unwrap_or(30_000).clamp(1_000, 300_000),
+            ))
             .header("X-Bianfa-Device-Id", state.auth.device_id())
-            .header("X-Bianfa-App-Version", app.package_info().version.to_string());
+            .header(
+                "X-Bianfa-App-Version",
+                app.package_info().version.to_string(),
+            );
         if let Some(t) = &token {
             req = req.bearer_auth(t);
         }
@@ -732,7 +753,11 @@ pub async fn api_request(
         let headers = resp
             .headers()
             .iter()
-            .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), v.to_string())))
+            .filter_map(|(k, v)| {
+                v.to_str()
+                    .ok()
+                    .map(|v| (k.as_str().to_string(), v.to_string()))
+            })
             .collect();
         let body_text = resp.text().await?;
         return Ok(ApiResponse {
@@ -752,9 +777,19 @@ pub struct SyncToken {
 }
 
 pub async fn sync_token(app: &AppHandle) -> IpcResult<SyncToken> {
-    let r = api_request(app, "POST", paths::SYNC_TOKEN, Some(serde_json::json!({})), Some(15_000)).await?;
+    let r = api_request(
+        app,
+        "POST",
+        paths::SYNC_TOKEN,
+        Some(serde_json::json!({})),
+        Some(15_000),
+    )
+    .await?;
     if r.status != 200 {
-        return Err(IpcError::auth(format!("sync token request failed ({})", r.status)));
+        return Err(IpcError::auth(format!(
+            "sync token request failed ({})",
+            r.status
+        )));
     }
     let v: serde_json::Value = serde_json::from_str(&r.body_text)?;
     let token = v["token"]

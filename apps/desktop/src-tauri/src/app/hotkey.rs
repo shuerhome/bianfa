@@ -14,9 +14,9 @@ pub fn register(app: &AppHandle, accelerator: &str) -> Result<(), String> {
         if event.state != ShortcutState::Pressed {
             return;
         }
-        let app = app.clone();
-        let _ = app.run_on_main_thread(move || match windows::new_note(&app, true, None) {
-            Ok(_) => events::emit(&app, events::HOTKEY_NEW_NOTE, serde_json::json!({})),
+        let inner = app.clone();
+        let _ = app.run_on_main_thread(move || match windows::new_note(&inner, true, None) {
+            Ok(_) => events::emit(&inner, events::HOTKEY_NEW_NOTE, serde_json::json!({})),
             Err(e) => log::warn!("hotkey new note: {e}"),
         });
     })

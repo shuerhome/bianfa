@@ -312,7 +312,8 @@ impl Settings {
         if !matches!(self.channel.as_str(), "stable" | "beta") {
             return Err(format!("channel: {}", self.channel));
         }
-        if !(self.api_base_url.starts_with("https://") || self.api_base_url.starts_with("http://")) {
+        if !(self.api_base_url.starts_with("https://") || self.api_base_url.starts_with("http://"))
+        {
             return Err("apiBaseUrl must be http(s)".into());
         }
         if !(self.sync_ws_url.starts_with("wss://") || self.sync_ws_url.starts_with("ws://")) {
@@ -407,10 +408,9 @@ mod tests {
 
     #[test]
     fn projection_defaults() {
-        let p: NoteProjection = serde_json::from_str(
-            r#"{"content":{"type":"doc"},"createdAt":1,"updatedAt":2}"#,
-        )
-        .unwrap();
+        let p: NoteProjection =
+            serde_json::from_str(r#"{"content":{"type":"doc"},"createdAt":1,"updatedAt":2}"#)
+                .unwrap();
         assert_eq!(p.schema_version, 1);
         assert_eq!(p.color, NoteColor::Graphite);
         assert!(p.checklist.is_empty());

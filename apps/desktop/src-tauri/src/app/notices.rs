@@ -35,7 +35,10 @@ fn version_affected(range: Option<&str>, current: &str) -> bool {
     let Some(range) = range.filter(|r| !r.trim().is_empty() && r.trim() != "*") else {
         return true;
     };
-    match (semver::VersionReq::parse(range), semver::Version::parse(current)) {
+    match (
+        semver::VersionReq::parse(range),
+        semver::Version::parse(current),
+    ) {
         (Ok(req), Ok(v)) => req.matches(&v),
         _ => false,
     }
@@ -58,8 +61,17 @@ pub async fn fetch(app: &AppHandle) -> IpcResult<Option<Notice>> {
         return Ok(None);
     }
     let state = app.state::<AppState>();
-    let url = format!("{}/v1/notice", state.settings().api_base_url.trim_end_matches('/'));
-    let resp = match state.http.get(&url).timeout(Duration::from_secs(15)).send().await {
+    let url = format!(
+        "{}/v1/notice",
+        state.settings().api_base_url.trim_end_matches('/')
+    );
+    let resp = match state
+        .http
+        .get(&url)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             log::info!("notice fetch failed (fail-open): {e}");
@@ -90,7 +102,9 @@ pub async fn fetch(app: &AppHandle) -> IpcResult<Option<Notice>> {
         return Ok(None);
     };
     let current = app.package_info().version.to_string();
-    if !platform_affected(&notice.platforms) || !version_affected(notice.affected_versions.as_deref(), &current) {
+    if !platform_affected(&notice.platforms)
+        || !version_affected(notice.affected_versions.as_deref(), &current)
+    {
         return Ok(None);
     }
     let acked = state.settings().acked_notice_ids.contains(&notice.id);
@@ -107,7 +121,11 @@ pub async fn fetch(app: &AppHandle) -> IpcResult<Option<Notice>> {
 }
 
 pub fn current(app: &AppHandle) -> Option<Notice> {
-    app.state::<AppState>().notice.lock().ok().and_then(|g| g.clone())
+    app.state::<AppState>()
+        .notice
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
 }
 
 pub fn ack(app: &AppHandle, id: &str) -> IpcResult<()> {
@@ -119,7 +137,10 @@ pub fn ack(app: &AppHandle, id: &str) -> IpcResult<()> {
         state.set_settings(s);
     }
     if let Ok(mut g) = state.notice.lock() {
-        if g.as_ref().map(|n| n.id == id && n.action != "block").unwrap_or(false) {
+        if g.as_ref()
+            .map(|n| n.id == id && n.action != "block")
+            .unwrap_or(false)
+        {
             *g = None;
         }
     }

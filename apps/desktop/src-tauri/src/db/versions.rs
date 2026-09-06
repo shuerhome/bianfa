@@ -42,9 +42,13 @@ pub fn list(conn: &Connection, note_id: &str) -> IpcResult<Vec<VersionItem>> {
 }
 
 pub fn get(conn: &Connection, id: &str) -> IpcResult<Vec<u8>> {
-    conn.query_row("SELECT state_v2 FROM ydoc_versions WHERE id = ?1", [id], |r| r.get(0))
-        .optional()?
-        .ok_or_else(|| IpcError::not_found(format!("version {id} not found")))
+    conn.query_row(
+        "SELECT state_v2 FROM ydoc_versions WHERE id = ?1",
+        [id],
+        |r| r.get(0),
+    )
+    .optional()?
+    .ok_or_else(|| IpcError::not_found(format!("version {id} not found")))
 }
 
 pub fn has_daily_today(conn: &Connection, note_id: &str, now: i64) -> IpcResult<bool> {
@@ -118,7 +122,11 @@ mod tests {
         assert!(!has_daily_today(c, "n", now_ms()).unwrap());
         save(c, "n", b"d", "daily").unwrap();
         assert!(has_daily_today(c, "n", now_ms()).unwrap());
-        c.execute("UPDATE ydoc_versions SET created_at = 1 WHERE label = 'daily'", []).unwrap();
+        c.execute(
+            "UPDATE ydoc_versions SET created_at = 1 WHERE label = 'daily'",
+            [],
+        )
+        .unwrap();
         prune(c).unwrap();
         assert!(list(c, "n").unwrap().iter().all(|v| v.label != "daily"));
     }
