@@ -105,19 +105,19 @@ export TAG="$TAG_NEW"
 # 0) 校验 compose 文件 + 服务名，别在半路发现 YAML 坏了或服务名拼错
 if ! compose config -q 2>>"$LOG"; then
   logline "compose config 校验失败"
-  notify_fail "deploy ${TAG_NEW} 中止：compose 配置无效（见 deploy.log）"
+  notify_fail "deploy ${TAG_NEW} 中止：compose 配置无效（见 deploy.log） / aborted: invalid compose config (see deploy.log)"
   exit 2
 fi
 known_services=$(compose config --services 2>/dev/null || true)
 for s in $SERVICES; do
-  grep -qx "$s" <<<"$known_services" || { logline "compose 里没有服务 ${s}（已有：$(tr '\n' ' ' <<<"$known_services")）"; notify_fail "deploy ${TAG_NEW} 中止：compose 里没有服务 ${s}"; exit 2; }
+  grep -qx "$s" <<<"$known_services" || { logline "compose 里没有服务 ${s}（已有：$(tr '\n' ' ' <<<"$known_services")）"; notify_fail "deploy ${TAG_NEW} 中止：compose 里没有服务 ${s} / aborted: service ${s} not in compose"; exit 2; }
 done
 
 # 1) 拉镜像：失败则什么都没改，直接退出
 # shellcheck disable=SC2086
 if ! compose pull --quiet $SERVICES >>"$LOG" 2>&1; then
   logline "镜像拉取失败，未改动任何容器"
-  notify_fail "deploy ${TAG_NEW} 中止：镜像拉取失败（ghcr 不可达或 tag 不存在）" "$(tail -n 15 "$LOG")"
+  notify_fail "deploy ${TAG_NEW} 中止：镜像拉取失败（ghcr 不可达或 tag 不存在） / aborted: image pull failed (ghcr unreachable or tag missing)" "$(tail -n 15 "$LOG")"
   exit 2
 fi
 
@@ -128,18 +128,18 @@ rollback() {
   compose logs --no-color --tail 80 $SERVICES >>"$LOG" 2>&1 || true
   if [[ -z "$TAG_PREV" ]]; then
     logline "健康检查失败（${reason}）且没有上一个 tag，无法回滚；保持现状等待人工处理"
-    notify_fail "deploy ${TAG_NEW} 失败（${reason}），且无上一个 tag 可回滚。需要人工介入。" "$(compose ps -a 2>&1 | tail -n 20)"
+    notify_fail "deploy ${TAG_NEW} 失败（${reason}），且无上一个 tag 可回滚，需要人工介入 / failed (${reason}) with no previous tag to roll back to; manual action required" "$(compose ps -a 2>&1 | tail -n 20)"
     exit 3
   fi
   logline "健康检查失败（${reason}），回滚到 ${TAG_PREV}"
   # shellcheck disable=SC2086
   if TAG="$TAG_PREV" compose up -d --no-deps --wait --wait-timeout "$WAIT_TIMEOUT" $SERVICES >>"$LOG" 2>&1; then
     logline "回滚成功：现为 ${TAG_PREV}"
-    notify_fail "deploy ${TAG_NEW} 失败（${reason}），已自动回滚到 ${TAG_PREV}。" "$(tail -n 40 "$LOG")"
+    notify_fail "deploy ${TAG_NEW} 失败（${reason}），已自动回滚到 ${TAG_PREV} / failed (${reason}); auto-rolled back to ${TAG_PREV}" "$(tail -n 40 "$LOG")"
     exit 1
   fi
   logline "回滚也失败了"
-  notify_fail "deploy ${TAG_NEW} 失败，且回滚到 ${TAG_PREV} 也失败。生产可能不可用，立即人工介入。" "$(compose ps -a 2>&1 | tail -n 20)"
+  notify_fail "deploy ${TAG_NEW} 失败，回滚到 ${TAG_PREV} 也失败，生产可能不可用，立即人工介入 / failed AND rollback to ${TAG_PREV} failed; production may be down, act now" "$(compose ps -a 2>&1 | tail -n 20)"
   exit 3
 }
 
@@ -169,7 +169,7 @@ if [[ -n "$DOMAIN" ]]; then
     EXTERNAL_NOTE="外部 /healthz OK"
   else
     EXTERNAL_NOTE="外部 https://api.${DOMAIN}/healthz 不通（容器内健康；怀疑 Tunnel/边缘）"
-    notify_warn "deploy ${TAG_NEW}：${EXTERNAL_NOTE}"
+    notify_warn "deploy ${TAG_NEW} 外部健康检查 / external healthz：${EXTERNAL_NOTE}"
   fi
 fi
 
@@ -186,5 +186,5 @@ if (( ! NO_PRUNE )); then
 fi
 
 ELAPSED=$(( $(date +%s) - START ))
-notify_ok "deploy 完成：${TAG_NEW}（prev ${TAG_PREV:-<none>}，${ELAPSED}s）${EXTERNAL_NOTE:+ · ${EXTERNAL_NOTE}}"
+notify_ok "deploy 完成 / done：${TAG_NEW}（prev ${TAG_PREV:-<none>}，${ELAPSED}s）${EXTERNAL_NOTE:+ · ${EXTERNAL_NOTE}}"
 exit 0

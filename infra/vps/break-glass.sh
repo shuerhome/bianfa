@@ -223,7 +223,7 @@ EOF
   fi
   local start; start=$(date +%s)
   logline "enter: mode=${MODE} drill=${DRILL} staging=${STAGING} ip=${ip} hosts=${HOSTS[*]}"
-  (( DRILL )) || notify_warn "break-glass 开始（${MODE}）：绕过 Tunnel，直连 ${ip}:443 by ${SUDO_USER:-root}"
+  (( DRILL )) || notify_warn "break-glass 开始 / started（${MODE}）：绕过 Tunnel 直连 / bypassing Tunnel, direct to ${ip}:443 by ${SUDO_USER:-root}"
   make_caddyfile; make_override; validate_caddyfile
   if have_ufw; then
     ufw allow in 443/tcp comment 'break-glass' >>"$LOG" 2>&1 || die "ufw allow 443 失败"
@@ -277,11 +277,11 @@ EOF
   logline "轮询公网 https://${HOST}/healthz（等你改 DNS + 传播），最多 ${POLL_MINUTES} 分钟"
   if poll "https://${HOST}/healthz（公网）" $(( $(date +%s) + POLL_MINUTES * 60 )) "https://${HOST}/healthz"; then
     logline "break-glass 生效：https://${HOST} 公网可用（$(( $(date +%s) - start ))s）"
-    notify_ok "break-glass 生效（${MODE}）：https://${HOST} 已直连 ${ip}:443（用时 $(( $(date +%s) - start ))s）。Tunnel 恢复后执行 --revert 并把 DNS 改回 CNAME。"
+    notify_ok "break-glass 生效 / active（${MODE}）：https://${HOST} 已直连 / now direct to ${ip}:443（用时 / took $(( $(date +%s) - start ))s）。Tunnel 恢复后执行 --revert 并把 DNS 改回 CNAME / when the Tunnel is back: run --revert and restore the CNAME"
     return 0
   fi
   logline "本机侧已就位但公网仍不通。常见：DNS 还没改/没传播、acme 模式下还是橙云、LE 限速（看 docker compose logs caddy）、hPanel 外层防火墙挡 443"
-  notify_fail "break-glass：本机 443 已就位，但 ${POLL_MINUTES} 分钟内 https://${HOST} 公网仍不可达，需人工排查（DNS 改了吗？）"
+  notify_fail "break-glass：本机 443 已就位，但 ${POLL_MINUTES} 分钟内 https://${HOST} 公网仍不可达，需人工排查（DNS 改了吗？） / local 443 is up but https://${HOST} still unreachable after ${POLL_MINUTES} min; check DNS"
   exit 1
 }
 
@@ -299,7 +299,7 @@ do_revert() {
   验证：dig +short ${HOST} @1.1.1.1 是 Cloudflare 边缘 IP；curl -fsS https://${HOST}/healthz 200。
 ================================================================================
 EOF
-  notify_ok "break-glass 已退出：443 关闭、Caddy 回到 Tunnel-only。记得把 ${HOSTS[*]} 的 DNS 改回 CNAME。"
+  notify_ok "break-glass 已退出 / reverted：443 关闭、Caddy 回到 Tunnel-only / 443 closed, Caddy back to Tunnel-only。记得把 ${HOSTS[*]} 的 DNS 改回 CNAME / restore the CNAME for ${HOSTS[*]}"
 }
 
 case "$ACTION" in enter) do_enter ;; revert) do_revert ;; status) do_status ;; esac

@@ -228,9 +228,9 @@ async function run(env: Env, scheduledTime: number): Promise<void> {
 			const sent = await telegram(
 				env,
 				[
-					`[RECOVERED] ${env.SERVICE_NAME}`,
+					`[RECOVERED] ${env.SERVICE_NAME} 已恢复 / recovered`,
 					`${env.HEALTHZ_URL}`,
-					`down for ${downFor} (since ${prev.down_since ?? "?"})`,
+					`故障时长 / down for ${downFor} (since ${prev.down_since ?? "?"})`,
 					`now: ${r.detail}`,
 					`at ${nowIso}`,
 				].join("\n"),
@@ -261,9 +261,9 @@ async function run(env: Env, scheduledTime: number): Promise<void> {
 			const sent = await telegram(
 				env,
 				[
-					`[DOWN] ${env.SERVICE_NAME}`,
+					`[DOWN] ${env.SERVICE_NAME} 不可用 / down`,
 					`${env.HEALTHZ_URL}`,
-					`${next.failures} consecutive failures (threshold ${threshold})`,
+					`连续失败 / consecutive failures: ${next.failures} (threshold ${threshold})`,
 					`last: ${r.detail}`,
 					`since ${next.down_since}`,
 					`runbook: infra/RUNBOOK.md §7.1 — Tunnel connectors -> Caddy -> api replicas (docker compose ps)`,
@@ -284,9 +284,9 @@ async function run(env: Env, scheduledTime: number): Promise<void> {
 				const sent = await telegram(
 					env,
 					[
-						`[DEGRADED] cloudflared connectors: ${n} healthy (want >= ${min})`,
+						`[DEGRADED] 隧道连接器只剩 ${n} 个 / cloudflared connectors: ${n} healthy (want >= ${min})`,
 						`tunnel ${env.CF_TUNNEL_ID}`,
-						n === 0 ? `all connectors down: api/ws are unreachable through the Tunnel` : `redundancy lost: one replica down`,
+						n === 0 ? `全部断开，api/ws 经隧道不可达 / all connectors down: api/ws unreachable through the Tunnel` : `冗余丢失，一个副本掉线 / redundancy lost: one replica down`,
 						`runbook: infra/RUNBOOK.md §6.7`,
 						`at ${nowIso}`,
 					].join("\n"),
@@ -296,7 +296,7 @@ async function run(env: Env, scheduledTime: number): Promise<void> {
 					changed = true;
 				}
 			} else if (n >= min && prev.tunnel_alerting) {
-				const sent = await telegram(env, `[OK] cloudflared connectors back to ${n} (>= ${min}) at ${nowIso}`);
+				const sent = await telegram(env, `[OK] 隧道连接器恢复到 ${n} 个 / cloudflared connectors back to ${n} (>= ${min}) at ${nowIso}`);
 				if (sent) {
 					next.tunnel_alerting = false;
 					changed = true;

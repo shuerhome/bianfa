@@ -68,7 +68,7 @@ write_metrics() {
 }
 fail() {
   logline "FAIL: $1"; write_metrics 0
-  notify_fail "pgBackRest ${MODE} 失败：$1" "$(tail -n 30 "$LOG" 2>/dev/null || true)"
+  notify_fail "pgBackRest ${MODE} 失败 / failed：$1" "$(tail -n 30 "$LOG" 2>/dev/null || true)"
   exit 1
 }
 
@@ -134,7 +134,7 @@ case "$FRESH" in parse-error|no-stanza) fail "无法解析 pgbackrest info --out
 [[ "$FRESH" == code=0* ]] || fail "stanza 状态异常：${FRESH}"
 AGE_H=$(sed -E 's/.*last_backup_age_h=([0-9.]+).*/\1/' <<<"$FRESH")
 awk -v a="$AGE_H" -v m="$MAX_BACKUP_AGE_H" 'BEGIN{exit !(a > m)}' \
-  && notify_warn "pgBackRest：最近一次成功备份已 ${AGE_H} 小时（阈值 ${MAX_BACKUP_AGE_H}h）" "$FRESH"
+  && notify_warn "pgBackRest：最近一次成功备份已 ${AGE_H} 小时 / last successful backup is ${AGE_H}h old（阈值 / threshold ${MAX_BACKUP_AGE_H}h）" "$FRESH"
 
 # ── 归档链路当前状态：pg_stat_archiver（info 的 archive.max 只是 WAL 段名，没有时间）──
 # 「最近一次失败晚于最近一次成功」= 此刻归档正在失败 → 算失败；只是很久没归档 → 告警。
@@ -146,7 +146,7 @@ if [[ -n "$ARCH" ]]; then
   logline "pg_stat_archiver: age=${arch_age_s}s failing_now=${arch_failing} last_failed_wal=${arch_last_failed}"
   [[ "$arch_failing" == "true" || "$arch_failing" == "t" ]] && fail "archive_command 正在失败（last_failed_wal=${arch_last_failed}），RPO 已失守"
   (( arch_age_s > MAX_WAL_AGE_MIN * 60 && arch_age_s < 1000000000 )) \
-    && notify_warn "pgBackRest：已 $(( arch_age_s / 60 )) 分钟没有成功归档 WAL（阈值 ${MAX_WAL_AGE_MIN} 分钟；库完全空闲时可忽略）"
+    && notify_warn "pgBackRest：已 $(( arch_age_s / 60 )) 分钟没有成功归档 WAL / no WAL archived for $(( arch_age_s / 60 )) min（阈值 / threshold ${MAX_WAL_AGE_MIN} min；库完全空闲时可忽略 / ignore if the DB is idle）"
 else
   logline "警告：读不到 pg_stat_archiver（psql 失败？）"
 fi
@@ -155,7 +155,7 @@ ELAPSED=$(( $(date +%s) - START ))
 write_metrics 1
 logline "OK (${ELAPSED}s)"
 case "$NOTIFY_ON_SUCCESS" in
-  all)  notify_ok "pgBackRest ${MODE} 成功（${ELAPSED}s）" "$FRESH" ;;
-  full) [[ "$MODE" == full ]] && notify_ok "pgBackRest 周全量成功（${ELAPSED}s）" "$FRESH" ;;
+  all)  notify_ok "pgBackRest ${MODE} 成功 / succeeded（${ELAPSED}s）" "$FRESH" ;;
+  full) [[ "$MODE" == full ]] && notify_ok "pgBackRest 周全量成功 / weekly full backup succeeded（${ELAPSED}s）" "$FRESH" ;;
 esac
 exit 0

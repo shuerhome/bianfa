@@ -102,6 +102,7 @@ _notify_fmt() {
   printf '%s' "$body"
 }
 
+# 标题约定：中英双语，形如「中文 / English」（2026-09-06 产品要求，群里有非中文读者）；detail 段是日志原文，不翻译。
 notify_ok()   { notify_raw "$(_notify_fmt OK   "$1" "${2:-}")" 1; }
 notify_info() { notify_raw "$(_notify_fmt INFO "$1" "${2:-}")" 1; }
 notify_warn() { notify_raw "$(_notify_fmt WARN "$1" "${2:-}")" 0; }

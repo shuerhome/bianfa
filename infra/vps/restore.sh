@@ -52,7 +52,7 @@ source "$SCRIPT_DIR/notify.sh"
 
 ts() { date -u +%FT%TZ; }
 logline() { printf '%s %s\n' "$(ts)" "$*" | tee -a "$LOG" >&2; }
-die() { logline "FAIL: $*"; notify_fail "灾难恢复中断：$*" "$(tail -n 20 "$LOG" 2>/dev/null || true)"; exit 1; }
+die() { logline "FAIL: $*"; notify_fail "灾难恢复中断 / disaster restore aborted：$*" "$(tail -n 20 "$LOG" 2>/dev/null || true)"; exit 1; }
 step() {   # 打印上一步耗时与累计耗时
   local now; now=$(date +%s)
   printf '\n\033[1;34m==> [+%3ds / 累计 %4ds] %s\033[0m\n' "$(( now - T_STEP ))" "$(( now - T0 ))" "$*"
@@ -204,5 +204,5 @@ cat <<EOF
   [ ] Hostinger 新机开每周快照；销毁旧机前再快照一份   [ ] 事后复盘：为什么挂、RTO 实测、哪一步卡住
 ================================================================================
 EOF
-notify_ok "灾难恢复完成：TAG=${TAG}，时间点=${TARGET_TIME:-latest}，用时 ${TOTAL}s。剩余人工清单见 restore.sh 输出。"
+notify_ok "灾难恢复完成 / disaster restore done：TAG=${TAG}，时间点 / target=${TARGET_TIME:-latest}，用时 / took ${TOTAL}s。剩余人工清单见 restore.sh 输出 / remaining manual steps: see restore.sh output"
 exit 0
