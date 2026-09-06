@@ -530,15 +530,18 @@ describe.skipIf(!hasDb)("sync-ws server", () => {
         track(connectClient(h.url, noteDocumentName(owner.workspaceId, uuidv7()), token, { socket })),
       );
     }
+    // 64 次鉴权各建一行 notes，机器忙时 20 s 不够（与其它套件并行跑时出现过超时）；放宽到 60 s，
+    // 第 65 个连接换新 token，避免前面耗时过长导致 60 s JWT 过期而把 too_many_documents 误判成 expired
     await waitFor(
       () => many.every((c) => c.events.authenticated.length > 0),
-      20_000,
+      60_000,
       "64 documents authenticated",
     );
     expect(h.sync.registry.sockets.size).toBeGreaterThanOrEqual(1);
     const limitBefore = await counter("rejected", "limit");
+    const freshToken = await tokenFor(owner.userId);
     const extra = track(
-      connectClient(h.url, noteDocumentName(owner.workspaceId, uuidv7()), token, { socket }),
+      connectClient(h.url, noteDocumentName(owner.workspaceId, uuidv7()), freshToken, { socket }),
     );
     await waitFor(() => extra.events.authFailed.length > 0, 5_000, "65th rejected");
     expect(extra.events.authFailed[0]).toBe("too_many_documents");
