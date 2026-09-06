@@ -62,3 +62,5 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA pgboss TO :"app_user", :"wrk_user";
 SELECT rolname, rolbypassrls, rolconnlimit FROM pg_roles WHERE rolname IN (:'app_user', :'wrk_user', :'exp_user') ORDER BY 1;
 SQL
 echo "角色已同步：$APP_USER / $WRK_USER / $EXP_USER（数据库 $DB）"
+# PgBouncer 的 userlist 与库密码同源，一起刷新
+"$(dirname "${BASH_SOURCE[0]}")/render-pgbouncer-userlist.sh"

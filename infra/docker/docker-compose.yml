@@ -502,9 +502,10 @@ volumes:
 
 # ---- configs ----------------------------------------------------------------
 # PgBouncer userlist：格式 "user" "password" 每行一个（AUTH_TYPE=scram-sha-256 时可放明文）。
-# 两个用户都要在：api / sync-ws 用 bianfa_app，worker 用 bianfa_worker。密码来自 .env.prod，compose 渲染成一个只读 bind 文件。
+# 两个用户都要在：api / sync-ws 用 bianfa_app，worker 用 bianfa_worker。
+# 文件由 infra/vps/render-pgbouncer-userlist.sh 从 .env.prod 渲染到 /srv/bianfa/pgbouncer-userlist.txt（600, root）；
+# 不能用 configs.content 内联：read_only 服务里 compose 只支持 file（首台机器实测报 "`file` is the sole supported option"）。
+# 相对路径相对本 compose 目录解析：infra/docker/../../.. = /srv/bianfa；别处部署用 PGBOUNCER_USERLIST_FILE 覆盖。
 configs:
   pgbouncer_userlist:
-    content: |
-      "${PG_APP_USER:-bianfa_app}" "${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}"
-      "${PG_WORKER_USER:-bianfa_worker}" "${PG_WORKER_PASSWORD:?PG_WORKER_PASSWORD 未设置}"
+    file: ${PGBOUNCER_USERLIST_FILE:-../../../pgbouncer-userlist.txt}

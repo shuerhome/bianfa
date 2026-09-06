@@ -104,6 +104,9 @@ notify_info "deploy 开始：${TAG_PREV:-<none>} → ${TAG_NEW}（${SERVICES}）
 
 export TAG="$TAG_NEW"
 
+# 0a) PgBouncer userlist 文件（compose configs.file 只读挂载）：缺失则从 .env.prod 渲染，已存在不动
+[[ -s "$BIANFA_ROOT/pgbouncer-userlist.txt" ]] || "$SCRIPT_DIR/render-pgbouncer-userlist.sh" >>"$LOG" 2>&1 || logline "警告：渲染 pgbouncer-userlist.txt 失败（PgBouncer 未重建时不影响本次部署）"
+
 # 0) 校验 compose 文件 + 服务名，别在半路发现 YAML 坏了或服务名拼错
 if ! compose config -q 2>>"$LOG"; then
   logline "compose config 校验失败"
