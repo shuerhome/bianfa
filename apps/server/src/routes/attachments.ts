@@ -64,7 +64,22 @@ export function attachmentRoutes(deps: RouteDeps): Hono<RouteEnv> {
         sql`SELECT id FROM attachments WHERE workspace_id = ${ws.id}::uuid AND content_hash = decode(${hashHex}, 'hex')
               AND status = 'committed' AND NOT encrypted AND deleted_at IS NULL LIMIT 1`,
       );
-      if (existing) return { exists: true as const, attachmentId: existing.id };
+      if (existing) {
+        // 同 workspace 已有同内容对象：以客户端 id 建一条别名行（同 storage_key、直接 committed），
+        // 这样便笺正文里引用的本地 id 在其它设备上 GET /attachments/:id/url 也能解析；GC 按 storage_key 引用计数回收对象。
+        const alias = await one<{ id: string; workspace_id: string; status: string }>(
+          tx,
+          sql`INSERT INTO attachments (id, workspace_id, created_by, content_hash, byte_size, mime, width, height, blurhash, storage_key, status, committed_at)
+              SELECT ${body.attachment_id}::uuid, a.workspace_id, ${c.var.auth.userId}, a.content_hash, a.byte_size, a.mime,
+                     coalesce(${body.width ?? null}, a.width), coalesce(${body.height ?? null}, a.height), coalesce(${body.blurhash ?? null}, a.blurhash),
+                     a.storage_key, 'committed', now()
+              FROM attachments a WHERE a.id = ${existing.id}::uuid
+              ON CONFLICT (id) DO UPDATE SET id = attachments.id
+              RETURNING id, workspace_id, status`,
+        );
+        if (!alias || alias.workspace_id !== ws.id) throw errors.conflict("attachment_id_taken");
+        return { exists: true as const, attachmentId: alias.id };
+      }
       const plan = await planForWorkspace(tx, ws);
       const used = await storageUsedBytes(
         tx,
