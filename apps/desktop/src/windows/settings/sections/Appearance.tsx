@@ -1,7 +1,9 @@
 import { Switch } from "@bianfa/ui";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThemeSetting, UiScale } from "../../../ipc/types.js";
 import { applyMotion, type MotionSetting } from "../../../lib/theme.js";
+import { Segmented } from "../Segmented.js";
 import { Ack, useSettings } from "../use-settings.js";
 
 const THEMES: ThemeSetting[] = ["system", "light", "dark"];
@@ -11,7 +13,9 @@ const MOTIONS: MotionSetting[] = ["system", "full", "reduce"];
 export function AppearanceSection() {
   const { t } = useTranslation();
   const { settings, update, ackKey } = useSettings();
-  const motion = (document.documentElement.getAttribute("data-motion") as MotionSetting | null) ?? "system";
+  const [motion, setMotion] = useState<MotionSetting>(
+    () => (document.documentElement.getAttribute("data-motion") as MotionSetting | null) ?? "system",
+  );
 
   return (
     <section className="settings-section" aria-labelledby="sec-appearance">
@@ -20,56 +24,40 @@ export function AppearanceSection() {
       </h2>
       <div className="settings-row settings-row--stack">
         <span className="settings-label">{t("settings.theme")}</span>
-        <div className="segmented" role="radiogroup" aria-label={t("settings.theme")}>
-          {THEMES.map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={settings.theme === v}
-              className="segmented__item"
-              onClick={() => update({ theme: v })}
-            >
-              {t(`settings.theme_${v}`)}
-            </button>
-          ))}
+        <div className="settings-inline">
+          <Segmented<ThemeSetting>
+            label={t("settings.theme")}
+            value={settings.theme}
+            options={THEMES.map((v) => ({ value: v, label: t(`settings.theme_${v}`) }))}
+            onChange={(v) => update({ theme: v })}
+          />
           <Ack on={ackKey === "theme"} />
         </div>
       </div>
       <div className="settings-row settings-row--stack">
         <span className="settings-label">{t("settings.uiScale")}</span>
-        <div className="segmented" role="radiogroup" aria-label={t("settings.uiScale")}>
-          {SCALES.map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={settings.uiScale === v}
-              className="segmented__item tabular"
-              onClick={() => update({ uiScale: v })}
-            >
-              {v}%
-            </button>
-          ))}
+        <div className="settings-inline">
+          <Segmented<UiScale>
+            label={t("settings.uiScale")}
+            value={settings.uiScale}
+            options={SCALES.map((v) => ({ value: v, label: `${v}%` }))}
+            onChange={(v) => update({ uiScale: v })}
+            tabular
+          />
           <Ack on={ackKey === "uiScale"} />
         </div>
       </div>
       <div className="settings-row settings-row--stack">
         <span className="settings-label">{t("settings.motion")}</span>
-        <div className="segmented" role="radiogroup" aria-label={t("settings.motion")}>
-          {MOTIONS.map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={motion === v}
-              className="segmented__item"
-              onClick={() => applyMotion(v)}
-            >
-              {t(`settings.motion_${v}`)}
-            </button>
-          ))}
-        </div>
+        <Segmented<MotionSetting>
+          label={t("settings.motion")}
+          value={motion}
+          options={MOTIONS.map((v) => ({ value: v, label: t(`settings.motion_${v}`) }))}
+          onChange={(v) => {
+            setMotion(v);
+            applyMotion(v);
+          }}
+        />
       </div>
       <div className="settings-row">
         <Switch

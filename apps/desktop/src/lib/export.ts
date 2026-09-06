@@ -7,7 +7,11 @@ import { fromB64, toB64, utf8ToB64 } from "./base64.js";
 export type ExportFormat = "txt" | "md" | "json";
 
 const safeName = (title: string, id: string): string => {
-  const base = title.replace(/[\\/:*?"<>|\n\r\t]/g, "_").trim().slice(0, 40) || "untitled";
+  const base =
+    title
+      .replace(/[\\/:*?"<>|\n\r\t]/g, "_")
+      .trim()
+      .slice(0, 40) || "untitled";
   return `${base}-${id.slice(0, 8)}`;
 };
 
@@ -28,7 +32,10 @@ export async function buildExportFiles(format: ExportFormat, noteIds?: string[])
     if (format === "txt") files.push({ relPath: `txt/${name}.txt`, contentB64: utf8ToB64(p.contentText) });
     else if (format === "md") {
       const front = `---\ncolor: ${p.meta.color}\npinned: ${p.meta.zMode === 1}\ncreated: ${new Date(p.meta.createdAt).toISOString()}\nupdated: ${new Date(p.meta.updatedAt).toISOString()}\nid: ${n.id}\n---\n\n`;
-      files.push({ relPath: `markdown/${name}.md`, contentB64: utf8ToB64(front + pmJsonToMarkdown(p.content)) });
+      files.push({
+        relPath: `markdown/${name}.md`,
+        contentB64: utf8ToB64(front + pmJsonToMarkdown(p.content)),
+      });
     } else {
       jsonNotes.push({
         id: n.id,
@@ -50,14 +57,24 @@ export async function buildExportFiles(format: ExportFormat, noteIds?: string[])
   if (format === "json") {
     files.push({
       relPath: "notes.json",
-      contentB64: utf8ToB64(JSON.stringify({ exportedAt: new Date().toISOString(), count: jsonNotes.length, notes: jsonNotes }, null, 2)),
+      contentB64: utf8ToB64(
+        JSON.stringify(
+          { exportedAt: new Date().toISOString(), count: jsonNotes.length, notes: jsonNotes },
+          null,
+          2,
+        ),
+      ),
     });
   }
   return files;
 }
 
 /** 选目录 → 生成 → 写盘；用户取消返回 null */
-export async function exportNotes(format: ExportFormat, title: string, noteIds?: string[]): Promise<number | null> {
+export async function exportNotes(
+  format: ExportFormat,
+  title: string,
+  noteIds?: string[],
+): Promise<number | null> {
   const dir = await pickDirectory({ title });
   if (!dir.path) return null;
   const files = await buildExportFiles(format, noteIds);

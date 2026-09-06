@@ -3,21 +3,30 @@ import { Button, IconButton, Menu, MenuItem, MenuSeparator, useToast } from "@bi
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authStatus, noticeAck, noticeGet, notesPurgeExpired, settingsWindowOpen, trashEmpty, updateCheck } from "../../ipc/commands.js";
+import {
+  authStatus,
+  notesPurgeExpired,
+  noticeAck,
+  noticeGet,
+  settingsWindowOpen,
+  trashEmpty,
+  updateCheck,
+} from "../../ipc/commands.js";
 import { useTauriEvent } from "../../ipc/events.js";
 import type { NoteListItem } from "../../ipc/types.js";
-import { queryKeys } from "../../lib/query.js";
 import { closeNote, createNote, openNote, restoreNote, trashNote } from "../../lib/note-actions.js";
+import { queryKeys } from "../../lib/query.js";
 import { globalNewNoteLabel, shortcutLabel, useHotkeys } from "../../lib/shortcuts.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { EmptyState } from "./EmptyState.js";
+import { useDbInvalidation, useNotes } from "./hooks.js";
+import { type Filter, useMainStore } from "./main-store.js";
 import { NoteCard } from "./NoteCard.js";
 import { TeamWall } from "./TeamWall.js";
 import { UpdateBanner } from "./UpdateBanner.js";
-import { useDbInvalidation, useNotes } from "./hooks.js";
-import { type Filter, useMainStore } from "./main-store.js";
 
 const FILTERS: Filter[] = ["all", "open", "pinned", "trash", "team"];
+const SKELETON_KEYS = Array.from({ length: 12 }, (_, i) => `sk-${i}`);
 
 export function MainApp({ initialSection }: { initialSection: string | null }) {
   const { t } = useTranslation();
@@ -27,18 +36,24 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
   const contextAnchor = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [paletteQuery, setPaletteQuery] = useState("");
-  const [notice, setNotice] = useState<{ id: string; title: string; body: string; severity: string } | null>(null);
+  const [notice, setNotice] = useState<{ id: string; title: string; body: string; severity: string } | null>(
+    null,
+  );
   useDbInvalidation();
 
   const notes = useNotes(s.filter, s.query, s.sort);
   const auth = useQuery({ queryKey: queryKeys.auth, queryFn: authStatus, retry: false });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅启动一次
   useEffect(() => {
     if (initialSection === "trash" || initialSection === "team") s.set({ filter: initialSection });
     void notesPurgeExpired().catch(() => undefined);
-    void updateCheck(false).then((r) => r.available && r.version && s.set({ updateBanner: { version: r.version } })).catch(() => undefined);
-    void noticeGet().then((r) => r.notice && setNotice(r.notice)).catch(() => undefined);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 仅启动一次
+    void updateCheck(false)
+      .then((r) => r.available && r.version && s.set({ updateBanner: { version: r.version } }))
+      .catch(() => undefined);
+    void noticeGet()
+      .then((r) => r.notice && setNotice(r.notice))
+      .catch(() => undefined);
   }, []);
 
   useTauriEvent("update:available", (p) => s.set({ updateBanner: { version: p.version, notes: p.notes } }));
@@ -47,7 +62,10 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
   useTauriEvent("hotkey:new-note", () => void notes.refetch());
   useTauriEvent("sync:status", (p) => {
     if (p.state === "error" && p.detail?.startsWith("lost-access:")) {
-      toast({ message: t("sync.lostAccess", { title: p.detail.slice("lost-access:".length) }), kind: "warning" });
+      toast({
+        message: t("sync.lostAccess", { title: p.detail.slice("lost-access:".length) }),
+        kind: "warning",
+      });
     }
     if (p.detail === "restored-by-edit") toast({ message: t("sync.restoredByEdit") });
   });
@@ -110,7 +128,12 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
         return <EmptyState title={t("empty.trash")} hint={t("empty.trashHint")} />;
       case "open":
       case "pinned":
-        return <EmptyState title={t("empty.filtered")} action={{ label: t("empty.clearFilter"), onClick: () => s.set({ filter: "all" }) }} />;
+        return (
+          <EmptyState
+            title={t("empty.filtered")}
+            action={{ label: t("empty.clearFilter"), onClick: () => s.set({ filter: "all" }) }}
+          />
+        );
       default:
         return (
           <EmptyState
@@ -137,8 +160,18 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
           <kbd className="bf-kbd main-search__kbd">{shortcutLabel("commandPalette")}</kbd>
         </div>
         <div className="main-topbar__actions">
-          <IconButton icon="layout-grid" label={t("list.viewGrid")} pressed={s.view === "grid"} onClick={() => s.set({ view: "grid" })} />
-          <IconButton icon="layout-list" label={t("list.viewList")} pressed={s.view === "list"} onClick={() => s.set({ view: "list" })} />
+          <IconButton
+            icon="layout-grid"
+            label={t("list.viewGrid")}
+            pressed={s.view === "grid"}
+            onClick={() => s.set({ view: "grid" })}
+          />
+          <IconButton
+            icon="layout-list"
+            label={t("list.viewList")}
+            pressed={s.view === "list"}
+            onClick={() => s.set({ view: "list" })}
+          />
           <select
             className="bf-select__native"
             value={s.sort}
@@ -155,9 +188,14 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
           </Button>
         </div>
       </header>
-      {s.updateBanner ? <UpdateBanner version={s.updateBanner.version} onDismiss={() => s.set({ updateBanner: null })} /> : null}
+      {s.updateBanner ? (
+        <UpdateBanner version={s.updateBanner.version} onDismiss={() => s.set({ updateBanner: null })} />
+      ) : null}
       {notice ? (
-        <div className={`bf-banner ${notice.severity === "block" ? "bf-banner--danger" : "bf-banner--warning"}`} role="alert">
+        <div
+          className={`bf-banner ${notice.severity === "block" ? "bf-banner--danger" : "bf-banner--warning"}`}
+          role="alert"
+        >
           <strong>{notice.title}</strong>
           <span>{notice.body}</span>
           <span className="bf-banner__spacer" />
@@ -196,8 +234,8 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
             <TeamWall auth={auth.data ?? null} />
           ) : notes.isLoading ? (
             <div className="note-grid" aria-busy="true">
-              {Array.from({ length: 12 }, (_, i) => (
-                <div key={i} className="note-card note-card--grid note-card--skeleton">
+              {SKELETON_KEYS.map((k) => (
+                <div key={k} className="note-card note-card--grid note-card--skeleton">
                   <div className="bf-skeleton" style={{ width: "70%" }} />
                   <div className="bf-skeleton" />
                   <div className="bf-skeleton" style={{ width: "85%" }} />
@@ -205,7 +243,11 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
               ))}
             </div>
           ) : notes.isError ? (
-            <EmptyState title={t("empty.loadFailed")} hint={t("empty.loadFailedHint")} action={{ label: t("common.retry"), onClick: () => void notes.refetch() }} />
+            <EmptyState
+              title={t("empty.loadFailed")}
+              hint={t("empty.loadFailedHint")}
+              action={{ label: t("common.retry"), onClick: () => void notes.refetch() }}
+            />
           ) : notes.items.length === 0 ? (
             emptyForFilter()
           ) : (
@@ -217,22 +259,31 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
                     variant="danger-secondary"
                     size="sm"
                     onClick={() => {
-                      if (window.confirm(t("trash.confirmEmpty"))) void trashEmpty().then((r) => toast({ message: t("trash.emptied", { count: r.purged }) }));
+                      if (window.confirm(t("trash.confirmEmpty")))
+                        void trashEmpty().then((r) =>
+                          toast({ message: t("trash.emptied", { count: r.purged }) }),
+                        );
                     }}
                   >
                     {t("trash.empty")}
                   </Button>
                 </div>
               ) : null}
-              {/* biome-ignore lint/a11y/useSemanticElements: 卡片网格是 role=grid 的自定义布局 */}
-              <div className={s.view === "grid" ? "note-grid" : "note-list"} role="grid" aria-label={filterLabel(s.filter)}>
+              <div
+                className={s.view === "grid" ? "note-grid" : "note-list"}
+                role="listbox"
+                aria-multiselectable="true"
+                aria-label={filterLabel(s.filter)}
+              >
                 {notes.items.map((n) => (
                   <NoteCard
                     key={n.id}
                     note={n}
                     view={s.view}
                     selected={s.selected.has(n.id)}
-                    onOpen={(note) => void (note.deletedAt === null ? openNote(note.id) : restoreNote(note.id))}
+                    onOpen={(note) =>
+                      void (note.deletedAt === null ? openNote(note.id) : restoreNote(note.id))
+                    }
                     onSelect={(note, multi) => s.toggleSelected(note.id, multi)}
                     onContextMenu={openContext}
                   />
@@ -268,7 +319,12 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
           </div>
         </div>
       ) : null}
-      <Menu open={contextNote !== null} onClose={() => setContextNote(null)} anchorRef={contextAnchor} label={t("note.more")}>
+      <Menu
+        open={contextNote !== null}
+        onClose={() => setContextNote(null)}
+        anchorRef={contextAnchor}
+        label={t("note.more")}
+      >
         {contextNote?.deletedAt === null ? (
           <>
             <MenuItem icon="external-link" onSelect={() => contextNote && void openNote(contextNote.id)}>

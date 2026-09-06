@@ -85,16 +85,22 @@ describe("对比度门禁：便笺纸面对类", () => {
       it(`${theme}/${color}: ink2/paper ≥ ${gates["note-ink2"]}`, () => {
         expect(contrast(solid(p.ink2), paper)).toBeGreaterThanOrEqual(gates["note-ink2"]);
       });
-      it(`${theme}/${color}: dot/paper 与 dot/#FFF ≥ ${gates["note-dot"]}`, () => {
+      // dot × #FFF 只对亮色有意义（规格 §1.2 实测 4.41–5.13）；暗色的色点（L .70）改对 canvas
+      it(`${theme}/${color}: dot/paper 与 dot/${theme === "light" ? "#FFF" : "canvas"} ≥ ${gates["note-dot"]}`, () => {
         expect(contrast(solid(p.dot), paper)).toBeGreaterThanOrEqual(gates["note-dot"]);
-        expect(contrast(solid(p.dot), WHITE)).toBeGreaterThanOrEqual(gates["note-dot"]);
+        const second = theme === "light" ? WHITE : solid(semantic.dark.canvas);
+        expect(contrast(solid(p.dot), second)).toBeGreaterThanOrEqual(gates["note-dot"]);
       });
       it(`${theme}/${color}: focus/paper ≥ ${gates["focus-ring"]}`, () => {
         expect(contrast(solid(semantic[theme].focus), paper)).toBeGreaterThanOrEqual(gates["focus-ring"]);
       });
       it(`${theme}/${color}: ink on mark(dot 30%) / sel(dot 22%) ≥ ${gates["note-mark-sel"]}`, () => {
-        expect(contrast(solid(p.ink), mixOver(p.dot, 0.3, paper))).toBeGreaterThanOrEqual(gates["note-mark-sel"]);
-        expect(contrast(solid(p.ink), mixOver(p.dot, 0.22, paper))).toBeGreaterThanOrEqual(gates["note-mark-sel"]);
+        expect(contrast(solid(p.ink), mixOver(p.dot, 0.3, paper))).toBeGreaterThanOrEqual(
+          gates["note-mark-sel"],
+        );
+        expect(contrast(solid(p.ink), mixOver(p.dot, 0.22, paper))).toBeGreaterThanOrEqual(
+          gates["note-mark-sel"],
+        );
       });
     }
   }
@@ -121,8 +127,12 @@ describe("对比度门禁：语义色对类", () => {
     it(`${theme}: body-text（text-1/text-2 × 各表面含 hover/active）≥ ${gates["body-text"]}`, () => {
       for (const [name, bg] of Object.entries(surfaces)) {
         if (name === "selected") continue;
-        expect(contrast(solid(s["text-1"]), bg), `text-1 on ${name}`).toBeGreaterThanOrEqual(gates["body-text"]);
-        expect(contrast(solid(s["text-2"]), bg), `text-2 on ${name}`).toBeGreaterThanOrEqual(gates["body-text"]);
+        expect(contrast(solid(s["text-1"]), bg), `text-1 on ${name}`).toBeGreaterThanOrEqual(
+          gates["body-text"],
+        );
+        expect(contrast(solid(s["text-2"]), bg), `text-2 on ${name}`).toBeGreaterThanOrEqual(
+          gates["body-text"],
+        );
       }
     });
 
@@ -130,7 +140,9 @@ describe("对比度门禁：语义色对类", () => {
       for (const name of t3Backgrounds) {
         const bg = surfaces[name];
         if (!bg) throw new Error(name);
-        expect(contrast(solid(s["text-3"]), bg), `text-3 on ${name}`).toBeGreaterThanOrEqual(gates["tertiary-text"]);
+        expect(contrast(solid(s["text-3"]), bg), `text-3 on ${name}`).toBeGreaterThanOrEqual(
+          gates["tertiary-text"],
+        );
       }
     });
 
@@ -165,7 +177,9 @@ describe("对比度门禁：语义色对类", () => {
     });
 
     it(`${theme}: tooltip ≥ ${gates.tooltip}`, () => {
-      expect(contrast(solid(s["tooltip-text"]), solid(s["tooltip-bg"]))).toBeGreaterThanOrEqual(gates.tooltip);
+      expect(contrast(solid(s["tooltip-text"]), solid(s["tooltip-bg"]))).toBeGreaterThanOrEqual(
+        gates.tooltip,
+      );
     });
   }
 });

@@ -43,7 +43,9 @@ export function useAttachmentUrl(id: string | null): string | null {
 
 /** 静态 bodyHtml 挂载后：把 <img data-attachment-id> 的 src 换成本地 URL */
 export async function hydrateAttachmentImages(root: HTMLElement): Promise<void> {
-  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img[data-attachment-id], img[src^='bianfa://att/']"));
+  const imgs = Array.from(
+    root.querySelectorAll<HTMLImageElement>("img[data-attachment-id], img[src^='bianfa://att/']"),
+  );
   await Promise.all(
     imgs.map(async (img) => {
       const id = img.dataset.attachmentId ?? attachmentIdFromSrc(img.getAttribute("src"));

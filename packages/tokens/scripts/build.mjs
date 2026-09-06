@@ -23,7 +23,8 @@ for (const theme of THEMES) {
     const entry = src.note[theme]?.[color];
     if (!entry) throw new Error(`tokens.json: note.${theme}.${color} 缺失`);
     for (const role of NOTE_ROLES) {
-      if (!HEX_RE.test(entry[role] ?? "")) throw new Error(`tokens.json: note.${theme}.${color}.${role} 不是 #RRGGBB`);
+      if (!HEX_RE.test(entry[role] ?? ""))
+        throw new Error(`tokens.json: note.${theme}.${color}.${role} 不是 #RRGGBB`);
     }
   }
   for (const [name, value] of Object.entries(src.semantic[theme])) {
@@ -249,7 +250,10 @@ function toDts(value, indent = "") {
   if (value && typeof value === "object") {
     const next = `${indent}  `;
     const body = Object.entries(value)
-      .map(([k, v]) => `${next}readonly ${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${toDts(v, next)};`)
+      .map(
+        ([k, v]) =>
+          `${next}readonly ${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${toDts(v, next)};`,
+      )
       .join("\n");
     return `{\n${body}\n${indent}}`;
   }
@@ -287,7 +291,8 @@ const rgb = (hex) => {
   const n = Number.parseInt(hex.slice(1), 16);
   return `Rgb { r: ${(n >> 16) & 255}, g: ${(n >> 8) & 255}, b: ${n & 255} }`;
 };
-const rsArray = (theme, role) => src.noteColors.map((c) => `    ${rgb(src.note[theme][c][role])}, // ${c}`).join("\n");
+const rsArray = (theme, role) =>
+  src.noteColors.map((c) => `    ${rgb(src.note[theme][c][role])}, // ${c}`).join("\n");
 const rs = `// ${BANNER}
 // 供 src-tauri 用 include!() 引入：托盘角标、窗口 background_color（alpha 恒 255）。
 #![allow(dead_code)]

@@ -47,7 +47,8 @@ export function Dialog({
       target?.focus({ preventScroll: true });
       return () => {
         if (el.open) el.close();
-        if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus({ preventScroll: true });
+        if (previouslyFocused && document.contains(previouslyFocused))
+          previouslyFocused.focus({ preventScroll: true });
       };
     }
     if (!open && el.open) el.close();

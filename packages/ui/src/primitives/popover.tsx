@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
+import { type KeyboardEventHandler, type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { type Placement, useAnchored } from "../hooks/use-anchored.js";
 import { cx } from "../utils/cx.js";
@@ -17,6 +17,8 @@ export interface PopoverProps {
   container?: HTMLElement | null;
   /** 打开时是否把焦点移入（默认 true） */
   autoFocus?: boolean;
+  /** 键盘导航（菜单 ↑↓ Home End 首字母）挂在浮层根上 */
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement> | undefined;
   children: ReactNode;
 }
 
@@ -38,6 +40,7 @@ export function Popover({
   className,
   container,
   autoFocus = true,
+  onKeyDown,
   children,
 }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -71,7 +74,8 @@ export function Popover({
     return () => {
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onPointer, true);
-      if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus({ preventScroll: true });
+      if (previouslyFocused && document.contains(previouslyFocused))
+        previouslyFocused.focus({ preventScroll: true });
     };
   }, [open, onClose, anchorRef, autoFocus]);
 
@@ -80,11 +84,10 @@ export function Popover({
     <div
       ref={ref}
       id={id}
-      role={role}
-      aria-label={label}
       tabIndex={-1}
       className={cx("bf-popover", className)}
       style={style}
+      {...{ role, "aria-label": label, onKeyDown }}
     >
       {children}
     </div>,

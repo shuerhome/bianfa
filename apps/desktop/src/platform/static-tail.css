@@ -1,0 +1,17 @@
+/* 平台分叉唯一所在（specs/06 §0、05 §9.1 红线 3）。登记于 MANIFEST.md：
+   1. --r-window：Windows 直角（不透明 → ClearType）；macOS 10px
+   2. 字重：Windows 无 500 字重 → medium 400 / strong 700
+   3. caption：Windows 单枚 ✕ 右缘；macOS 左缘关闭点（TitleBar.tsx 按 isMac 分叉）
+   4. vibrancy：仅 settings 窗（settings.css）
+   5. 托盘左右键语义：Rust 侧 */
+[data-os="windows"] {
+  --r-window: 0px;
+  --fw-medium: 400;
+  --fw-strong: 700;
+}
+[data-os="linux"] {
+  --r-window: 0px;
+}
+[data-os="macos"] {
+  --r-window: 10px;
+}

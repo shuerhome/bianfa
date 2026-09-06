@@ -1,7 +1,8 @@
 // 应用内快捷键终表（specs/05 §8，18-裁决7）。全局热键 Ctrl+Alt+N/⌥⌘N 在 Rust 侧，这里不注册。
 // 原则：handler 首行 IME 守卫；单一 capture-phase 监听承载 preventDefault；编辑类用 key、导航类用 code。
-import { useEffect, useRef } from "react";
+
 import { NOTE_COLORS, type NoteColor } from "@bianfa/shared";
+import { useEffect, useRef } from "react";
 import { isMac, keyCombo } from "./platform.js";
 
 export type ShortcutAction =
@@ -187,7 +188,8 @@ export function useHotkeys(handler: ShortcutHandler, enabled = true): void {
           return;
         }
       }
-      if (isMac() && e.metaKey && !e.ctrlKey && ["r", "[", "]"].includes(e.key.toLowerCase())) e.preventDefault();
+      if (isMac() && e.metaKey && !e.ctrlKey && ["r", "[", "]"].includes(e.key.toLowerCase()))
+        e.preventDefault();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);

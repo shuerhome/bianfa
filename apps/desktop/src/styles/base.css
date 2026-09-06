@@ -1,0 +1,94 @@
+/* 三个 UI 入口共用：Tailwind 别名层 + token + ui 原语 + 排版 + 平台尾巴 */
+@import "tailwindcss";
+@import "@bianfa/tokens/tokens.css";
+@import "@bianfa/ui/theme.css";
+@import "@bianfa/ui/ui.css";
+@import "./prose.css";
+@import "../platform/static-tail.css";
+
+@font-face {
+  font-family: "BF Punct";
+  src: url("asset://localhost/fonts/bf-punct.woff2") format("woff2");
+  font-display: block;
+  font-weight: 400 700;
+  unicode-range:
+    U+3001-3002, U+3008-300F, U+3010-3011, U+3014-3017, U+2018-201D, U+2025-2026, U+00B7, U+FF01,
+    U+FF08-FF09, U+FF0C, U+FF0E, U+FF1A-FF1B, U+FF1F, U+FF5E, U+FF5F-FF60;
+}
+
+:root {
+  font-size: calc(16px * var(--ui-scale));
+}
+
+* {
+  box-sizing: border-box;
+  font-synthesis-weight: none;
+  font-synthesis-style: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--f-sans);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-cjk);
+  color: var(--c-text-1);
+  background: var(--c-canvas);
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+[data-theme-switching] * {
+  /* biome-ignore lint/complexity/noImportantStyles: 主题切换 200ms 内禁 transition（规格 06 §5） */
+  transition: none !important;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+input,
+textarea,
+[contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 4px;
+  transition: background-color var(--dur-1) linear;
+}
+:hover::-webkit-scrollbar-thumb,
+.note-window:hover ::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--c-text-1) 22%, transparent);
+}
+
+.ack {
+  opacity: 0;
+  color: var(--c-success);
+  transition: opacity var(--dur-4) var(--ease-in) var(--delay-ack);
+}
+.ack[data-on] {
+  opacity: 1;
+  transition: opacity var(--dur-1) var(--ease-out) 0s;
+}

@@ -25,7 +25,11 @@ export function pickImageFiles(items: Iterable<File>): { ok: File[]; failures: A
   return { ok, failures };
 }
 
-export async function importImageFiles(editor: Editor, noteId: string, files: File[]): Promise<ImportOutcome> {
+export async function importImageFiles(
+  editor: Editor,
+  noteId: string,
+  files: File[],
+): Promise<ImportOutcome> {
   const outcome: ImportOutcome = { inserted: 0, failures: [] };
   for (const file of files) {
     try {

@@ -21,8 +21,8 @@ interface ActionItem {
   id: string;
   icon: IconName;
   label: string;
-  shortcut?: string;
-  run: () => void | Promise<void>;
+  shortcut?: string | undefined;
+  run: () => unknown;
 }
 
 export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: CommandPaletteProps) {
@@ -47,15 +47,33 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
     queryKey: ["palette", query],
     queryFn: () =>
       searching
-        ? notesSearch({ q: parsed.text, bigramQuery: parsed.bigramQuery, includeTrashed: !!parsed.filters.trashed, limit: 50, filters: parsed.filters })
+        ? notesSearch({
+            q: parsed.text,
+            bigramQuery: parsed.bigramQuery,
+            includeTrashed: !!parsed.filters.trashed,
+            limit: 50,
+            filters: parsed.filters,
+          })
         : notesList().then((l) => l.filter((n) => n.deletedAt === null).slice(0, 5)),
     enabled: open,
   });
 
   const actions: ActionItem[] = useMemo(
     () => [
-      { id: "new", icon: "plus", label: t("palette.newNote"), shortcut: shortcutLabel("newNote"), run: () => createNote() },
-      { id: "settings", icon: "settings", label: t("palette.openSettings"), shortcut: shortcutLabel("settings"), run: () => settingsWindowOpen() },
+      {
+        id: "new",
+        icon: "plus",
+        label: t("palette.newNote"),
+        shortcut: shortcutLabel("newNote"),
+        run: () => createNote(),
+      },
+      {
+        id: "settings",
+        icon: "settings",
+        label: t("palette.openSettings"),
+        shortcut: shortcutLabel("settings"),
+        run: () => settingsWindowOpen(),
+      },
       { id: "filter", icon: "search", label: t("palette.filterList"), run: () => onFilter?.(query) },
       { id: "trash", icon: "trash-2", label: t("palette.emptyTrash"), run: () => trashEmpty() },
       // TODO(llm): AI 动作（「问 AI」「改写」）在此接入；本期不实现。
@@ -64,10 +82,10 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
   );
 
   const notes = notesQ.data ?? [];
-  const visibleActions = searching ? actions.filter((a) => a.label.toLowerCase().includes(parsed.text.toLowerCase())) : actions.slice(0, 3);
+  const visibleActions = searching
+    ? actions.filter((a) => a.label.toLowerCase().includes(parsed.text.toLowerCase()))
+    : actions.slice(0, 3);
   const total = notes.length + visibleActions.length;
-
-  useEffect(() => setCursor(0), [query]);
 
   const runAt = async (i: number) => {
     if (i < notes.length) {
@@ -107,7 +125,12 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
 
   return (
     <div className="palette-scrim" onPointerDown={onClose} role="presentation">
-      <div className="palette" role="dialog" aria-label={t("palette.title")} onPointerDown={(e) => e.stopPropagation()}>
+      <div
+        className="palette"
+        role="dialog"
+        aria-label={t("palette.title")}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <div className="palette__input-row">
           <Icon name="search" />
           {chips.map((c) => (
@@ -120,7 +143,10 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
             className="palette__input"
             value={query}
             placeholder={t("palette.placeholder")}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setCursor(0);
+            }}
             onKeyDown={onKeyDown}
             aria-label={t("palette.title")}
             aria-activedescendant={total > 0 ? `palette-item-${cursor}` : undefined}
@@ -129,9 +155,17 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
           <kbd className="bf-kbd">esc</kbd>
         </div>
         <div id="palette-list" className="palette__list" role="listbox" aria-label={t("palette.results")}>
-          {notes.length > 0 ? <div className="palette__group">{searching ? t("palette.notes") : t("palette.recent")}</div> : null}
+          {notes.length > 0 ? (
+            <div className="palette__group">{searching ? t("palette.notes") : t("palette.recent")}</div>
+          ) : null}
           {notes.map((n: NoteListItem, i) => (
-            <PaletteRow key={n.id} id={`palette-item-${i}`} active={i === cursor} onSelect={() => void runAt(i)} color={n.color}>
+            <PaletteRow
+              key={n.id}
+              id={`palette-item-${i}`}
+              active={i === cursor}
+              onSelect={() => void runAt(i)}
+              color={n.color}
+            >
               <span className="palette__label">{n.title || t("note.untitled")}</span>
               <span className="palette__meta">{relativeTime(n.updatedAt, t)}</span>
             </PaletteRow>
@@ -140,14 +174,21 @@ export function CommandPalette({ open, onClose, initialQuery = "", onFilter }: C
           {visibleActions.map((a, j) => {
             const i = notes.length + j;
             return (
-              <PaletteRow key={a.id} id={`palette-item-${i}`} active={i === cursor} onSelect={() => void runAt(i)}>
+              <PaletteRow
+                key={a.id}
+                id={`palette-item-${i}`}
+                active={i === cursor}
+                onSelect={() => void runAt(i)}
+              >
                 <Icon name={a.icon} />
                 <span className="palette__label">{a.label}</span>
                 {a.shortcut ? <kbd className="bf-kbd">{a.shortcut}</kbd> : null}
               </PaletteRow>
             );
           })}
-          {total === 0 ? <div className="palette__empty">{t("palette.noMatch", { q: parsed.text })}</div> : null}
+          {total === 0 ? (
+            <div className="palette__empty">{t("palette.noMatch", { q: parsed.text })}</div>
+          ) : null}
         </div>
         <div className="palette__footer tabular">
           <span>⏎ {t("palette.open")}</span>
@@ -174,7 +215,6 @@ function PaletteRow({
   children: React.ReactNode;
 }) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: listbox option 由父级 input 的 aria-activedescendant 驱动
     <div
       id={id}
       role="option"

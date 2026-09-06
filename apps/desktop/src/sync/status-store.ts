@@ -5,7 +5,7 @@ import type { SyncState, SyncStatusPayload } from "../ipc/types.js";
 
 export interface NoteSyncEntry {
   state: SyncState;
-  detail?: string;
+  detail?: string | undefined;
   at: number;
 }
 

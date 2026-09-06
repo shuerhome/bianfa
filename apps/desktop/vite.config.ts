@@ -9,12 +9,8 @@ const entry = (name: string) => fileURLToPath(new URL(`./${name}.html`, import.m
 // build.target chrome140/safari17.4；minify oxc；cssMinify lightningcss；sourcemap 关；分 react/editor/query 三组。
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        // React Compiler（babel-plugin-react-compiler 1.0.0）；只处理本项目源码
-        plugins: [["babel-plugin-react-compiler", { target: "19" }]],
-      },
-    }),
+    // React Compiler：plugin-react 6 内置 babel-plugin-react-compiler 1.0.0 的 preset；只处理本项目源码
+    react({ compiler: true }),
     tailwindcss(),
   ],
   // Tauri 下相对路径最稳（tauri://localhost 与 http://tauri.localhost 都能用）

@@ -31,7 +31,13 @@ export function TeamWall({ auth }: { auth: AuthStatus | null }) {
       </div>
     );
   }
-  if (q.isError) return <EmptyState title={t("team.loadFailed")} action={{ label: t("common.retry"), onClick: () => void q.refetch() }} />;
+  if (q.isError)
+    return (
+      <EmptyState
+        title={t("team.loadFailed")}
+        action={{ label: t("common.retry"), onClick: () => void q.refetch() }}
+      />
+    );
   const notes = q.data ?? [];
   if (notes.length === 0) return <EmptyState title={t("team.empty")} hint={t("team.emptyHint")} />;
   return (

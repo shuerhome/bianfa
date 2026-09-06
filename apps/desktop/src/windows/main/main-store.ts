@@ -11,7 +11,7 @@ interface MainUiState {
   query: string;
   selected: Set<string>;
   paletteOpen: boolean;
-  updateBanner: { version: string; notes?: string } | null;
+  updateBanner: { version: string; notes?: string | undefined } | null;
   set: (patch: Partial<MainUiState>) => void;
   toggleSelected: (id: string, multi: boolean) => void;
 }

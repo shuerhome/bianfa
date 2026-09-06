@@ -1,0 +1,205 @@
+/* .bf-prose：唯一排版类（specs/06 §2）；.note-body 只管几何。唯一允许元素选择器的地方。 */
+.bf-prose {
+  font-family: var(--f-sans);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  color: var(--note-ink, var(--c-text-1));
+  text-autospace: no-autospace;
+  text-spacing-trim: space-all;
+  line-break: strict;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  caret-color: var(--note-ink, var(--c-text-1));
+  -webkit-user-select: text;
+  user-select: text;
+}
+.bf-prose:lang(zh) {
+  letter-spacing: 0.01em;
+}
+.bf-prose:lang(en) {
+  letter-spacing: 0;
+}
+.bf-prose ::selection {
+  background: var(--note-sel, var(--c-selected));
+}
+.bf-prose mark {
+  background: var(--note-mark, var(--c-accent-subtle));
+  color: inherit;
+}
+.bf-prose .bf-remote {
+  background: color-mix(in oklab, var(--c-accent) 18%, transparent);
+  transition: background-color var(--dur-4) linear;
+}
+.bf-prose p {
+  margin: 0;
+}
+.bf-prose h1,
+.bf-prose h2,
+.bf-prose h3 {
+  margin: 8px 0 2px;
+  line-height: var(--lh-cjk);
+  font-weight: var(--fw-strong);
+}
+.bf-prose h1 {
+  font-size: var(--fs-xl);
+}
+.bf-prose h2 {
+  font-size: var(--fs-lg);
+}
+.bf-prose h3 {
+  font-size: var(--fs-md);
+}
+.bf-prose ul,
+.bf-prose ol {
+  margin: 0;
+  padding-left: 1.4em;
+}
+.bf-prose li > p {
+  margin: 0;
+}
+.bf-prose p + p,
+.bf-prose ul + p,
+.bf-prose ol + p,
+.bf-prose p + ul,
+.bf-prose p + ol {
+  margin-top: 2px;
+}
+.bf-prose blockquote {
+  margin: 4px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--note-rule, var(--c-border));
+  color: var(--note-ink2, var(--c-text-2));
+}
+.bf-prose code,
+.bf-prose pre,
+.bf-prose kbd {
+  font-family: var(--f-mono);
+  letter-spacing: 0;
+  font-size: 0.92em;
+}
+.bf-prose pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--note-ink, var(--c-text-1)) 6%, transparent);
+  white-space: pre-wrap;
+}
+.bf-prose hr {
+  border: 0;
+  border-top: 1px solid var(--note-rule, var(--c-border));
+  margin: 7px 0;
+}
+.bf-prose a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+.bf-prose em:lang(zh) {
+  font-style: normal;
+  text-emphasis: filled dot;
+  text-emphasis-position: under right;
+}
+.bf-prose s {
+  text-decoration-thickness: 1px;
+}
+.bf-prose u {
+  text-underline-offset: 2px;
+}
+.bf-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-xs);
+}
+.bf-prose .bf-image {
+  margin: 4px 0;
+}
+.bf-prose .bf-image--selected img {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+.bf-prose .bf-image__placeholder {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  min-height: 48px;
+  background: color-mix(in oklab, var(--note-ink, var(--c-text-1)) 8%, transparent);
+  border-radius: var(--r-xs);
+}
+
+/* 待办：复选框 16×16 stroke 1.5，完成项文字 ink2 不划线 */
+.bf-prose ul[data-type="taskList"] {
+  padding: 0;
+  list-style: none;
+}
+.bf-prose ul[data-type="taskList"] li {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+}
+.bf-prose ul[data-type="taskList"] li > label {
+  flex: none;
+  display: inline-flex;
+  margin-top: calc((var(--lh-body) * 1em - 16px) / 2);
+}
+.bf-prose ul[data-type="taskList"] li > label input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--note-ink2, var(--c-text-2));
+  border-radius: var(--r-xs);
+  background: transparent;
+  display: grid;
+  place-content: center;
+}
+.bf-prose ul[data-type="taskList"] li > label input::before {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg) scale(0.9);
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-out) 40ms;
+}
+.bf-prose ul[data-type="taskList"] li > label input:checked::before {
+  opacity: 1;
+}
+.bf-prose ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.bf-prose ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--note-ink2, var(--c-text-2));
+}
+
+/* 占位（Tiptap Placeholder：data-placeholder 在空节点上） */
+.bf-prose .is-editor-empty:first-child::before,
+.bf-prose .is-empty.is-editor-empty::before {
+  content: attr(data-placeholder);
+  color: var(--note-ink2, var(--c-text-3));
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.note-placeholder {
+  color: var(--note-ink2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-normal);
+}
+.note-editor {
+  outline: none;
+  min-height: 100%;
+}
+
+/* 首行 = 标题（放在最后，特异性高于上面的元素规则） */
+.bf-prose > :first-child,
+.bf-prose .note-editor > :first-child,
+.bf-prose .note-title {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-cjk);
+  font-weight: var(--fw-strong);
+  margin-bottom: 4px;
+}

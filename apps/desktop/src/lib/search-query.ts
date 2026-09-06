@@ -15,7 +15,7 @@ export function parseSearchQuery(raw: string): ParsedQuery {
   const rest: string[] = [];
   for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
     const m = /^(is|色|color|颜色)[:：](.+)$/u.exec(token);
-    if (!m || !m[1] || !m[2]) {
+    if (!m?.[1] || !m[2]) {
       rest.push(token);
       continue;
     }

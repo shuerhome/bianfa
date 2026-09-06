@@ -74,14 +74,20 @@ export const noteAppendUpdate = (args: {
   projection?: NoteProjection;
 }) => call<{ seq: number }>("note_append_update", args);
 
-export const noteWriteSnapshot = (args: { noteId: string; stateV2B64: string; svB64: string; uptoSeq: number }) =>
-  call<void>("note_write_snapshot", args);
+export const noteWriteSnapshot = (args: {
+  noteId: string;
+  stateV2B64: string;
+  svB64: string;
+  uptoSeq: number;
+}) => call<void>("note_write_snapshot", args);
 
 export const noteCompact = (noteId: string) => call<{ uptoSeq: number }>("note_compact", { noteId });
 
-export const noteDiscardIfEmpty = (noteId: string) => call<{ discarded: boolean }>("note_discard_if_empty", { noteId });
+export const noteDiscardIfEmpty = (noteId: string) =>
+  call<{ discarded: boolean }>("note_discard_if_empty", { noteId });
 
-export const noteSetSynced = (noteId: string, headSeq: number) => call<void>("note_set_synced", { noteId, headSeq });
+export const noteSetSynced = (noteId: string, headSeq: number) =>
+  call<void>("note_set_synced", { noteId, headSeq });
 
 export const notesPendingSync = () => call<{ noteId: string; headSeq: number }[]>("notes_pending_sync");
 
@@ -135,7 +141,8 @@ export const notesHideAll = () => call<void>("notes_hide_all");
 export const mainWindowOpen = (section?: "notes" | "trash" | "team") =>
   call<void>("main_window_open", section ? { section } : {});
 
-export const settingsWindowOpen = (section?: string) => call<void>("settings_window_open", section ? { section } : {});
+export const settingsWindowOpen = (section?: string) =>
+  call<void>("settings_window_open", section ? { section } : {});
 
 /** Rust 只分配 id + 开窗；窗口加载后由 JS note_create */
 export const noteNew = (args: { atCursor?: boolean; color?: NoteColor } = {}) =>
@@ -148,11 +155,15 @@ export const settingsGet = () => call<Settings>("settings_get");
 export const settingsSet = (patch: Partial<Settings>) => call<Settings>("settings_set", { patch });
 export const appInfo = () => call<AppInfo>("app_info");
 export const autostartSet = (enabled: boolean) =>
-  call<{ enabled: boolean; method: "registry" | "smappservice" | "launchagent" }>("autostart_set", { enabled });
-export const hotkeySet = (accelerator: string) => call<{ ok: boolean; error?: string }>("hotkey_set", { accelerator });
+  call<{ enabled: boolean; method: "registry" | "smappservice" | "launchagent" }>("autostart_set", {
+    enabled,
+  });
+export const hotkeySet = (accelerator: string) =>
+  call<{ ok: boolean; error?: string }>("hotkey_set", { accelerator });
 export const openExternal = (url: string) => call<void>("open_external", { url });
 export const openDataDir = () => call<void>("open_data_dir");
-export const themeCurrent = () => call<{ system: "light" | "dark"; effective: "light" | "dark" }>("theme_current");
+export const themeCurrent = () =>
+  call<{ system: "light" | "dark"; effective: "light" | "dark" }>("theme_current");
 
 // ── 2.4 账号与网络 ──
 export const authStatus = () => call<AuthStatus>("auth_status");
@@ -170,13 +181,18 @@ export const apiRequest = (args: {
   jsonBody?: unknown;
   timeoutMs?: number;
 }) => {
-  if (!args.path.startsWith("/v1/")) return Promise.reject(new IpcError("bad_path", "api_request path 必须以 /v1/ 开头"));
+  if (!args.path.startsWith("/v1/"))
+    return Promise.reject(new IpcError("bad_path", "api_request path 必须以 /v1/ 开头"));
   return call<ApiResponse>("api_request", args);
 };
 
 // ── 2.5 附件、导入、导出、更新 ──
-export const attachmentImport = (args: { noteId: string; sourcePath?: string; bytesB64?: string; mime?: string }) =>
-  call<AttachmentInfo>("attachment_import", args);
+export const attachmentImport = (args: {
+  noteId: string;
+  sourcePath?: string;
+  bytesB64?: string;
+  mime?: string;
+}) => call<AttachmentInfo>("attachment_import", args);
 export const attachmentLocalUrl = (id: string) => call<{ url: string }>("attachment_local_url", { id });
 
 export const importScan = () => call<{ sources: ImportSource[] }>("import_scan");
@@ -187,7 +203,8 @@ export const importCommit = (path: string, items: ImportCommitItem[]) =>
 
 export const exportWrite = (outDir: string, files: ExportFile[]) =>
   call<{ written: number }>("export_write", { outDir, files });
-export const pickDirectory = (args: { title?: string } = {}) => call<{ path: string | null }>("pick_directory", args);
+export const pickDirectory = (args: { title?: string } = {}) =>
+  call<{ path: string | null }>("pick_directory", args);
 export const pickFile = (args: { title?: string; filters?: { name: string; extensions: string[] }[] } = {}) =>
   call<{ path: string | null }>("pick_file", args);
 

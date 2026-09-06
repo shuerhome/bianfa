@@ -2,25 +2,33 @@ import { cloneElement, type ReactElement, type Ref, useCallback, useId, useRef, 
 import { createPortal } from "react-dom";
 import { type Placement, useAnchored } from "../hooks/use-anchored.js";
 
+export interface TooltipTriggerProps {
+  ref?: Ref<HTMLElement> | undefined;
+  "aria-describedby"?: string | undefined;
+  onPointerEnter?: ((e: unknown) => void) | undefined;
+  onPointerLeave?: ((e: unknown) => void) | undefined;
+  onFocus?: ((e: unknown) => void) | undefined;
+  onBlur?: ((e: unknown) => void) | undefined;
+}
+
 export interface TooltipProps {
   content: string;
   placement?: Placement;
   /** 触发器必须能接收 ref 与 aria-describedby（按钮/图标按钮） */
-  children: ReactElement<{
-    ref?: Ref<HTMLElement>;
-    "aria-describedby"?: string;
-    onPointerEnter?: (e: unknown) => void;
-    onPointerLeave?: (e: unknown) => void;
-    onFocus?: (e: unknown) => void;
-    onBlur?: (e: unknown) => void;
-  }>;
+  children: ReactElement<TooltipTriggerProps>;
   /** 进 500ms / 出 100ms（--delay-tooltip-*） */
   delayIn?: number;
   delayOut?: number;
 }
 
 /** 悬停 + 焦点触发、延迟显示；role=tooltip 由 aria-describedby 关联；hover-only UI 同时绑焦点 */
-export function Tooltip({ content, placement = "top", children, delayIn = 500, delayOut = 100 }: TooltipProps) {
+export function Tooltip({
+  content,
+  placement = "top",
+  children,
+  delayIn = 500,
+  delayOut = 100,
+}: TooltipProps) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -33,11 +41,10 @@ export function Tooltip({ content, placement = "top", children, delayIn = 500, d
     timer.current = window.setTimeout(() => setOpen(next), delay);
   }, []);
 
-  const child = cloneElement(children, {
+  const extra: TooltipTriggerProps = {
     ref: (el: HTMLElement | null) => {
       anchorRef.current = el;
     },
-    "aria-describedby": open ? id : undefined,
     onPointerEnter: (e: unknown) => {
       children.props.onPointerEnter?.(e);
       schedule(true, delayIn);
@@ -54,7 +61,9 @@ export function Tooltip({ content, placement = "top", children, delayIn = 500, d
       children.props.onBlur?.(e);
       schedule(false, 0);
     },
-  });
+  };
+  if (open) extra["aria-describedby"] = id;
+  const child = cloneElement(children, extra);
 
   return (
     <>

@@ -1,0 +1,530 @@
+/* 便笺窗几何 + 容器查询（specs/06 §4.1）。禁 filter/backdrop-filter/常驻 will-change；hover/focus 只动 opacity/transform */
+@import "./base.css";
+
+html,
+body {
+  background: transparent;
+}
+
+.note {
+  container: note / size;
+  height: 100%;
+  width: 100%;
+}
+[data-color-patterns="1"] {
+  --note-pattern: repeating-linear-gradient(
+    45deg,
+    transparent 0 2px,
+    color-mix(in oklab, var(--note-paper) 40%, transparent) 2px 4px
+  );
+}
+.note-window {
+  height: 100%;
+  background: var(--note-paper);
+  color: var(--note-ink);
+  border-radius: var(--r-window);
+  overflow: hidden;
+  transition:
+    background-color var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out);
+}
+.note-shell {
+  position: relative;
+  height: 100%;
+  border-radius: var(--r-window);
+  animation: note-enter var(--dur-5) var(--ease-spring);
+  transform-origin: 20% 10%;
+}
+.note-shell::before,
+.note-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: opacity var(--dur-3) var(--ease-out);
+}
+.note-shell::before {
+  box-shadow: var(--sh-window);
+  opacity: 1;
+}
+.note-shell::after {
+  box-shadow: 0 8px 28px -10px color-mix(in oklab, var(--note-dot) 30%, transparent);
+  opacity: 0;
+}
+.note[data-focused="true"] .note-shell::after {
+  opacity: 1;
+}
+.note-shell--closing {
+  animation: note-close var(--dur-2) var(--ease-in) forwards;
+}
+@keyframes note-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.94) rotate(0.8deg);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes note-close {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.note[data-collapsed="true"] .note-shell {
+  height: var(--note-titlebar-h);
+}
+
+/* ── 顶栏 ── */
+.note-titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--note-titlebar-h);
+  display: flex;
+  align-items: center;
+  z-index: var(--z-sticky);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.note-titlebar__drag {
+  flex: 1;
+  min-width: 72px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+}
+.note-titlebar__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-dot {
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--note-dot);
+  opacity: 0.55;
+  transition: opacity var(--dur-2) linear;
+  flex: none;
+}
+[data-color-patterns="1"] .note-dot {
+  background-image: var(--note-pattern);
+}
+.note[data-focused="true"] .note-dot {
+  opacity: 0.85;
+}
+.note-meta {
+  display: none;
+  width: 76px;
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2);
+  white-space: nowrap;
+  text-align: right;
+}
+.note-titlebar__actions {
+  display: flex;
+  gap: 2px;
+  width: 56px;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity var(--dur-2) linear;
+}
+.note:hover .note-titlebar__actions,
+.note-titlebar:focus-within .note-titlebar__actions,
+.note[data-zmode="1"] .note-titlebar__actions {
+  opacity: 1;
+}
+.note-titlebar .bf-iconbtn {
+  color: var(--note-ink2);
+}
+.note-titlebar .bf-iconbtn:hover {
+  background: color-mix(in oklab, var(--note-ink) 8%, transparent);
+  color: var(--note-ink);
+}
+.note-titlebar .bf-iconbtn.note-pin--on,
+.note-toolbar .bf-iconbtn.note-pin--on {
+  color: var(--note-dot);
+}
+.note-pin--on .bf-icon {
+  transform: rotate(-35deg);
+  transition: transform var(--dur-3) var(--ease-out);
+}
+.note-sync {
+  width: 6px;
+  height: 6px;
+  margin: 0 6px;
+  border-radius: var(--r-full);
+  flex: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  transition: opacity var(--dur-2) linear;
+}
+.note-sync--hidden {
+  opacity: 0;
+}
+.note-sync--syncing {
+  background: var(--note-ink2);
+  animation: sync-breathe 1.4s ease-in-out infinite alternate;
+}
+.note-sync--offline {
+  box-shadow: inset 0 0 0 1px var(--note-ink2);
+}
+.note-sync--error {
+  background: var(--c-danger);
+  clip-path: polygon(0 0, 65% 0, 65% 35%, 100% 35%, 100% 100%, 0 100%);
+}
+.note-sync--outside.note-sync--syncing {
+  background: var(--c-text-3);
+}
+.note-sync--outside.note-sync--offline {
+  box-shadow: inset 0 0 0 1px var(--c-text-3);
+}
+@keyframes sync-breathe {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.note[data-focused="false"] .note-sync--syncing {
+  animation-play-state: paused;
+}
+.note-close {
+  border: 0;
+  background: transparent;
+  color: var(--note-ink2);
+  cursor: default;
+  padding: 0;
+}
+.note-close--win {
+  width: var(--caption-btn-w);
+  height: var(--caption-btn-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color var(--dur-1) linear,
+    color var(--dur-1) linear;
+}
+.note-close--mac {
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border-radius: var(--r-full);
+  background: color-mix(in oklab, var(--note-ink) 22%, transparent);
+  flex: none;
+}
+.note-close--mac:hover {
+  background: var(--c-danger);
+}
+
+/* ── 正文 ── */
+.note-body {
+  position: absolute;
+  inset: 0;
+  padding: 30px 8px 12px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.note-body[data-static] {
+  cursor: text;
+}
+.note-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, transparent, var(--note-paper) 78%);
+  pointer-events: none;
+  z-index: calc(var(--z-content) + 1);
+  transition: opacity var(--dur-2) linear;
+}
+.note-banner {
+  position: absolute;
+  top: var(--note-titlebar-h);
+  left: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 4px 10px;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-1);
+}
+.note-banner--warning {
+  background: var(--c-warning-subtle);
+}
+.note-banner--info {
+  background: var(--c-accent-subtle);
+}
+.note-banner__btn {
+  border: 0;
+  background: transparent;
+  color: var(--c-accent);
+  font: inherit;
+  padding: 0 4px;
+}
+.note-inline-status {
+  position: absolute;
+  left: 14px;
+  right: 8px;
+  bottom: calc(var(--note-toolbar-h) + 2px);
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2);
+  z-index: var(--z-float);
+}
+.note-ack {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2);
+  animation: bf-fade-in var(--dur-1) linear;
+}
+
+/* ── 底部工具栏 ── */
+.note-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--note-toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 10px;
+  z-index: var(--z-float);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) linear var(--delay-toolbar-blur);
+}
+.note-toolbar--visible,
+.note-toolbar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+.note-toolbar__group {
+  display: flex;
+  gap: 2px;
+  grid-area: 1 / 1;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.note-toolbar > .note-toolbar__group {
+  position: absolute;
+  left: 10px;
+}
+.note-toolbar[data-mode="object"] .note-toolbar__group--format,
+.note-toolbar[data-mode="format"] .note-toolbar__group--object {
+  opacity: 0;
+  pointer-events: none;
+}
+.note-toolbar .bf-iconbtn {
+  color: var(--note-ink2);
+}
+.note-toolbar .bf-iconbtn:hover {
+  background: color-mix(in oklab, var(--note-ink) 8%, transparent);
+  color: var(--note-ink);
+}
+.note-toolbar .bf-iconbtn[aria-pressed="true"] {
+  color: var(--note-ink);
+  background: color-mix(in oklab, var(--note-ink) 10%, transparent);
+}
+.note-toolbar__md {
+  display: none;
+  gap: 2px;
+}
+.note-toolbar__count {
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2);
+  white-space: nowrap;
+}
+.note-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  z-index: var(--z-resize);
+  color: var(--note-ink2);
+  background: repeating-linear-gradient(-45deg, transparent 0 3px, currentColor 3px 4px);
+  opacity: 0;
+  transition: opacity var(--dur-2) linear;
+  pointer-events: none;
+}
+.note:hover .note-grip {
+  opacity: 0.35;
+}
+
+/* ── 颜色 popover ── */
+.color-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 176px;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+}
+.color-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  color: var(--c-text-1);
+  font-size: var(--fs-2xs);
+  text-align: left;
+}
+.color-item:hover {
+  background: var(--c-hover);
+}
+.color-item--selected {
+  box-shadow: inset 0 0 0 1px var(--c-accent);
+}
+.color-item:has(input:focus-visible) {
+  outline: 2px solid var(--c-focus);
+  outline-offset: -2px;
+}
+.color-item__dot {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--note-dot);
+  flex: none;
+}
+[data-color-patterns="1"] .color-item__dot {
+  background-image: var(--note-pattern);
+}
+.color-item__name {
+  flex: 1;
+}
+.color-item__kbd {
+  font-family: var(--f-mono);
+  color: var(--c-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.note-loading,
+.note-error {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+  padding: 20px;
+  text-align: center;
+}
+.note-error__detail {
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+}
+
+/* ── 容器断点（rem；--ui-scale 驱动） ── */
+@container note (max-width: 12.49rem) {
+  .note-titlebar__actions {
+    width: 26px;
+  }
+  .note-pin {
+    display: none;
+  }
+}
+@container note (max-width: 12.49rem) {
+  .note-body {
+    padding: 26px 6px 10px 10px;
+    line-height: var(--lh-cjk);
+  }
+}
+@container note (max-height: 9.99rem) {
+  .note-body {
+    padding: 26px 6px 10px 10px;
+    line-height: var(--lh-cjk);
+  }
+}
+@container note (min-width: 18.75rem) {
+  .note-body {
+    padding: 32px 16px 12px 18px;
+  }
+}
+@container note (min-width: 18.75rem) and (min-height: 20rem) {
+  .note-titlebar {
+    height: 32px;
+  }
+  .note-meta {
+    display: block;
+  }
+}
+@container note (min-width: 23.75rem) {
+  .note-toolbar {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    height: var(--note-toolbar-h-static);
+    border-top: 1px solid var(--note-rule);
+    transition: none;
+  }
+  .note-body {
+    inset: 0 0 var(--note-toolbar-h-static) 0;
+  }
+  .note-fade {
+    display: none;
+  }
+  .note-toolbar__md {
+    display: inline-flex;
+  }
+  .note-shell {
+    display: flex;
+    flex-direction: column;
+  }
+  .note-shell > .note-body {
+    position: absolute;
+  }
+  .note-toolbar {
+    margin-top: auto;
+  }
+}
+@container note (min-height: 26.25rem) {
+  .note-body .note-title {
+    position: sticky;
+    top: 0;
+    background: var(--note-paper);
+  }
+}
+@container note (min-height: 43.75rem) {
+  .note-body {
+    font-size: var(--fs-lg);
+    line-height: var(--lh-loose);
+    padding-inline: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-shell {
+    animation: none;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion 下压过入场/关闭动画（规格 06 §5） */
+    transform: none !important;
+  }
+  .note-sync--syncing {
+    animation: none;
+    opacity: 0.7;
+  }
+}

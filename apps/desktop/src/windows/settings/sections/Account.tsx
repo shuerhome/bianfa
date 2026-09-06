@@ -18,7 +18,12 @@ import type { LoginPhase } from "../../../ipc/types.js";
 import { queryKeys } from "../../../lib/query.js";
 import { relativeTime } from "../../../lib/time.js";
 
-type LoginUi = { phase: "idle" } | { phase: "waiting"; authUrl: string; startedAt: number } | { phase: "device"; userCode: string; verificationUrl: string } | { phase: "failed" } | { phase: "done" };
+type LoginUi =
+  | { phase: "idle" }
+  | { phase: "waiting"; authUrl: string; startedAt: number }
+  | { phase: "device"; userCode: string; verificationUrl: string }
+  | { phase: "failed" }
+  | { phase: "done" };
 
 export function AccountSection() {
   const { t } = useTranslation();
@@ -94,7 +99,11 @@ export function AccountSection() {
       {auth.data?.loggedIn && user ? (
         <div className="account-card">
           <div className="account-avatar" aria-hidden="true">
-            {user.image ? <img src={user.image} alt="" /> : (user.name ?? user.email).slice(0, 1).toUpperCase()}
+            {user.image ? (
+              <img src={user.image} alt="" />
+            ) : (
+              (user.name ?? user.email).slice(0, 1).toUpperCase()
+            )}
           </div>
           <div className="account-card__text">
             <div className="account-card__name">{user.name ?? user.email}</div>
@@ -104,7 +113,8 @@ export function AccountSection() {
             variant="danger-secondary"
             size="sm"
             onClick={() => {
-              if (window.confirm(t("settings.logoutConfirm"))) void authLogout(false).then(() => auth.refetch());
+              if (window.confirm(t("settings.logoutConfirm")))
+                void authLogout(false).then(() => auth.refetch());
             }}
           >
             {t("settings.logout")}
@@ -137,7 +147,11 @@ export function AccountSection() {
                 {t("login.openedInBrowser")}
               </div>
               <p className="settings-hint">{t("login.finishInBrowser")}</p>
-              <button type="button" className="login-link" onClick={() => void navigator.clipboard.writeText(login.authUrl)}>
+              <button
+                type="button"
+                className="login-link"
+                onClick={() => void navigator.clipboard.writeText(login.authUrl)}
+              >
                 {t("login.copyLink")}
               </button>
               {elapsed >= 20 ? (
@@ -167,13 +181,19 @@ export function AccountSection() {
               </div>
             </div>
           ) : null}
-          {login.phase === "done" ? <div className="login-pill login-pill--ok">✓ {t("login.welcomeBack", { name: user?.name ?? "" })}</div> : null}
+          {login.phase === "done" ? (
+            <div className="login-pill login-pill--ok">
+              ✓ {t("login.welcomeBack", { name: user?.name ?? "" })}
+            </div>
+          ) : null}
         </div>
       )}
 
       <h3 className="settings-subtitle">{t("settings.sync")}</h3>
       <p className="settings-hint">
-        {auth.data?.loggedIn ? t("settings.pendingUpload", { count: pending.data?.length ?? 0 }) : t("sync.localMode")}
+        {auth.data?.loggedIn
+          ? t("settings.pendingUpload", { count: pending.data?.length ?? 0 })
+          : t("sync.localMode")}
       </p>
       {(errors.data?.length ?? 0) > 0 ? (
         <ul className="sync-errors">

@@ -12,7 +12,10 @@
     "./theme.css": "./src/styles/theme.css",
     "./ui.css": "./src/styles/ui.css"
   },
-  "files": ["dist", "src/styles"],
+  "files": [
+    "dist",
+    "src/styles"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:icons": "node scripts/build-icons.mjs",

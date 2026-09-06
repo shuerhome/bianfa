@@ -9,7 +9,11 @@ import { queryKeys } from "../../lib/query.js";
 
 export function useSettings() {
   const client = useQueryClient();
-  const q = useQuery({ queryKey: queryKeys.settings, queryFn: settingsGet, placeholderData: DEFAULT_SETTINGS });
+  const q = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: settingsGet,
+    placeholderData: DEFAULT_SETTINGS,
+  });
   const [ackKey, setAckKey] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: (patch: Partial<Settings>) => settingsSet(patch),

@@ -25,7 +25,13 @@ const ToastContext = createContext<ToastApi | null>(null);
 const MAX_VISIBLE = 3;
 
 /** 同屏 ≤3、默认 4s、带撤销 8s；入场 translateY(8px)→0（CSS）；容器 .bottom-dock 由调用方摆放 */
-export function ToastProvider({ children, closeLabel = "关闭" }: { children: ReactNode; closeLabel?: string }) {
+export function ToastProvider({
+  children,
+  closeLabel = "关闭",
+}: {
+  children: ReactNode;
+  closeLabel?: string;
+}) {
   const [items, setItems] = useState<ToastEntry[]>([]);
   const seq = useRef(0);
   const timers = useRef(new Map<number, number>());
@@ -84,7 +90,12 @@ export function ToastProvider({ children, closeLabel = "关闭" }: { children: R
                 {t.action.label}
               </Button>
             ) : null}
-            <button type="button" className="bf-toast__close" aria-label={closeLabel} onClick={() => dismiss(t.id)}>
+            <button
+              type="button"
+              className="bf-toast__close"
+              aria-label={closeLabel}
+              onClick={() => dismiss(t.id)}
+            >
               <Icon name="x" />
             </button>
           </output>

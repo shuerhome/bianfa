@@ -31,9 +31,8 @@ export function NoteCard({ note, selected, view, onOpen, onSelect, onContextMenu
     }
   };
   return (
-    // biome-ignore lint/a11y/useSemanticElements: gridcell 需要作为容器承载多行文本与语义状态
     <div
-      role="gridcell"
+      role="option"
       tabIndex={0}
       aria-selected={selected}
       className={`note-card note-card--${view}${selected ? " note-card--selected" : ""}`}
@@ -50,7 +49,7 @@ export function NoteCard({ note, selected, view, onOpen, onSelect, onContextMenu
       <div className="note-card__title">{note.title || t("note.untitled")}</div>
       {view === "grid" ? <div className="note-card__excerpt">{note.excerpt}</div> : null}
       <div className="note-card__meta tabular">
-        <span className="note-card__dot" aria-label={colorName} title={colorName} />
+        <span className="note-card__dot" role="img" aria-label={colorName} title={colorName} />
         {note.pinned || note.zMode === 1 ? <Icon name="pin" label={t("note.pin")} /> : null}
         {note.isOpen ? <span className="note-card__badge">{t("list.openBadge")}</span> : null}
         <span>{relativeTime(note.updatedAt, t)}</span>

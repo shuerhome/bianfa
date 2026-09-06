@@ -11,8 +11,8 @@ import {
   mergeUpdatesV2,
   type NoteColor,
   type NoteMetaPatch,
-  openNoteDoc,
   Origins,
+  openNoteDoc,
   readMeta,
   writeMeta,
 } from "@bianfa/shared";
@@ -42,9 +42,9 @@ export const SNAPSHOT_EVERY_MS = 5 * 60_000;
 
 export interface OpenOptions {
   /** note.html?fresh=1：Rust 只分配了 id，JS 负责 note_create */
-  fresh?: boolean;
-  color?: NoteColor;
-  workspaceId?: string | null;
+  fresh?: boolean | undefined;
+  color?: NoteColor | undefined;
+  workspaceId?: string | null | undefined;
 }
 
 export interface NoteSession {

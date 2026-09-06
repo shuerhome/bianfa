@@ -41,7 +41,8 @@ export function debounce<A extends unknown[]>(
     const now = Date.now();
     if (first === null) first = now;
     if (timer !== null) window.clearTimeout(timer);
-    const remainingMax = maxWait === undefined ? Number.POSITIVE_INFINITY : Math.max(0, first + maxWait - now);
+    const remainingMax =
+      maxWait === undefined ? Number.POSITIVE_INFINITY : Math.max(0, first + maxWait - now);
     timer = window.setTimeout(run, Math.min(wait, remainingMax));
   };
   wrapped.flush = () => {

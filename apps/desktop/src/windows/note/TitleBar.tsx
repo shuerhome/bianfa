@@ -1,15 +1,16 @@
 // 顶栏（specs/06 §4.1）：色点 · 拖动区 · meta · ⊙置顶 · ⋯更多 · 同步点 · ✕。
 // 拖拽 = pointerdown + 3px 阈值 → window_start_drag；双击折叠；平台分叉（mac 左缘关闭点）在 src/platform。
-import { IconButton } from "@bianfa/ui";
+
 import { NOTE_COLOR_INFO } from "@bianfa/shared";
+import { IconButton } from "@bianfa/ui";
 import { type PointerEvent as ReactPointerEvent, type RefObject, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { windowStartDrag } from "../../ipc/commands.js";
 import { isMac } from "../../lib/platform.js";
 import { shortcutLabel } from "../../lib/shortcuts.js";
 import { clockTime } from "../../lib/time.js";
-import { SyncDot } from "./SyncDot.js";
 import { useNoteStore } from "./note-store.js";
+import { SyncDot } from "./SyncDot.js";
 
 export interface TitleBarProps {
   title: string;
@@ -66,6 +67,7 @@ export function TitleBar(p: TitleBarProps) {
   );
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 整条顶栏是窗口拖拽区（pointerdown + 3px 阈值），按钮已排除
     <div
       className="note-titlebar"
       onPointerDown={onPointerDown}

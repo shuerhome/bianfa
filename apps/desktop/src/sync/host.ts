@@ -7,6 +7,7 @@
 //   房间：note:<ws>:<id>；信号房 inbox:<ws>（stateless bump / authz.revoked）。
 import {
   applyUpdateV2,
+  createNoteDoc,
   encodeStateV2,
   getBody,
   getMetaMap,
@@ -38,7 +39,6 @@ import { fromB64, toB64 } from "../lib/base64.js";
 import { debounce } from "../lib/time.js";
 import { useSyncStatusStore } from "./status-store.js";
 import { getSyncToken, invalidateSyncToken } from "./token.js";
-import { createNoteDoc } from "@bianfa/shared";
 
 const LOCAL_DB = "local-db";
 const HOST_META = "host-meta";
@@ -196,10 +196,18 @@ export class SyncHost {
       for (let page = 0; page < 20; page += 1) {
         const res = await fetchNotesSince(workspaceId, since);
         for (const n of res.notes) {
-          const local = await noteGet(n.id).catch((err) => (isIpcError(err) && err.code === "not_found" ? null : err));
+          const local = await noteGet(n.id).catch((err) =>
+            isIpcError(err) && err.code === "not_found" ? null : err,
+          );
           if (local === null) {
             const doc = createNoteDoc(n.id, {
-              meta: { color: n.color, zMode: n.zMode, createdAt: n.createdAt, updatedAt: n.updatedAt, deletedAt: n.deletedAt },
+              meta: {
+                color: n.color,
+                zMode: n.zMode,
+                createdAt: n.createdAt,
+                updatedAt: n.updatedAt,
+                deletedAt: n.deletedAt,
+              },
               origin: "remote",
             });
             await noteCreate({
@@ -232,9 +240,11 @@ export class SyncHost {
     this.dropProvider(noteId);
     const rec = await noteGet(noteId).catch(() => null);
     const owned = rec?.workspaceId === null || rec?.workspaceId === this.auth?.personalWorkspaceId;
-    await syncStateSetError({ noteId, errCode: "forbidden", message: owned ? "revoked" : "lost-access" }).catch(
-      () => undefined,
-    );
+    await syncStateSetError({
+      noteId,
+      errCode: "forbidden",
+      message: owned ? "revoked" : "lost-access",
+    }).catch(() => undefined);
     this.status.setNote(noteId, "error", owned ? "forbidden" : `lost-access:${rec?.title ?? ""}`);
   }
 
@@ -278,7 +288,10 @@ export class SyncHost {
     }
   }
 
-  private async ensureProvider(noteId: string, flags: { hasWindow?: boolean; pending?: boolean }): Promise<void> {
+  private async ensureProvider(
+    noteId: string,
+    flags: { hasWindow?: boolean; pending?: boolean },
+  ): Promise<void> {
     const existing = this.entries.get(noteId);
     if (existing) {
       if (flags.hasWindow !== undefined) existing.hasWindow = flags.hasWindow;
@@ -429,7 +442,7 @@ export class SyncHost {
   private async pullLocal(noteId: string): Promise<void> {
     const entry = this.entries.get(noteId);
     if (!entry) return;
-    await (entry.chain = entry.chain.then(async () => {
+    entry.chain = entry.chain.then(async () => {
       const res = await noteUpdatesSince(noteId, entry.appliedSeq).catch(() => null);
       if (!res) return;
       if (res.updatesB64.length > 0) {
@@ -442,7 +455,8 @@ export class SyncHost {
       }
       entry.appliedSeq = Math.max(entry.appliedSeq, res.headSeq);
       this.recomputeNoteState(entry);
-    }));
+    });
+    await entry.chain;
   }
 
   private dropProvider(noteId: string): void {
@@ -472,7 +486,8 @@ export class SyncHost {
   }
 
   private ping(): void {
-    if (this.socket?.status === WebSocketStatus.Connected) this.inbox?.sendStateless(JSON.stringify({ t: "ping" }));
+    if (this.socket?.status === WebSocketStatus.Connected)
+      this.inbox?.sendStateless(JSON.stringify({ t: "ping" }));
   }
 
   private pollWhenOffline(): void {

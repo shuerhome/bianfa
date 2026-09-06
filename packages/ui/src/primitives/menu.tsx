@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, type RefObject, useCallback, useRef } from "react";
+import { type KeyboardEvent, type ReactNode, type RefObject, useCallback } from "react";
 import { Icon, type IconName } from "../icons/Icon.js";
 import { cx } from "../utils/cx.js";
 import { Popover } from "./popover.js";
@@ -14,18 +14,25 @@ export interface MenuProps {
   children: ReactNode;
 }
 
-const ITEM_SELECTOR = '[role="menuitem"]:not([aria-disabled="true"])';
+const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 /** 更多菜单（specs/06 §4.1）：↑↓ Home End + 首字母跳转；Esc 关闭并还原焦点 */
-export function Menu({ open, onClose, anchorRef, label, placement = "bottom", className, container, children }: MenuProps) {
-  const listRef = useRef<HTMLDivElement>(null);
-
+export function Menu({
+  open,
+  onClose,
+  anchorRef,
+  label,
+  placement = "bottom",
+  className,
+  container,
+  children,
+}: MenuProps) {
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-      const items = Array.from(listRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? []);
+      const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(ITEM_SELECTOR));
       if (items.length === 0) return;
-      const idx = items.findIndex((el) => el === document.activeElement);
+      const idx = items.indexOf(document.activeElement as HTMLElement);
       const focusAt = (i: number) => items[(i + items.length) % items.length]?.focus();
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -61,10 +68,9 @@ export function Menu({ open, onClose, anchorRef, label, placement = "bottom", cl
       label={label}
       className={cx("bf-menu", className)}
       container={container ?? null}
+      onKeyDown={onKeyDown}
     >
-      <div ref={listRef} onKeyDown={onKeyDown} className="bf-menu__list">
-        {children}
-      </div>
+      <div className="bf-menu__list">{children}</div>
     </Popover>
   );
 }
@@ -83,10 +89,11 @@ export function MenuItem({ icon, shortcut, danger, disabled, checked, onSelect, 
   return (
     <button
       type="button"
-      role="menuitem"
+      {...(checked === undefined
+        ? { role: "menuitem" }
+        : { role: "menuitemcheckbox", "aria-checked": checked })}
       className={cx("bf-menu__item", danger && "bf-menu__item--danger")}
       aria-disabled={disabled || undefined}
-      aria-checked={checked === undefined ? undefined : checked}
       disabled={disabled}
       onClick={() => {
         if (!disabled) onSelect();
@@ -101,5 +108,5 @@ export function MenuItem({ icon, shortcut, danger, disabled, checked, onSelect, 
 }
 
 export function MenuSeparator() {
-  return <div role="separator" className="bf-menu__sep" />;
+  return <hr className="bf-menu__sep" />;
 }

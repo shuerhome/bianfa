@@ -24,8 +24,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# design token 生成物需入库（src-tauri include! 直接读，不依赖 JS 构建）
-!packages/tokens/dist/
 
 # 代理隔离 worktree
 .claude/worktrees/

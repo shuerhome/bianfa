@@ -55,14 +55,23 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
     setStep({ kind: "sources", sources: [], loading: true });
     try {
       const r = await importPreview(path);
-      setStep({ kind: "preview", path, notes: r.notes, selected: new Set(r.notes.map((n) => n.external_id)), archivedTo: r.archivedTo });
+      setStep({
+        kind: "preview",
+        path,
+        notes: r.notes,
+        selected: new Set(r.notes.map((n) => n.external_id)),
+        archivedTo: r.archivedTo,
+      });
     } catch (e) {
       setStep({ kind: "error", message: (e as Error).message });
     }
   };
 
   const choose = async () => {
-    const r = await pickFile({ title: t("import.pickTitle"), filters: [{ name: "Sticky Notes", extensions: ["sqlite", "snt"] }] });
+    const r = await pickFile({
+      title: t("import.pickTitle"),
+      filters: [{ name: "Sticky Notes", extensions: ["sqlite", "snt"] }],
+    });
     if (r.path) await preview(r.path);
   };
 
@@ -100,7 +109,13 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t("import.title")} closeLabel={t("common.close")} width={520}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t("import.title")}
+      closeLabel={t("common.close")}
+      width={520}
+    >
       {step.kind === "sources" ? (
         <div className="import-sources">
           {step.loading ? (
@@ -109,10 +124,19 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
             <>
               {step.sources.length === 0 ? <p className="settings-hint">{t("import.noneFound")}</p> : null}
               {step.sources.map((src) => (
-                <button key={src.path} type="button" className="import-source" onClick={() => void preview(src.path)}>
-                  <span className="import-source__title">{src.kind === "plum" ? t("import.sourcePlum") : t("import.sourceSnt")}</span>
+                <button
+                  key={src.path}
+                  type="button"
+                  className="import-source"
+                  onClick={() => void preview(src.path)}
+                >
+                  <span className="import-source__title">
+                    {src.kind === "plum" ? t("import.sourcePlum") : t("import.sourceSnt")}
+                  </span>
                   <span className="import-source__meta">{t("import.foundCount", { count: src.count })}</span>
-                  {src.stickyNotesRunning ? <span className="settings-warning">{t("import.stickyRunning")}</span> : null}
+                  {src.stickyNotesRunning ? (
+                    <span className="settings-warning">{t("import.stickyRunning")}</span>
+                  ) : null}
                   <span className="import-source__path">{src.path}</span>
                 </button>
               ))}
@@ -125,7 +149,9 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
       ) : null}
       {step.kind === "preview" ? (
         <div className="import-preview">
-          <p className="settings-hint">{t("import.previewCount", { count: step.selected.size, total: step.notes.length })}</p>
+          <p className="settings-hint">
+            {t("import.previewCount", { count: step.selected.size, total: step.notes.length })}
+          </p>
           <ul className="import-list">
             {step.notes.map((n) => (
               <li key={n.external_id} className="import-row" data-color={n.color}>
@@ -156,7 +182,10 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
       ) : null}
       {step.kind === "committing" ? (
         <div aria-busy="true" className="import-progress">
-          <div className="import-progress__bar" style={{ transform: `scaleX(${step.total ? step.done / step.total : 0})` }} />
+          <div
+            className="import-progress__bar"
+            style={{ transform: `scaleX(${step.total ? step.done / step.total : 0})` }}
+          />
           <p className="settings-hint">
             {step.done}/{step.total}
           </p>
@@ -164,8 +193,16 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
       ) : null}
       {step.kind === "result" ? (
         <div className="import-result">
-          <p>{t("import.result", { imported: step.result.imported, updated: step.result.updated, skipped: step.result.skipped })}</p>
-          <p className="settings-hint">{t("import.resultDetail", { degraded: step.degraded, ink: step.ink })}</p>
+          <p>
+            {t("import.result", {
+              imported: step.result.imported,
+              updated: step.result.updated,
+              skipped: step.result.skipped,
+            })}
+          </p>
+          <p className="settings-hint">
+            {t("import.resultDetail", { degraded: step.degraded, ink: step.ink })}
+          </p>
           <div className="bf-dialog__footer">
             <Button variant="primary" onClick={onClose}>
               {t("common.done")}

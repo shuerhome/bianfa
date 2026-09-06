@@ -1,8 +1,8 @@
 import type { SVGAttributes } from "react";
 import { ICON_PATHS, type IconName } from "./sprite.generated.js";
 
-export type { IconName };
 export { ICON_NAMES, ICON_PATHS } from "./sprite.generated.js";
+export type { IconName };
 
 const SPRITE_ID = "bf-icon-sprite";
 
@@ -31,6 +31,7 @@ export interface IconProps extends Omit<SVGAttributes<SVGSVGElement>, "name" | "
 export function Icon({ name, label, size = 16, className, ...rest }: IconProps) {
   const a11y = label ? { role: "img" as const, "aria-label": label } : { "aria-hidden": true as const };
   return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: 有 label 时渲染 <title>，否则 aria-hidden（装饰性）
     <svg
       width={size}
       height={size}

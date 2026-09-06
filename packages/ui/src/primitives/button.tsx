@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { Icon, type IconName } from "../icons/Icon.js";
 import { cx } from "../utils/cx.js";
 
@@ -6,6 +6,7 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "dang
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  ref?: Ref<HTMLButtonElement> | undefined;
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: IconName;
@@ -39,6 +40,7 @@ export function Button({
 }
 
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
+  ref?: Ref<HTMLButtonElement> | undefined;
   icon: IconName;
   /** 必填：无文字按钮的可读名 */
   label: string;

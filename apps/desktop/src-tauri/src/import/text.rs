@@ -44,7 +44,6 @@ static SIZE_RE: OnceLock<Regex> = OnceLock::new();
 static DEV_RE: OnceLock<Regex> = OnceLock::new();
 static ID_PREFIX_RE: OnceLock<Regex> = OnceLock::new();
 static CTRL_RE: OnceLock<Regex> = OnceLock::new();
-static PAR_RE: OnceLock<Regex> = OnceLock::new();
 static MULTI_NL_RE: OnceLock<Regex> = OnceLock::new();
 static MD_MARK_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -110,7 +109,6 @@ pub fn parse_text_field(raw: Option<&str>) -> ParsedText {
     let mut degraded = false;
     let s = raw.replace("\r\n", "\n");
     let s = re(&ID_PREFIX_RE, r"\\id=[0-9A-Fa-f\-]+\s?").replace_all(&s, "");
-    let s = re(&PAR_RE, r"\\par(?:[ \t]|(?![A-Za-z]))").replace_all(&s, "\n");
     let ctrl = re(&CTRL_RE, r"\\([a-zA-Z]+)(-?\d+)?[ \t]?");
 
     let mut open_tags: Vec<&'static str> = Vec::new();

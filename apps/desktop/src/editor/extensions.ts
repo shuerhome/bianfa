@@ -64,7 +64,11 @@ export function createNoteExtensions(options: NoteExtensionsOptions) {
       field: BODY_FIELD,
       yUndoOptions: { undoManager: options.undoManager },
     }),
-    Placeholder.configure({ placeholder: options.placeholder, showOnlyCurrent: false, showOnlyWhenEditable: true }),
+    Placeholder.configure({
+      placeholder: options.placeholder,
+      showOnlyCurrent: false,
+      showOnlyWhenEditable: true,
+    }),
     CharacterCount.configure({ limit: null, mode: "textSize" }),
     StrikeShortcut,
     PasteLimit(options.onPasteRejected),

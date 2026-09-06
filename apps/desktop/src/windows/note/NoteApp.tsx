@@ -1,8 +1,9 @@
 // 便笺窗口（specs/06 §4.1）：顶栏 / 正文两级 / 底部条 / 颜色 popover / 更多菜单 / 右键 / 层级 / 快捷键 / 折叠 / 关闭动画。
-import type { Editor } from "@tiptap/core";
-import { getMetaMap, isNoteColor, type NoteColor, titleFromText, type ZMode } from "@bianfa/shared";
+
+import { applyUpdateV2, isNoteColor, type NoteColor, titleFromText, type ZMode } from "@bianfa/shared";
 import { Menu, MenuItem, MenuSeparator, useToast } from "@bianfa/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { countText, WARN_CHARS } from "../../editor/limits.js";
@@ -29,19 +30,17 @@ import { debounce } from "../../lib/time.js";
 import { effectiveState } from "../../sync/status-store.js";
 import { ColorPopover } from "./ColorPopover.js";
 import { NoteBody } from "./NoteBody.js";
+import { useNoteStore } from "./note-store.js";
 import { TitleBar } from "./TitleBar.js";
 import { Toolbar } from "./Toolbar.js";
-import { useNoteStore } from "./note-store.js";
-import { applyUpdateV2 } from "@bianfa/shared";
 
 export interface NoteAppProps {
   noteId: string;
   fresh: boolean;
-  initialColor?: NoteColor;
+  initialColor?: NoteColor | undefined;
 }
 
 const EDITOR_DESTROY_AFTER_BLUR_MS = 5000;
-const TOOLBAR_HIDE_AFTER_BLUR_MS = 200;
 const TOOLBAR_HIDE_AFTER_LEAVE_MS = 800;
 const TOOLBAR_SHOW_AFTER_INPUT_MS = 3000;
 
@@ -68,6 +67,7 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   const closing = useRef(false);
 
   // ── 打开 / 创建 ──
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅在 noteId 变化时重开；store/t 经 getState 读取
   useEffect(() => {
     let alive = true;
     openNoteSession(noteId, { fresh, color: initialColor })
@@ -96,7 +96,6 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
     return () => {
       alive = false;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 仅在 noteId 变化时重开
   }, [noteId, fresh, initialColor]);
 
   // 投影变化 → 静态 html / 标题 / 字数 / 颜色 / zMode
@@ -133,7 +132,9 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
     const timer = window.setTimeout(() => {
       const head = Array.from(title).slice(0, 20).join("");
       document.title = head ? `${head} · ${t("app.noteSuffix")}` : t("app.noteSuffix");
-      void getCurrentWindow().setTitle(document.title).catch(() => undefined);
+      void getCurrentWindow()
+        .setTitle(document.title)
+        .catch(() => undefined);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [title, t]);
@@ -175,7 +176,11 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
     const win = getCurrentWindow();
     const save = debounce(() => {
       void (async () => {
-        const [pos, size, scale] = await Promise.all([win.outerPosition(), win.innerSize(), win.scaleFactor()]);
+        const [pos, size, scale] = await Promise.all([
+          win.outerPosition(),
+          win.innerSize(),
+          win.scaleFactor(),
+        ]);
         await windowStateSave({ noteId, x: pos.x, y: pos.y, w: size.width, h: size.height, scale });
       })().catch(() => undefined);
     }, 300);
@@ -196,7 +201,14 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
 
   // ── db:changed / sync:status / focus-request ──
   useTauriEvent("db:changed", (p) => {
-    if (p.origin === "local" && p.ids.length === 1 && p.ids[0] === noteId && p.tables.length === 1 && p.tables[0] === "note_window_state") return;
+    if (
+      p.origin === "local" &&
+      p.ids.length === 1 &&
+      p.ids[0] === noteId &&
+      p.tables.length === 1 &&
+      p.tables[0] === "note_window_state"
+    )
+      return;
     if (p.ids.includes(noteId) && session) void session.applyRemoteSince();
   });
   useTauriEvent("sync:status", (p) => {
@@ -210,7 +222,10 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
     }
   });
   useTauriEvent("note:focus-request", (p) => {
-    if (p.noteId === noteId) void getCurrentWindow().setFocus().catch(() => undefined);
+    if (p.noteId === noteId)
+      void getCurrentWindow()
+        .setFocus()
+        .catch(() => undefined);
   });
   useEffect(() => {
     const st = effectiveState(globalSync, noteSync);
@@ -224,7 +239,14 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   // ── 首帧后 show()（Rust 以 visible:false 建窗） ──
   useEffect(() => {
     if (!session) return;
-    requestAnimationFrame(() => requestAnimationFrame(() => void getCurrentWindow().show().catch(() => undefined)));
+    requestAnimationFrame(() =>
+      requestAnimationFrame(
+        () =>
+          void getCurrentWindow()
+            .show()
+            .catch(() => undefined),
+      ),
+    );
   }, [session]);
 
   // ── 动作 ──
@@ -272,7 +294,10 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   const deleteToTrash = useCallback(() => {
     if (!session) return;
     session.updateMeta({ deletedAt: Date.now() });
-    toast({ message: t("note.deletedToast"), action: { label: t("common.undo"), onClick: () => session.updateMeta({ deletedAt: null }) } });
+    toast({
+      message: t("note.deletedToast"),
+      action: { label: t("common.undo"), onClick: () => session.updateMeta({ deletedAt: null }) },
+    });
     void closeWindow();
   }, [session, toast, t, closeWindow]);
 
@@ -356,7 +381,9 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
         return true;
       case "formatFocus": {
         useNoteStore.getState().set({ toolbarMode: "format", toolbarVisible: true });
-        const first = rootRef.current?.querySelector<HTMLElement>(".note-toolbar__group--format button:not([aria-hidden])");
+        const first = rootRef.current?.querySelector<HTMLElement>(
+          ".note-toolbar__group--format button:not([aria-hidden])",
+        );
         first?.focus();
         return true;
       }
@@ -412,6 +439,7 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 窗口根容器只承载悬停/右键的工具栏显隐，无独立语义
     <div
       ref={rootRef}
       className="note"
@@ -457,7 +485,11 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
               {store.shrinkBanner ? (
                 <div className="note-banner note-banner--warning" role="alert">
                   <span>{t("note.shrinkBanner")}</span>
-                  <button type="button" className="note-banner__btn" onClick={() => void settingsWindowOpen("sync")}>
+                  <button
+                    type="button"
+                    className="note-banner__btn"
+                    onClick={() => void settingsWindowOpen("sync")}
+                  >
                     {t("note.shrinkView")}
                   </button>
                   <button type="button" className="note-banner__btn" onClick={() => void restoreShrink()}>
@@ -498,7 +530,11 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
                     kind: "warning",
                   })
                 }
-                onSelectionChange={(has) => useNoteStore.getState().set({ hasSelection: has, toolbarVisible: has || useNoteStore.getState().toolbarVisible })}
+                onSelectionChange={(has) =>
+                  useNoteStore
+                    .getState()
+                    .set({ hasSelection: has, toolbarVisible: has || useNoteStore.getState().toolbarVisible })
+                }
               />
               <div className="note-fade" aria-hidden="true" />
               {store.offlineBanner ? (
@@ -527,7 +563,11 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
       <ColorPopover
         open={store.overlay === "color"}
         onClose={() => store.set({ overlay: "none" })}
-        anchorRef={store.focused && store.toolbarVisible && toolbarColorBtnRef.current ? toolbarColorBtnRef : colorBtnRef}
+        anchorRef={
+          store.focused && store.toolbarVisible && toolbarColorBtnRef.current
+            ? toolbarColorBtnRef
+            : colorBtnRef
+        }
         value={store.color}
         onChange={setColor}
       />
@@ -537,10 +577,19 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
         anchorRef={menuAnchor}
         label={t("note.more")}
       >
-        <MenuItem icon="pin" shortcut={shortcutLabel("togglePin")} checked={store.zMode === 1} onSelect={togglePin}>
+        <MenuItem
+          icon="pin"
+          shortcut={shortcutLabel("togglePin")}
+          checked={store.zMode === 1}
+          onSelect={togglePin}
+        >
           {t("note.pin")}
         </MenuItem>
-        <MenuItem icon="monitor" checked={store.zMode === 2} onSelect={() => setZMode(store.zMode === 2 ? 0 : 2)}>
+        <MenuItem
+          icon="monitor"
+          checked={store.zMode === 2}
+          onSelect={() => setZMode(store.zMode === 2 ? 0 : 2)}
+        >
           {t("note.dockToDesktop")}
         </MenuItem>
         <MenuItem icon="minimize-2" onSelect={toggleCollapse}>
@@ -550,7 +599,11 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
         <MenuItem icon="copy" onSelect={() => void navigator.clipboard.writeText(`bianfa://note/${noteId}`)}>
           {t("note.copyLink")}
         </MenuItem>
-        <MenuItem icon="layout-grid" shortcut={shortcutLabel("openList")} onSelect={() => void mainWindowOpen("notes")}>
+        <MenuItem
+          icon="layout-grid"
+          shortcut={shortcutLabel("openList")}
+          onSelect={() => void mainWindowOpen("notes")}
+        >
           {t("note.showInList")}
         </MenuItem>
         <MenuItem icon="file-down" onSelect={() => void settingsWindowOpen("data")}>

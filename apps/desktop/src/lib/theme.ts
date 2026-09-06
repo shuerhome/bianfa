@@ -13,7 +13,10 @@ export function applyThemeSetting(setting: ThemeSetting, root: HTMLElement = doc
 }
 
 /** Rust theme-changed：同一 rAF 改属性 + 200ms 禁 transition */
-export function onSystemThemeChanged(setting: ThemeSetting, root: HTMLElement = document.documentElement): void {
+export function onSystemThemeChanged(
+  setting: ThemeSetting,
+  root: HTMLElement = document.documentElement,
+): void {
   root.setAttribute(SWITCH_ATTR, "");
   const apply = () => applyThemeSetting(setting, root);
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);

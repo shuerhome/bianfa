@@ -59,7 +59,8 @@ export function DataSection({ dataDir }: { dataDir: string | null }) {
           <Button
             variant="danger-secondary"
             onClick={() => {
-              if (window.confirm(t("trash.confirmEmpty"))) void trashEmpty().then((r) => toast({ message: t("trash.emptied", { count: r.purged }) }));
+              if (window.confirm(t("trash.confirmEmpty")))
+                void trashEmpty().then((r) => toast({ message: t("trash.emptied", { count: r.purged }) }));
             }}
           >
             {t("trash.empty")}
@@ -69,8 +70,18 @@ export function DataSection({ dataDir }: { dataDir: string | null }) {
           {t("settings.wipeConfirmLabel")}
         </label>
         <div className="settings-inline">
-          <input id="wipe-confirm" className="bf-input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={t("settings.wipeWord")} />
-          <Button variant="danger" disabled={confirmText !== t("settings.wipeWord")} onClick={() => void authLogout(true)}>
+          <input
+            id="wipe-confirm"
+            className="bf-input"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={t("settings.wipeWord")}
+          />
+          <Button
+            variant="danger"
+            disabled={confirmText !== t("settings.wipeWord")}
+            onClick={() => void authLogout(true)}
+          >
             {t("settings.wipe")}
           </Button>
         </div>

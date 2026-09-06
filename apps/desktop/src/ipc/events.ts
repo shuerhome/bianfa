@@ -30,7 +30,10 @@ export type EventName = keyof EventMap;
 const noop: UnlistenFn = () => {};
 
 /** 订阅一个事件；非 Tauri 环境返回 noop（纯浏览器预览不炸） */
-export function onEvent<K extends EventName>(name: K, handler: (payload: EventMap[K]) => void): Promise<UnlistenFn> {
+export function onEvent<K extends EventName>(
+  name: K,
+  handler: (payload: EventMap[K]) => void,
+): Promise<UnlistenFn> {
   if (!isTauri()) return Promise.resolve(noop);
   return listen<EventMap[K]>(name, (e) => handler(e.payload));
 }
@@ -42,7 +45,8 @@ export const onLoginProgress = (h: (p: LoginProgressPayload) => void) => onEvent
 export const onUpdateAvailable = (h: (p: UpdateAvailablePayload) => void) => onEvent("update:available", h);
 export const onNotice = (h: (p: Notice) => void) => onEvent("notice", h);
 export const onHotkeyNewNote = (h: () => void) => onEvent("hotkey:new-note", () => h());
-export const onNoteFocusRequest = (h: (p: NoteFocusRequestPayload) => void) => onEvent("note:focus-request", h);
+export const onNoteFocusRequest = (h: (p: NoteFocusRequestPayload) => void) =>
+  onEvent("note:focus-request", h);
 export const onSyncStatus = (h: (p: SyncStatusPayload) => void) => onEvent("sync:status", h);
 
 /** sync host → 其它窗口（Rust 只转发） */
@@ -57,6 +61,7 @@ export function emitSyncStatus(payload: SyncStatusPayload): Promise<void> {
 export function useTauriEvent<K extends EventName>(name: K, handler: (payload: EventMap[K]) => void): void {
   const ref = { current: handler };
   ref.current = handler;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handler 经 ref 读取，只按事件名重订
   useEffect(() => {
     let unlisten: UnlistenFn = noop;
     let disposed = false;
@@ -68,6 +73,5 @@ export function useTauriEvent<K extends EventName>(name: K, handler: (payload: E
       disposed = true;
       unlisten();
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handler 经 ref 读取，只按事件名重订
   }, [name]);
 }

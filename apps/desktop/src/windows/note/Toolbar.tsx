@@ -1,7 +1,8 @@
 // 底部操作工具栏（specs/06 §4.1）：object 模式 ◉换色 ⇧置顶 ⋯更多 + 字数；format 模式 ⟨返回 B I U S ☐ ≔ 🔗；
 // ≥23.75rem 宽转常驻并并入 Markdown 组（容器查询由 CSS 完成，这里只渲染两组按钮做 crossfade）。
-import type { Editor } from "@tiptap/core";
+
 import { IconButton } from "@bianfa/ui";
+import type { Editor } from "@tiptap/core";
 import { type RefObject, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { keyCombo } from "../../lib/platform.js";
@@ -17,7 +18,14 @@ export interface ToolbarProps {
   onInsertLink: () => void;
 }
 
-export function Toolbar({ editor, colorButtonRef, onColorClick, onTogglePin, onMoreClick, onInsertLink }: ToolbarProps) {
+export function Toolbar({
+  editor,
+  colorButtonRef,
+  onColorClick,
+  onTogglePin,
+  onMoreClick,
+  onInsertLink,
+}: ToolbarProps) {
   const { t } = useTranslation();
   const { toolbarMode, toolbarVisible, chars, words, zMode, set } = useNoteStore();
   const moreRef = useRef<HTMLButtonElement>(null);
@@ -34,7 +42,12 @@ export function Toolbar({ editor, colorButtonRef, onColorClick, onTogglePin, onM
       aria-label={t("note.toolbar")}
     >
       <div className="note-toolbar__group note-toolbar__group--object" aria-hidden={toolbarMode !== "object"}>
-        <IconButton ref={colorButtonRef} icon="palette" label={t("note.changeColor")} onClick={onColorClick} />
+        <IconButton
+          ref={colorButtonRef}
+          icon="palette"
+          label={t("note.changeColor")}
+          onClick={onColorClick}
+        />
         <IconButton icon="pin" label={t("note.pin")} pressed={zMode === 1} onClick={onTogglePin} />
         <IconButton
           icon="list-checks"
@@ -55,7 +68,11 @@ export function Toolbar({ editor, colorButtonRef, onColorClick, onTogglePin, onM
         />
       </div>
       <div className="note-toolbar__group note-toolbar__group--format" aria-hidden={toolbarMode !== "format"}>
-        <IconButton icon="arrow-left" label={t("common.back")} onClick={() => set({ toolbarMode: "object" })} />
+        <IconButton
+          icon="arrow-left"
+          label={t("common.back")}
+          onClick={() => set({ toolbarMode: "object" })}
+        />
         <IconButton
           icon="bold"
           label={`${t("format.bold")} ${keyCombo({ mod: true, key: "B" })}`}
@@ -92,7 +109,12 @@ export function Toolbar({ editor, colorButtonRef, onColorClick, onTogglePin, onM
           pressed={active("taskList")}
           onClick={run((e) => e.chain().focus().toggleTaskList().run())}
         />
-        <IconButton icon="link" label={`${t("format.link")} ${shortcutLabel("link")}`} pressed={active("link")} onClick={onInsertLink} />
+        <IconButton
+          icon="link"
+          label={`${t("format.link")} ${shortcutLabel("link")}`}
+          pressed={active("link")}
+          onClick={onInsertLink}
+        />
         <span className="note-toolbar__md">
           <IconButton
             icon="heading"

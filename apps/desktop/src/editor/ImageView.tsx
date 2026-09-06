@@ -10,9 +10,19 @@ export function ImageView({ node, selected }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper className={selected ? "bf-image bf-image--selected" : "bf-image"} data-drag-handle>
       {url ? (
-        <img src={url} alt={attrs.alt ?? ""} width={attrs.w ?? undefined} height={attrs.h ?? undefined} draggable={false} />
+        <img
+          src={url}
+          alt={attrs.alt ?? ""}
+          width={attrs.w ?? undefined}
+          height={attrs.h ?? undefined}
+          draggable={false}
+        />
       ) : (
-        <span className="bf-image__placeholder" style={ratio ? { aspectRatio: ratio } : undefined} aria-hidden="true" />
+        <span
+          className="bf-image__placeholder"
+          style={ratio ? { aspectRatio: ratio } : undefined}
+          aria-hidden="true"
+        />
       )}
     </NodeViewWrapper>
   );

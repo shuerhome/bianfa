@@ -245,6 +245,7 @@
 .bf-menu__sep {
   height: 1px;
   margin: var(--sp-2) 0;
+  border: 0;
   background: var(--c-border-subtle);
 }
 
@@ -586,6 +587,7 @@
   .bf-dialog[open],
   .bf-toast {
     animation-duration: 1ms;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion 下压过入场位移（规格 06 §5） */
     transform: none !important;
   }
   .bf-skeleton {

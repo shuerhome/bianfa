@@ -1,9 +1,9 @@
 // 两级编辑器的「下级」：未聚焦窗口只渲染 bodyHtml（DOMPurify 清洗），零 JS 编辑器实例。
-import DOMPurify from "dompurify";
+import DOMPurify, { type Config } from "dompurify";
 import { useEffect, useRef } from "react";
 import { hydrateAttachmentImages } from "./attachment-url.js";
 
-const purifyConfig = {
+const purifyConfig: Config = {
   ALLOWED_TAGS: [
     "p",
     "br",
@@ -48,8 +48,9 @@ const purifyConfig = {
     "rel",
     "target",
   ],
-  ALLOWED_URI_REGEXP: /^(?:https?|mailto|bianfa|bianfa-att|asset):|^http:\/\/(?:bianfa-att|asset)\.localhost\//i,
-} as const;
+  ALLOWED_URI_REGEXP:
+    /^(?:https?|mailto|bianfa|bianfa-att|asset):|^http:\/\/(?:bianfa-att|asset)\.localhost\//i,
+};
 
 export function sanitizeBodyHtml(html: string): string {
   return DOMPurify.sanitize(html, purifyConfig);
@@ -64,6 +65,7 @@ export interface StaticBodyProps {
 export function StaticBody({ html, className }: StaticBodyProps) {
   const ref = useRef<HTMLDivElement>(null);
   const safe = sanitizeBodyHtml(html);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: html 变化后需重新兑换附件 src
   useEffect(() => {
     const el = ref.current;
     if (el) void hydrateAttachmentImages(el);

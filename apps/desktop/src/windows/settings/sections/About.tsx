@@ -41,7 +41,9 @@ export function AboutSection({ info }: { info: AppInfo | null }) {
         <dt>{t("about.installId")}</dt>
         <dd>{info?.installId ?? "…"}</dd>
       </dl>
-      {result?.available && result.version ? <UpdateBanner version={result.version} onDismiss={() => setResult(null)} /> : null}
+      {result?.available && result.version ? (
+        <UpdateBanner version={result.version} onDismiss={() => setResult(null)} />
+      ) : null}
       {result && !result.available ? <p className="settings-hint">{t("about.upToDate")}</p> : null}
       {error ? <p className="settings-warning">{error}</p> : null}
       <div className="settings-inline">

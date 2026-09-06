@@ -11,7 +11,8 @@ export function createQueryClient(): QueryClient {
         refetchOnWindowFocus: false,
         retry: (count, error) => {
           // 非 Tauri 环境 / 找不到 command 重试没意义
-          if (isIpcError(error) && (error.code === "no_tauri" || error.code === "command_not_found")) return false;
+          if (isIpcError(error) && (error.code === "no_tauri" || error.code === "command_not_found"))
+            return false;
           return count < 1;
         },
       },

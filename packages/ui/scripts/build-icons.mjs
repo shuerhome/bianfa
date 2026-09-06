@@ -54,6 +54,8 @@ export const ICON_NAMES = [
   "lock",
   "log-in",
   "log-out",
+  "maximize-2",
+  "minimize-2",
   "minus",
   "monitor",
   "moon",

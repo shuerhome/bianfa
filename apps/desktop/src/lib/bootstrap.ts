@@ -44,7 +44,7 @@ export async function boot(): Promise<BootResult> {
     appInfo().catch(() => null),
   ]);
   if (info) setOs(info.os);
-  else setOs(document.documentElement.dataset.os as never) ;
+  else setOs(document.documentElement.dataset.os as never);
   applySettingsToDocument(settings);
   ensureIconSprite();
   await initI18n(settings.language);

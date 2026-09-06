@@ -1,0 +1,2 @@
+# 生成物需入库（src-tauri include! 直接读 tokens.rs，不依赖 JS 构建）；覆盖根 .gitignore 的 dist/
+!dist/
