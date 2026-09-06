@@ -29,6 +29,13 @@
       "when": 1788690000000,
       "tag": "0003_audit_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788800000000,
+      "tag": "0006_sync",
+      "breakpoints": true
     }
   ]
 }
