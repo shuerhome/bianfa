@@ -378,7 +378,7 @@ docker run -d --name drill -u postgres "${ENVS[@]}" \
 #     否则回放第一段 WAL 就 FATAL "recovery aborted because of insufficient parameter settings"（首台机器演练实测：默认 100 < prod 120）
 until docker exec drill pg_isready -q; do sleep 2; done
 until [ "$(docker exec drill psql -X -tA -c 'select pg_is_in_recovery()')" = f ]; do sleep 5; done   # 回放完成
-docker exec drill pg_amcheck --all
+docker exec drill pg_amcheck --all --install-missing   # amcheck 扩展默认没装进各库，不加 --install-missing 会 "no relations to check"（演练实测）
 docker exec drill psql -X -c 'select count(*) as users from "user"' -c 'select count(*) as notes from notes' \
                       -c "select count(*) as writes_24h from note_updates where created_at > now() - interval '24 hours'"
 docker rm -f drill && rm -rf /tmp/drill
@@ -569,7 +569,7 @@ for c in $(dc ps -q cloudflared); do ip=$(sudo docker inspect -f '{{range .Netwo
   ```
   起不来且日志指向数据损坏（`invalid page`、`could not read block`）：**不要**试 `pg_resetwal`。走 §5.4 场景 B，`--target-time` 恢复到崩溃前。
 - **验证**：`curl -fsS https://api.<REPLACE_ME:domain>/healthz`；`dc exec -T -u postgres postgres psql -X -c "select count(*) from pg_stat_activity"`；`sudo /srv/bianfa/app/infra/vps/backup.sh check`（归档链路在崩溃后是否继续）。
-- **事后**：`dc exec -T -u postgres postgres pg_amcheck --all --jobs=2`；若是 OOM，看 §9 是否到升级阈值；确认 Hocuspocus 的 `authz_revoked` LISTEN 已重连（`select * from pg_stat_activity where query ilike 'listen%'`）。
+- **事后**：`dc exec -T -u postgres postgres pg_amcheck --all --install-missing --jobs=2`；若是 OOM，看 §9 是否到升级阈值；确认 Hocuspocus 的 `authz_revoked` LISTEN 已重连（`select * from pg_stat_activity where query ilike 'listen%'`）。
 
 ### 7.3 磁盘满（PG 写入报 `No space left on device`）
 
