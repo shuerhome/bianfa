@@ -2,6 +2,7 @@
 export * from "./attachments.js";
 export * from "./auth.js";
 export * from "./device.js";
+export * from "./domain.js";
 export * from "./enums.js";
 export * from "./notes.js";
 export * from "./shares.js";
