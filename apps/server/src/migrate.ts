@@ -20,6 +20,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error(JSON.stringify({ level: "error", msg: "migration failed", err: err instanceof Error ? err.message : String(err) }));
+  console.error(
+    JSON.stringify({
+      level: "error",
+      msg: "migration failed",
+      err: err instanceof Error ? err.message : String(err),
+    }),
+  );
   process.exit(1);
 });
