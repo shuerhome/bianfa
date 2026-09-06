@@ -56,7 +56,7 @@ x-node-app: &node-app
   <<: *hardened
   user: "10001:10001"
   init: true
-  tmpfs: [/tmp]
+  tmpfs: ["/tmp:uid=10001,gid=10001,mode=1777"]
 
 # Node 应用公共环境变量（各服务在自己的 environment 里用 <<: *node-env-base 合并）
 x-node-env: &node-env-base
@@ -117,7 +117,7 @@ services:
       net.ipv4.ip_unprivileged_port_start: "0"
     # 无 TLS → /data（证书）与 /config（autosave）无需持久化，直接 tmpfs。
     # break-glass 模式下 ACME 证书也落在这个 tmpfs 里：容器重建会重新签发，LE 限速（每周 5 张同名证书）足够。
-    tmpfs: [/tmp, /data, /config]
+    tmpfs: ["/tmp:uid=10001,gid=10001,mode=1777", "/data:uid=10001,gid=10001,mode=0700", "/config:uid=10001,gid=10001,mode=0700"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     deploy:
@@ -279,7 +279,9 @@ services:
     image: edoburu/pgbouncer:v1.25.2-p0
     # 镜像 Dockerfile：alpine + postgresql-client（含 pg_isready），USER postgres，/etc/pgbouncer 等目录已 chown。
     # entrypoint 启动时在 /etc/pgbouncer 生成 pgbouncer.ini + userlist.txt → 只读根文件系统下这些目录必须是 tmpfs
-    tmpfs: [/tmp, /etc/pgbouncer, /var/run/pgbouncer, /var/log/pgbouncer]
+    # 镜像 USER postgres = alpine uid/gid 70。tmpfs 必须显式给 uid/gid：runc 挂 tmpfs 时只沿用镜像里该目录的 mode，
+    # 属主是 root，非 root 进程写不进去（首台机器实测：entrypoint "touch: /etc/pgbouncer/userlist.txt: Permission denied"）。
+    tmpfs: ["/tmp:uid=70,gid=70,mode=1777", "/etc/pgbouncer:uid=70,gid=70,mode=0750", "/var/run/pgbouncer:uid=70,gid=70,mode=0750", "/var/log/pgbouncer:uid=70,gid=70,mode=0750"]
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -330,10 +332,12 @@ services:
     stop_signal: SIGINT
     stop_grace_period: 60s
     shm_size: 1gb                      # dynamic_shared_memory_type=posix 走 /dev/shm（并行查询 DSM）
+    # tmpfs 都显式给 uid/gid=999：runc 只沿用镜像内目录的 mode、属主仍是 root（见 pgbouncer 处说明）。
+    # /var/log/pgbackrest 在镜像里是 0750，不给 uid 的话 pgbackrest（以 postgres 运行）连日志都打不开。
     tmpfs:
-      - /tmp                           # 同时是 pgbackrest 的 lock-path (/tmp/pgbackrest)
-      - /var/run/postgresql            # unix socket（entrypoint 的 chmod 失败会被忽略，tmpfs 默认 1777 足够）
-      - /var/log/pgbackrest            # pgbackrest 文件日志（控制台日志走 stdout，丢了不心疼）
+      - /tmp:uid=999,gid=999,mode=1777                # 同时是 pgbackrest 的 lock-path (/tmp/pgbackrest)
+      - /var/run/postgresql:uid=999,gid=999,mode=2777 # unix socket
+      - /var/log/pgbackrest:uid=999,gid=999,mode=0750 # pgbackrest 文件日志（控制台日志走 stdout，丢了不心疼）
     volumes:
       - pgdata:/var/lib/postgresql     # PG18 镜像 VOLUME；实际 PGDATA=/var/lib/postgresql/18/docker
       - pgbackrest_spool:/var/spool/pgbackrest
@@ -395,7 +399,7 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}
       REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}   # 仅供 healthcheck 的 redis-cli 使用
-    tmpfs: [/tmp]                      # redis.conf 里 dir /tmp；无 volume（不落盘）
+    tmpfs: ["/tmp:uid=10001,gid=10001,mode=1777"]   # redis.conf 里 dir /tmp；无 volume（不落盘）；uid 显式给，理由见 pgbouncer
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     deploy:
