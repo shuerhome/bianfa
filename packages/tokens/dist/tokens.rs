@@ -1,6 +1,6 @@
 // 自动生成（pnpm -F @bianfa/tokens build），勿手改；来源 packages/tokens/src/tokens.json
 // 供 src-tauri 用 include!() 引入：托盘角标、窗口 background_color（alpha 恒 255）。
-#![allow(dead_code)]
+// 用法：#[allow(dead_code)] mod tokens { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../packages/tokens/dist/tokens.rs")); }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgb {
