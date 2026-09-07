@@ -94,16 +94,16 @@ impl NoteColor {
     pub fn is_deep(self) -> bool {
         matches!(
             self,
-            NoteColor::Slate |
-            NoteColor::Carmine |
-            NoteColor::Vermilion |
-            NoteColor::Ochre |
-            NoteColor::Olive |
-            NoteColor::Pine |
-            NoteColor::Peacock |
-            NoteColor::Indigo |
-            NoteColor::Wisteria |
-            NoteColor::Eggplant
+            NoteColor::Slate
+                | NoteColor::Carmine
+                | NoteColor::Vermilion
+                | NoteColor::Ochre
+                | NoteColor::Olive
+                | NoteColor::Pine
+                | NoteColor::Peacock
+                | NoteColor::Indigo
+                | NoteColor::Wisteria
+                | NoteColor::Eggplant
         )
     }
 
@@ -182,7 +182,10 @@ mod tests {
                 let paper = c.paper_rgb(dark);
                 let dot = c.dot_rgb(dark);
 
-                assert!(!seen.contains(&paper), "{c:?} dark={dark} 纸色与其它颜色重复");
+                assert!(
+                    !seen.contains(&paper),
+                    "{c:?} dark={dark} 纸色与其它颜色重复"
+                );
                 seen.push(paper);
 
                 assert_ne!(paper, dot, "{c:?} dark={dark} 身份色与纸色相同");
