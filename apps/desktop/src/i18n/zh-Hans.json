@@ -57,6 +57,10 @@
     "shrinkRestore": "恢复",
     "shrinkRestored": "已恢复合并前内容（可撤销）。"
   },
+  "color": {
+    "caption": "{{name}} · {{key}}",
+    "current": "当前"
+  },
   "format": {
     "bold": "粗体",
     "italic": "斜体",

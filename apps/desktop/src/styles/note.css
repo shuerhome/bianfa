@@ -1,5 +1,6 @@
 /* 便笺窗几何 + 容器查询（specs/06 §4.1）。禁 filter/backdrop-filter/常驻 will-change；hover/focus 只动 opacity/transform */
 @import "./base.css";
+@import "./color-popover.css";
 
 html,
 body {
@@ -10,6 +11,33 @@ body {
   container: note / size;
   height: 100%;
   width: 100%;
+  /* 单层柔和窗体阴影（不与描边并用）。三档：贴桌面更平 / 常规 / 置顶更高。 */
+  --note-shadow-flat: 0 1px 2px -1px rgb(24 24 20 / 0.16), 0 4px 10px -5px rgb(24 24 20 / 0.18);
+  --note-shadow-rest: 0 1px 2px -1px rgb(24 24 20 / 0.18), 0 10px 24px -9px rgb(24 24 20 / 0.28);
+  --note-shadow-high: 0 2px 5px -2px rgb(24 24 20 / 0.2), 0 20px 44px -13px rgb(24 24 20 / 0.34);
+  --note-shadow: var(--note-shadow-rest);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .note {
+    --note-shadow-flat: 0 1px 2px rgb(0 0 0 / 0.34), 0 4px 10px -6px rgb(0 0 0 / 0.4);
+    --note-shadow-rest: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -10px rgb(0 0 0 / 0.56);
+    --note-shadow-high: 0 2px 4px rgb(0 0 0 / 0.44), 0 20px 44px -14px rgb(0 0 0 / 0.68);
+  }
+}
+:root[data-theme="dark"] .note {
+  --note-shadow-flat: 0 1px 2px rgb(0 0 0 / 0.34), 0 4px 10px -6px rgb(0 0 0 / 0.4);
+  --note-shadow-rest: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -10px rgb(0 0 0 / 0.56);
+  --note-shadow-high: 0 2px 4px rgb(0 0 0 / 0.44), 0 20px 44px -14px rgb(0 0 0 / 0.68);
+}
+/* 置顶（zMode 1）抬高、贴桌面（zMode 2）压平 —— 放在 focused 之后，后写者胜 */
+.note[data-focused="true"] {
+  --note-shadow: var(--note-shadow-high);
+}
+.note[data-zmode="1"] {
+  --note-shadow: var(--note-shadow-high);
+}
+.note[data-zmode="2"] {
+  --note-shadow: var(--note-shadow-flat);
 }
 [data-color-patterns="1"] {
   --note-pattern: repeating-linear-gradient(
@@ -35,25 +63,15 @@ body {
   animation: note-enter var(--dur-5) var(--ease-spring);
   transform-origin: 20% 10%;
 }
-.note-shell::before,
-.note-shell::after {
+/* 单层阴影：只有 ::before，不再叠 ::after 的彩色辉光，也不带 1px ring（--sh-window 自带 ring，故不用） */
+.note-shell::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  transition: opacity var(--dur-3) var(--ease-out);
-}
-.note-shell::before {
-  box-shadow: var(--sh-window);
-  opacity: 1;
-}
-.note-shell::after {
-  box-shadow: 0 8px 28px -10px color-mix(in oklab, var(--note-dot) 30%, transparent);
-  opacity: 0;
-}
-.note[data-focused="true"] .note-shell::after {
-  opacity: 1;
+  box-shadow: var(--note-shadow);
+  transition: box-shadow var(--dur-3) var(--ease-out);
 }
 .note-shell--closing {
   animation: note-close var(--dur-2) var(--ease-in) forwards;
@@ -148,16 +166,30 @@ body {
 .note[data-zmode="1"] .note-titlebar__actions {
   opacity: 1;
 }
-.note-titlebar .bf-iconbtn {
-  color: var(--note-ink2);
+/* chrome 尽量消失：图标常驻 opacity .55，hover/focus 才到 1；hover 底是圆角色块，不描边 */
+.note-titlebar .bf-iconbtn,
+.note-toolbar .bf-iconbtn {
+  color: var(--note-ink);
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--r-sm);
+  opacity: 0.55;
+  transition:
+    opacity var(--dur-2) linear,
+    background-color var(--dur-2) linear;
 }
-.note-titlebar .bf-iconbtn:hover {
+.note-titlebar .bf-iconbtn:hover,
+.note-titlebar .bf-iconbtn:focus-visible,
+.note-toolbar .bf-iconbtn:hover,
+.note-toolbar .bf-iconbtn:focus-visible {
+  opacity: 1;
   background: color-mix(in oklab, var(--note-ink) 8%, transparent);
   color: var(--note-ink);
 }
 .note-titlebar .bf-iconbtn.note-pin--on,
 .note-toolbar .bf-iconbtn.note-pin--on {
   color: var(--note-dot);
+  opacity: 1;
 }
 .note-pin--on .bf-icon {
   transform: rotate(-35deg);
@@ -235,12 +267,28 @@ body {
 }
 
 /* ── 正文 ── */
+/* 左右 16px、上 12px（顶栏之下）、下 8px */
 .note-body {
   position: absolute;
   inset: 0;
-  padding: 30px 8px 12px 14px;
+  padding: calc(var(--note-titlebar-h) + 12px) 16px 8px;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+/* 细滚动条：常态几乎不可见，悬停窗口才显出来 */
+.note-body::-webkit-scrollbar {
+  width: 6px;
+}
+.note-body::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.note-window:hover .note-body::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--note-ink) 20%, transparent);
+}
+.note-body::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--note-ink) 34%, transparent);
 }
 .note-body[data-static] {
   cursor: text;
@@ -310,7 +358,8 @@ body {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 8px 0 10px;
+  padding: 0 10px;
+  background: var(--note-paper);
   z-index: var(--z-float);
   opacity: 0;
   pointer-events: none;
@@ -337,14 +386,8 @@ body {
   opacity: 0;
   pointer-events: none;
 }
-.note-toolbar .bf-iconbtn {
-  color: var(--note-ink2);
-}
-.note-toolbar .bf-iconbtn:hover {
-  background: color-mix(in oklab, var(--note-ink) 8%, transparent);
-  color: var(--note-ink);
-}
 .note-toolbar .bf-iconbtn[aria-pressed="true"] {
+  opacity: 1;
   color: var(--note-ink);
   background: color-mix(in oklab, var(--note-ink) 10%, transparent);
 }
@@ -375,55 +418,6 @@ body {
   opacity: 0.35;
 }
 
-/* ── 颜色 popover ── */
-.color-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 176px;
-  margin: 0;
-  padding: 4px;
-  border: 0;
-}
-.color-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: var(--r-xs);
-  color: var(--c-text-1);
-  font-size: var(--fs-2xs);
-  text-align: left;
-}
-.color-item:hover {
-  background: var(--c-hover);
-}
-.color-item--selected {
-  box-shadow: inset 0 0 0 1px var(--c-accent);
-}
-.color-item:has(input:focus-visible) {
-  outline: 2px solid var(--c-focus);
-  outline-offset: -2px;
-}
-.color-item__dot {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--r-full);
-  background: var(--note-dot);
-  flex: none;
-}
-[data-color-patterns="1"] .color-item__dot {
-  background-image: var(--note-pattern);
-}
-.color-item__name {
-  flex: 1;
-}
-.color-item__kbd {
-  font-family: var(--f-mono);
-  color: var(--c-text-2);
-  font-variant-numeric: tabular-nums;
-}
-
 .note-loading,
 .note-error {
   height: 100%;
@@ -450,19 +444,12 @@ body {
 }
 @container note (max-width: 12.49rem) {
   .note-body {
-    padding: 26px 6px 10px 10px;
-    line-height: var(--lh-cjk);
+    padding: calc(var(--note-titlebar-h) + 8px) 10px 8px;
   }
 }
 @container note (max-height: 9.99rem) {
   .note-body {
-    padding: 26px 6px 10px 10px;
-    line-height: var(--lh-cjk);
-  }
-}
-@container note (min-width: 18.75rem) {
-  .note-body {
-    padding: 32px 16px 12px 18px;
+    padding: calc(var(--note-titlebar-h) + 8px) 10px 8px;
   }
 }
 @container note (min-width: 18.75rem) and (min-height: 20rem) {
@@ -479,7 +466,6 @@ body {
     opacity: 1;
     pointer-events: auto;
     height: var(--note-toolbar-h-static);
-    border-top: 1px solid var(--note-rule);
     transition: none;
   }
   .note-body {

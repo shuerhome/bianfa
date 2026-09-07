@@ -2,8 +2,13 @@
 .bf-prose {
   font-family: var(--f-sans);
   font-size: var(--fs-md);
-  line-height: var(--lh-body);
+  line-height: var(--lh-cjk);
   color: var(--note-ink, var(--c-text-1));
+  /* 正文永远是常规字重：包裹层（StaticBody 的 div / .note-editor-host）绝不许继承到 600，
+     且字体回退时不要合成假粗（合成粗体是"整段发粗"的第二来源）。 */
+  font-weight: var(--fw-normal);
+  font-synthesis-weight: none;
+  font-optical-sizing: auto;
   text-autospace: no-autospace;
   text-spacing-trim: space-all;
   line-break: strict;
@@ -62,7 +67,7 @@
 .bf-prose ol + p,
 .bf-prose p + ul,
 .bf-prose p + ol {
-  margin-top: 2px;
+  margin-top: 6px;
 }
 .bf-prose blockquote {
   margin: 4px 0;
@@ -141,7 +146,7 @@
 .bf-prose ul[data-type="taskList"] li > label {
   flex: none;
   display: inline-flex;
-  margin-top: calc((var(--lh-body) * 1em - 16px) / 2);
+  margin-top: calc((var(--lh-cjk) * 1em - 16px) / 2);
 }
 .bf-prose ul[data-type="taskList"] li > label input {
   appearance: none;
@@ -194,12 +199,17 @@
   min-height: 100%;
 }
 
-/* 首行 = 标题（放在最后，特异性高于上面的元素规则） */
-.bf-prose > :first-child,
+/* 首行 = 标题（放在最后，特异性高于上面的元素规则）。
+   注意：选择器必须落在**真正的首个块**上，不能是 `.bf-prose > :first-child` ——
+   .bf-prose 的直接子元素是包裹层（静态态是 StaticBody 的无类名 <div>，编辑态是
+   .note-editor-host），命中包裹层会把 font-size/font-weight 继承给整篇正文，
+   这正是"导入的便笺整段发粗、还偏大"的根因。
+   字重与正文一致（不加粗，对齐 Windows 便笺）。 */
 .bf-prose .note-editor > :first-child,
+.note-body[data-static] > * > :first-child,
 .bf-prose .note-title {
   font-size: var(--fs-lg);
   line-height: var(--lh-cjk);
-  font-weight: var(--fw-strong);
-  margin-bottom: 4px;
+  font-weight: var(--fw-normal);
+  margin-bottom: 6px;
 }

@@ -57,6 +57,10 @@
     "shrinkRestore": "Restore",
     "shrinkRestored": "Pre-merge content restored (undoable)."
   },
+  "color": {
+    "caption": "{{name}} · {{key}}",
+    "current": "Selected"
+  },
   "format": {
     "bold": "Bold",
     "italic": "Italic",
