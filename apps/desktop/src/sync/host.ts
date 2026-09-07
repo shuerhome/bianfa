@@ -417,12 +417,25 @@ export class SyncHost {
   /** 目标集合：有打开窗口的 + 待上传的 */
   private async refreshTargets(): Promise<void> {
     if (!this.auth?.loggedIn || this.paused) return;
+    // 这两个查询原本是 `.catch(() => [])`：失败就静默变成空数组，于是「一张便笺都不同步」
+    // 与「确实没有待同步的便笺」在日志里长得一模一样。失败必须说出来。
     const [list, pending] = await Promise.all([
-      notesList({ includeTrashed: true }).catch(() => []),
-      notesPendingSync().catch(() => []),
+      notesList({ includeTrashed: true }).catch((e: unknown) => {
+        clientLog("error", "sync", `列出本地便笺失败：${e instanceof Error ? e.message : String(e)}`);
+        return [];
+      }),
+      notesPendingSync().catch((e: unknown) => {
+        clientLog("error", "sync", `取待同步队列失败：${e instanceof Error ? e.message : String(e)}`);
+        return [];
+      }),
     ]);
     const open = new Set(list.filter((n) => n.isOpen).map((n) => n.id));
     const pend = new Set(pending.map((p) => p.noteId));
+    clientLog(
+      "info",
+      "sync",
+      `同步目标：本地 ${list.length} 张、打开 ${open.size} 张、待同步 ${pend.size} 张、已建通道 ${this.entries.size}/${MAX_PROVIDERS}`,
+    );
     for (const id of new Set([...open, ...pend])) {
       await this.ensureProvider(id, { hasWindow: open.has(id), pending: pend.has(id) });
     }
@@ -466,13 +479,28 @@ export class SyncHost {
     flags: { hasWindow?: boolean; pending?: boolean },
   ): Promise<void> {
     if (this.entries.size >= MAX_PROVIDERS) this.evictIdle();
-    if (this.entries.size >= MAX_PROVIDERS) return;
+    if (this.entries.size >= MAX_PROVIDERS) {
+      // 上限占满且淘汰不动：evictIdle 只淘汰 !hasWindow && !pending 的条目，
+      // 而批量导入之后所有条目都是 pending —— 于是剩下的便笺会永远轮不上。
+      // 这条日志是为了让这种"卡住但不报错"的状态在日志里看得见。
+      clientLog("warn", "sync", `通道已满（${MAX_PROVIDERS}）且无可淘汰项，${noteId} 本轮跳过`);
+      return;
+    }
     const personal = this.auth?.personalWorkspaceId;
-    if (!personal) return;
+    if (!personal) {
+      clientLog("warn", "sync", `没有个人工作区，${noteId} 跳过`);
+      return;
+    }
     const rec = await noteGet(noteId).catch(() => null);
     const workspaceId = rec?.workspaceId ?? personal;
-    const bundle = await noteLoadDoc(noteId).catch(() => null);
-    if (!bundle) return;
+    const bundle = await noteLoadDoc(noteId).catch((e: unknown) => {
+      clientLog("error", "sync", `加载 ${noteId} 的文档失败：${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
+    if (!bundle) {
+      clientLog("warn", "sync", `${noteId} 没有可同步的文档内容，跳过`);
+      return;
+    }
     const updates: Uint8Array[] = [];
     if (bundle.snapshotB64) updates.push(fromB64(bundle.snapshotB64));
     for (const u of bundle.updatesB64) updates.push(fromB64(u));
