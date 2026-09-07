@@ -449,3 +449,32 @@ body {
   margin-bottom: var(--sp-1);
   word-break: break-all;
 }
+
+/* 数据位置：路径要能整段看清，长路径横向滚动而不是撑破面板 */
+.settings-path {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-subtle);
+  font-family: var(--f-mono);
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.settings-hint--warn {
+  color: var(--c-warning-text, var(--c-text-1));
+}
+.settings-notice--warn {
+  padding: var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--c-accent-subtle);
+  border: 1px solid var(--c-accent-border);
+}
+.settings-notice--warn p {
+  margin: 0 0 var(--sp-3);
+}
+.settings-notice--warn p:last-child {
+  margin-bottom: 0;
+}

@@ -467,5 +467,18 @@
     "beta": "Join the Beta channel",
     "betaHint": "Get new features earlier, with a higher chance of rough edges.",
     "website": "Website"
+  },
+  "dataLocation": {
+    "title": "Data location",
+    "change": "Change location…",
+    "resetToDefault": "Reset to default",
+    "pickTitle": "Choose a folder for your notes data",
+    "hint": "Notes, attachments and backups live here. You can move them to another drive. Moving never deletes the original copy.",
+    "cloudWarning": "This location looks like a cloud-sync folder. Syncing a database file is a common cause of corruption; pick a folder that is not synced.",
+    "cannotUse": "That location cannot be used",
+    "moveFailed": "Move failed",
+    "movedTo": "Data copied to {{path}}.",
+    "restartNow": "Quit and reopen the app for the new location to take effect.",
+    "oldKept": "The original data is still at {{path}}; delete it yourself once everything looks right."
   }
 }

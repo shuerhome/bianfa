@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authLogout, openDataDir, trashEmpty } from "../../../ipc/commands.js";
 import { type ExportFormat, exportNotes } from "../../../lib/export.js";
+import { DataLocationPanel } from "../DataLocation.js";
 import { ImportWizard } from "../ImportWizard.js";
 
 export function DataSection({ dataDir }: { dataDir: string | null }) {
@@ -48,6 +49,8 @@ export function DataSection({ dataDir }: { dataDir: string | null }) {
         </Button>
       </div>
       <p className="settings-hint">{t("import.oneNoteHint")}</p>
+      <h3 className="settings-subtitle">{t("dataLocation.title")}</h3>
+      <DataLocationPanel />
       <h3 className="settings-subtitle">{t("settings.localData")}</h3>
       <p className="settings-hint tabular">{dataDir ?? "…"}</p>
       <Button icon="folder-open" onClick={() => void openDataDir()}>

@@ -161,6 +161,23 @@ export const noteNew = (args: { atCursor?: boolean; color?: NoteColor } = {}) =>
 export const windowStartDrag = () => call<void>("window_start_drag");
 
 // ── 2.3 设置、应用、系统 ──
+export interface DataLocation {
+  current: string;
+  default: string;
+  isCustom: boolean;
+  inCloudFolder: boolean;
+}
+
+export const dataLocationGet = () => call<DataLocation>("data_location_get");
+export const dataLocationCheck = (target: string) =>
+  call<{ ok: boolean; reason?: string }>("data_location_check", { target });
+/** target 传 null = 搬回系统默认位置。返回后必须重启：数据库连接已经关掉了。 */
+export const dataLocationMove = (target: string | null) =>
+  call<{ ok: boolean; from: string; to: string; bytes: number; restartRequired: boolean }>(
+    "data_location_move",
+    { target },
+  );
+
 export const settingsGet = () => call<Settings>("settings_get");
 
 /**
