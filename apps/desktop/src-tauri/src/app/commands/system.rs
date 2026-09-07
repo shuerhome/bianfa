@@ -242,3 +242,21 @@ pub fn data_location_move(
         "restartRequired": true,
     }))
 }
+
+/// 前端往 Rust 的文件日志里写一行。
+///
+/// 为什么需要它：同步宿主跑在一个**隐藏的 WebView**里，它的 console 没有任何人看得到——
+/// 出问题时日志文件里一片空白，只能靠猜。真实排查过一次「登录正常但一条便笺都不同步」，
+/// 全程没有任何一行日志可看，就是因为这条通道不存在。
+#[tauri::command]
+pub fn client_log(level: String, scope: String, message: String) -> IpcResult<()> {
+    // 截断：日志文件不该被前端一行超长消息撑爆
+    let msg: String = message.chars().take(2000).collect();
+    let scope: String = scope.chars().take(64).collect();
+    match level.as_str() {
+        "error" => log::error!("[{scope}] {msg}"),
+        "warn" => log::warn!("[{scope}] {msg}"),
+        _ => log::info!("[{scope}] {msg}"),
+    }
+    Ok(())
+}

@@ -92,6 +92,7 @@ pub fn run() {
             commands::system::hotkey_set,
             commands::system::open_external,
             commands::system::open_data_dir,
+            commands::system::client_log,
             commands::system::data_location_get,
             commands::system::data_location_check,
             commands::system::data_location_move,

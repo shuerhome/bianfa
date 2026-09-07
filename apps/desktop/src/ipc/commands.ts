@@ -162,6 +162,15 @@ export const windowStartDrag = () => call<void>("window_start_drag");
 
 // ── 2.3 设置、应用、系统 ──
 export const settingsGet = () => call<Settings>("settings_get");
+
+/**
+ * 往 Rust 的文件日志里写一行。
+ * 同步宿主跑在隐藏 WebView 里，它的 console 没人看得到——不经这条通道，出问题时日志一片空白。
+ * 刻意不抛：日志失败绝不能反过来把业务打断。
+ */
+export function clientLog(level: "info" | "warn" | "error", scope: string, message: string): void {
+  void call("client_log", { level, scope, message }).catch(() => {});
+}
 export const settingsSet = (patch: Partial<Settings>) => call<Settings>("settings_set", { patch });
 export const appInfo = () => call<AppInfo>("app_info");
 export const autostartSet = (enabled: boolean) =>

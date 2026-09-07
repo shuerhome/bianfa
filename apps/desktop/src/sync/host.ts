@@ -27,6 +27,7 @@ import {
   attachmentsPendingUpload,
   attachmentUpload,
   authStatus,
+  clientLog,
   noteAppendUpdate,
   noteCreate,
   noteGet,
@@ -131,6 +132,8 @@ export class SyncHost {
     const stored = settings?.syncWsUrl;
     this.wsUrl = stored && stored !== LEGACY_SYNC_WS_URL ? stored : derived;
     if (!/\/ws\//.test(this.wsUrl)) this.wsUrl = derived;
+    // 这一行是排查同步问题的第一落点：连的到底是哪个地址
+    clientLog("info", "sync", `同步地址 ${this.wsUrl}（api=${settings?.apiBaseUrl ?? "?"}）`);
     this.unlisten.push(await onAuthChanged((a) => void this.onAuth(a)));
     this.unlisten.push(await onDbChanged((p) => this.onDbChanged(p)));
     await this.onAuth(await authStatus().catch(() => null));
@@ -155,6 +158,13 @@ export class SyncHost {
     const wasLoggedIn = this.auth?.loggedIn === true;
     this.auth = auth;
     if (!auth?.loggedIn || !auth.personalWorkspaceId) {
+      // 同步不工作时最常见的一种：登录态或个人工作区 id 缺一个，于是这里直接返回、
+      // 一个网络请求都不会发出去。不打这一行的话，现象是「什么都没发生」，无从查起。
+      clientLog(
+        "warn",
+        "sync",
+        `未启动同步：loggedIn=${auth?.loggedIn === true} personalWorkspaceId=${auth?.personalWorkspaceId ?? "(空)"}`,
+      );
       this.status.setGlobal("local");
       for (const id of Array.from(this.entries.keys())) this.dropProvider(id);
       this.inbox?.destroy();
@@ -175,6 +185,7 @@ export class SyncHost {
     }
     // 新登录 / 换账号：给被拒绝过的便笺一次重试机会
     if (!wasLoggedIn || userChanged) this.denied.clear();
+    clientLog("info", "sync", `开始同步（工作区 ${auth.personalWorkspaceId}）`);
     this.ensureSocket();
     this.ensureInbox(auth.personalWorkspaceId);
     await this.refreshTargets();

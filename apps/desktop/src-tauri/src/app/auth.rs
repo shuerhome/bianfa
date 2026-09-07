@@ -164,7 +164,11 @@ pub fn init(app: &AppHandle) {
         i.plan = profile.plan.clone();
     });
     if has_refresh {
-        let _ = windows::ensure_sync_window(app);
+        if let Err(e) = windows::ensure_sync_window(app) {
+            log::error!("同步宿主窗口创建失败，同步将完全不工作：{e:?}");
+        } else {
+            log::info!("同步宿主窗口已创建");
+        }
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             match ensure_access_token(&app).await {
@@ -397,7 +401,11 @@ async fn finish_login(app: &AppHandle, tokens: TokenResponse) -> IpcResult<()> {
     let state = app.state::<AppState>();
     events::emit(app, events::AUTH_CHANGED, state.auth.status());
     events::login_progress(app, "done", None);
-    let _ = windows::ensure_sync_window(app);
+    if let Err(e) = windows::ensure_sync_window(app) {
+        log::error!("同步宿主窗口创建失败，同步将完全不工作：{e:?}");
+    } else {
+        log::info!("同步宿主窗口已创建");
+    }
     // Bring the app back to the foreground (04 §2.2 step ⑤).
     for label in [windows::LOGIN, windows::SETTINGS, windows::MAIN] {
         if let Some(w) = app.get_webview_window(label) {
