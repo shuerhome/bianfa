@@ -6,6 +6,7 @@ import { Card, Shell } from "./components/Shell.js";
 import { StateView } from "./components/StateView.js";
 import { useSession } from "./lib/session.js";
 import { Account } from "./pages/Account.js";
+import { Admin } from "./pages/Admin.js";
 import { Consent } from "./pages/Consent.js";
 import { Device } from "./pages/Device.js";
 import { ForgotPassword } from "./pages/ForgotPassword.js";
@@ -81,6 +82,9 @@ export function App() {
       break;
     case "account":
       page = <Account />;
+      break;
+    case "admin":
+      page = <Admin search={location.search} />;
       break;
     default:
       page = <NotFound />;

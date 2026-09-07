@@ -28,7 +28,7 @@ function usedKeys(): Set<string> {
         const src = readFileSync(p, "utf8");
         for (const m of src.matchAll(/\bt\(\s*"([a-zA-Z0-9_.]+)"/g)) if (m[1]) out.add(m[1]);
         for (const m of src.matchAll(
-          /"((?:common|fields|validation|login|signup|forgot|reset|verify|consent|device|invite|account|notFound|footer)\.[a-zA-Z0-9_]+)"/g,
+          /"((?:common|fields|validation|login|signup|forgot|reset|verify|consent|device|invite|account|admin|notFound|footer)\.[a-zA-Z0-9_]+)"/g,
         ))
           if (m[1]) out.add(m[1]);
       }

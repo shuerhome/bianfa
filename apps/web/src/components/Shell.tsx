@@ -64,15 +64,18 @@ export function Card({
   description,
   children,
   labelledBy,
+  wide,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
   labelledBy?: string;
+  /** 宽卡片（管理台的列表 / 表格页）；登录之类的表单页保持 400px 单栏 */
+  wide?: boolean;
 }) {
   const id = labelledBy ?? "web-card-title";
   return (
-    <section className="web-card" aria-labelledby={id}>
+    <section className={wide ? "web-card web-card--wide" : "web-card"} aria-labelledby={id}>
       <h1 id={id} className="web-title">
         {title}
       </h1>
