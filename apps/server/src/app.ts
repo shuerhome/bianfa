@@ -33,6 +33,7 @@ import { noteRoutes } from "./routes/notes.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { pinRoutes } from "./routes/pins.js";
 import { shareRoutes } from "./routes/shares.js";
+import { todoRoutes } from "./routes/todos.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 import { createNoticeLoader } from "./services/notice.js";
 import { createPgBossQueue } from "./services/queue.js";
@@ -154,6 +155,7 @@ export function createApp(deps: AppDeps): Hono<RouteEnv> {
   authed.route("/", attachmentRoutes(d));
   authed.route("/", notificationRoutes(d));
   authed.route("/", accountRoutes(d));
+  authed.route("/", todoRoutes(d));
 
   v1.route("/", anonymousRoutes(d));
   // B1 的账号/组织路由先挂：它们各自带 requireBearer；后面的 authed 中间件对已匹配的路径不再运行
