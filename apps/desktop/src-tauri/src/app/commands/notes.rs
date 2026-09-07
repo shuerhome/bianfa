@@ -3,11 +3,11 @@
 use crate::app::events;
 use crate::app::state::{AppState, SyncStatus};
 use crate::app::{tray, windows};
-use crate::db::{notes, sync_state, versions};
+use crate::db::{checklist, notes, sync_state, versions};
 use crate::error::{IpcError, IpcResult};
 use crate::model::{
     NoteDocBundle, NoteListItem, NoteProjection, NoteRecord, PendingSync, SearchFilters,
-    SyncErrorItem, UpdatesSince, VersionItem, WindowState,
+    SyncErrorItem, TodoCounts, TodoItem, UpdatesSince, VersionItem, WindowState,
 };
 use crate::util::{b64_decode, b64_encode};
 use tauri::{AppHandle, Manager, State};
@@ -83,7 +83,12 @@ pub fn note_create(
     let rec = events::mutate(
         &app,
         origin,
-        &["notes", "ydoc_updates", "note_window_state"],
+        &[
+            "notes",
+            "ydoc_updates",
+            "note_window_state",
+            "checklist_items",
+        ],
         vec![note_id.clone()],
         |tx| {
             let rec = notes::create(
@@ -127,7 +132,7 @@ pub fn note_append_update(
     check_origin(&origin)?;
     let update = b64_decode(&update_v2_b64)?;
     let tables: &[&str] = if projection.is_some() {
-        &["ydoc_updates", "notes"]
+        &["ydoc_updates", "notes", "checklist_items"]
     } else {
         &["ydoc_updates"]
     };
@@ -182,7 +187,11 @@ pub fn note_discard_if_empty(app: AppHandle, note_id: String) -> IpcResult<serde
             crate::model::DbChanged {
                 rev,
                 origin: "local".into(),
-                tables: vec!["notes".into(), "note_window_state".into()],
+                tables: vec![
+                    "notes".into(),
+                    "note_window_state".into(),
+                    "checklist_items".into(),
+                ],
                 ids: vec![note_id.clone()],
             },
         );
@@ -208,7 +217,7 @@ pub fn notes_pending_sync(state: State<'_, AppState>) -> IpcResult<Vec<PendingSy
 
 #[tauri::command]
 pub fn trash_empty(app: AppHandle) -> IpcResult<serde_json::Value> {
-    let purged = events::mutate(&app, "local", &["notes"], vec![], |tx| {
+    let purged = events::mutate(&app, "local", &["notes", "checklist_items"], vec![], |tx| {
         notes::trash_empty(tx)
     })?;
     Ok(serde_json::json!({ "purged": purged }))
@@ -216,10 +225,42 @@ pub fn trash_empty(app: AppHandle) -> IpcResult<serde_json::Value> {
 
 #[tauri::command]
 pub fn notes_purge_expired(app: AppHandle) -> IpcResult<serde_json::Value> {
-    let purged = events::mutate(&app, "system", &["notes"], vec![], |tx| {
-        notes::purge_expired(tx)
-    })?;
+    let purged = events::mutate(
+        &app,
+        "system",
+        &["notes", "checklist_items"],
+        vec![],
+        |tx| notes::purge_expired(tx),
+    )?;
     Ok(serde_json::json!({ "purged": purged }))
+}
+
+/// Extra (not in 07): todos page. Open items first, then most recently edited note first, then
+/// document order; trashed / purged notes excluded. `workspace_id = None` = every local note.
+#[tauri::command]
+pub fn todos_list(
+    state: State<'_, AppState>,
+    include_done: Option<bool>,
+    workspace_id: Option<String>,
+    limit: Option<i64>,
+) -> IpcResult<Vec<TodoItem>> {
+    state.with_db(|c| {
+        checklist::list(
+            c,
+            include_done.unwrap_or(false),
+            workspace_id.as_deref(),
+            limit,
+        )
+    })
+}
+
+/// Extra (not in 07): `{ open, done }` with the same exclusions as `todos_list`.
+#[tauri::command]
+pub fn todos_counts(
+    state: State<'_, AppState>,
+    workspace_id: Option<String>,
+) -> IpcResult<TodoCounts> {
+    state.with_db(|c| checklist::counts(c, workspace_id.as_deref()))
 }
 
 #[tauri::command]

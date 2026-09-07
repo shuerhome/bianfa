@@ -141,7 +141,13 @@ pub fn import_commit(
     let result = events::mutate(
         &app,
         "import",
-        &["notes", "ydoc_updates", "note_window_state", "imports"],
+        &[
+            "notes",
+            "ydoc_updates",
+            "note_window_state",
+            "imports",
+            "checklist_items",
+        ],
         ids,
         |tx| {
             let mut r = ImportCommitResult::default();

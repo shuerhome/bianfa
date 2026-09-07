@@ -4,6 +4,7 @@
 //! functions live in submodules and take `&Connection` so they work inside transactions.
 
 pub mod attachments;
+pub mod checklist;
 pub mod imports;
 pub mod notes;
 pub mod schema;
@@ -175,13 +176,17 @@ impl Db {
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
     }
 
+    /// Applies every `schema::MIGRATIONS` step above the file's `user_version`, each in its own
+    /// transaction that also stamps the new version (a crash between steps resumes cleanly).
     fn migrate(&mut self) -> rusqlite::Result<()> {
         let v = self.user_version()?;
-        if v < 1 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(schema::SCHEMA_V1)?;
-            tx.execute_batch(&format!("PRAGMA user_version = {}", schema::USER_VERSION))?;
-            tx.commit()?;
+        for (version, ddl) in schema::MIGRATIONS {
+            if v < version {
+                let tx = self.conn.transaction()?;
+                tx.execute_batch(ddl)?;
+                tx.execute_batch(&format!("PRAGMA user_version = {version}"))?;
+                tx.commit()?;
+            }
         }
         Ok(())
     }
@@ -323,12 +328,53 @@ mod tests {
             "forensic_snapshots",
             "imports",
             "meta",
+            "checklist_items",
         ] {
             assert!(tables.iter().any(|x| x == t), "missing table {t}");
         }
         assert_eq!(bump_rev(db.conn()).unwrap(), 1);
         assert_eq!(bump_rev(db.conn()).unwrap(), 2);
         assert_eq!(current_rev(db.conn()).unwrap(), 2);
+    }
+
+    #[test]
+    fn migrations_are_ordered_and_end_at_user_version() {
+        let versions: Vec<i64> = schema::MIGRATIONS.iter().map(|(v, _)| *v).collect();
+        assert!(versions.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(versions.last().copied(), Some(schema::USER_VERSION));
+    }
+
+    /// A file written by a v1 build opens and gains the v2 objects without touching v1 data.
+    #[test]
+    fn open_v1_file_migrates_to_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILE);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(&format!("PRAGMA key = \"x'{TEST_KEY}'\";"))
+                .unwrap();
+            conn.execute_batch(schema::SCHEMA_V1).unwrap();
+            conn.execute_batch("PRAGMA user_version = 1").unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, created_at, updated_at) VALUES ('old', 1, 1)",
+                [],
+            )
+            .unwrap();
+            meta_set(&conn, "last_clean_exit", "1").unwrap();
+        }
+        let db = Db::open(&path, TEST_KEY).unwrap();
+        assert_eq!(db.user_version().unwrap(), schema::USER_VERSION);
+        let objects: i64 = db
+            .conn()
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name IN ('checklist_items', 'checklist_items_state_idx')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(objects, 2);
+        assert!(notes::exists(db.conn(), "old").unwrap());
+        assert_eq!(checklist::counts(db.conn(), None).unwrap().open, 0);
     }
 
     #[test]

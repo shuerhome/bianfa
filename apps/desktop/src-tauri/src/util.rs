@@ -85,15 +85,20 @@ pub fn excerpt(text: &str, max_chars: usize) -> String {
         .collect()
 }
 
-/// Title = first non-empty line (≤ 60 chars).
-pub fn title_of(text: &str) -> String {
+/// First non-empty line, trimmed, truncated to `max_chars` characters.
+pub fn first_line(text: &str, max_chars: usize) -> String {
     text.lines()
         .map(str::trim)
         .find(|l| !l.is_empty())
         .unwrap_or("")
         .chars()
-        .take(60)
+        .take(max_chars)
         .collect()
+}
+
+/// Title = first non-empty line (≤ 60 chars).
+pub fn title_of(text: &str) -> String {
+    first_line(text, 60)
 }
 
 #[cfg(test)]
@@ -113,5 +118,7 @@ mod tests {
     fn excerpt_and_title() {
         assert_eq!(excerpt("  a\nb\n", 10), "a b");
         assert_eq!(title_of("\n\n  hello\nworld"), "hello");
+        assert_eq!(first_line("\n 你好世界 \nx", 2), "你好");
+        assert_eq!(first_line("   \n\n", 5), "");
     }
 }

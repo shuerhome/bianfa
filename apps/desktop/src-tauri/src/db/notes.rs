@@ -1,7 +1,7 @@
 //! Note queries: projections in `notes`, CRDT bytes in `ydoc_updates` / `ydoc_snapshots`.
 //! Rust only merges v2 updates (`yrs::merge_updates_v2`); it never builds a `Doc` (01-S4).
 
-use super::{sync_state, versions, TRASH_RETENTION_MS, UPDATE_HISTORY_MS};
+use super::{checklist, sync_state, versions, TRASH_RETENTION_MS, UPDATE_HISTORY_MS};
 use crate::colors::NoteColor;
 use crate::error::{IpcError, IpcResult};
 use crate::model::{
@@ -198,6 +198,7 @@ fn write_projection(conn: &Connection, id: &str, p: &NoteProjection) -> IpcResul
             params![id, a],
         )?;
     }
+    checklist::replace_for_note(conn, id, &p.checklist)?;
     Ok(())
 }
 
@@ -401,6 +402,7 @@ pub fn delete_physical(conn: &Connection, id: &str) -> IpcResult<()> {
     ] {
         conn.execute(sql, [id])?;
     }
+    checklist::delete_for_note(conn, id)?;
     Ok(())
 }
 
@@ -475,6 +477,7 @@ fn purge_tombstone(conn: &Connection, id: &str) -> IpcResult<()> {
     ] {
         conn.execute(sql, [id])?;
     }
+    checklist::delete_for_note(conn, id)?;
     Ok(())
 }
 
@@ -698,5 +701,136 @@ pub(crate) mod tests {
     #[test]
     fn fts_query_quoting() {
         assert_eq!(fts_query("ab b\"c"), "\"ab\" \"b\"\"c\"");
+    }
+
+    fn items(checked: [bool; 3]) -> Vec<crate::model::ChecklistItem> {
+        ["买牛奶", "买鸡蛋", "买面包"]
+            .iter()
+            .zip(["b1", "b2", "b3"])
+            .zip(checked)
+            .enumerate()
+            .map(
+                |(i, ((text, block_id), checked))| crate::model::ChecklistItem {
+                    block_id: block_id.to_string(),
+                    text: text.to_string(),
+                    checked,
+                    ordinal: i as i64,
+                },
+            )
+            .collect()
+    }
+
+    #[test]
+    fn checklist_mirror_list_toggle_counts_and_purge() {
+        let db = Db::open_in_memory(TEST_KEY).unwrap();
+        let c = db.conn();
+        let u = empty_update_v2();
+        let mut p = proj("周末采购\n[ ] 买牛奶\n[ ] 买鸡蛋\n[ ] 买面包", None);
+        p.checklist = items([false, false, false]);
+        create(c, "n1", &u, &p, None, None, None, "local").unwrap();
+
+        let todos = checklist::list(c, false, None, None).unwrap();
+        assert_eq!(todos.len(), 3);
+        assert_eq!(todos[0].note_id, "n1");
+        assert_eq!(todos[0].note_title, "周末采购");
+        assert_eq!(todos[0].note_color, NoteColor::Citron);
+        assert_eq!(todos[0].workspace_id, None);
+        assert_eq!(
+            todos.iter().map(|t| t.ordinal).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert!(todos.iter().all(|t| !t.checked && t.item_updated_at > 0));
+        let n = checklist::counts(c, None).unwrap();
+        assert_eq!((n.open, n.done), (3, 0));
+
+        // Toggle by re-appending the projection with the middle item checked: unchanged items keep
+        // their timestamp, the toggled one is bumped.
+        c.execute("UPDATE checklist_items SET updated_at = 1", [])
+            .unwrap();
+        let mut toggled = p.clone();
+        toggled.checklist[1].checked = true;
+        append_update(c, "n1", &u, "local", Some(&toggled)).unwrap();
+        let open = checklist::list(c, false, None, None).unwrap();
+        assert_eq!(
+            open.iter().map(|t| t.block_id.as_str()).collect::<Vec<_>>(),
+            vec!["b1", "b3"]
+        );
+        assert!(open.iter().all(|t| t.item_updated_at == 1));
+        let all = checklist::list(c, true, None, None).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[2].block_id, "b2");
+        assert!(all[2].checked && all[2].item_updated_at > 1);
+        let n = checklist::counts(c, None).unwrap();
+        assert_eq!((n.open, n.done), (2, 1));
+        assert_eq!(checklist::list(c, true, None, Some(1)).unwrap().len(), 1);
+
+        // A removed item disappears; a duplicated block id does not fail the write (last wins).
+        let mut shrunk = toggled.clone();
+        shrunk.checklist.remove(0);
+        shrunk.checklist.push(crate::model::ChecklistItem {
+            block_id: "b3".into(),
+            text: "买全麦面包".into(),
+            checked: false,
+            ordinal: 9,
+        });
+        append_update(c, "n1", &u, "local", Some(&shrunk)).unwrap();
+        let all = checklist::list(c, true, None, None).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            (all[0].block_id.as_str(), all[0].text.as_str()),
+            ("b3", "买全麦面包")
+        );
+
+        // Workspace filter; open items of the most recently edited note come first.
+        let mut p2 = proj("团队待办\n[ ] 发版", None);
+        p2.updated_at = 3000;
+        p2.checklist = vec![crate::model::ChecklistItem {
+            block_id: "t1".into(),
+            text: "发版".into(),
+            checked: false,
+            ordinal: 0,
+        }];
+        create(c, "n2", &u, &p2, Some("ws1"), None, None, "local").unwrap();
+        let ws = checklist::list(c, true, Some("ws1"), None).unwrap();
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].workspace_id.as_deref(), Some("ws1"));
+        let n = checklist::counts(c, Some("ws1")).unwrap();
+        assert_eq!((n.open, n.done), (1, 0));
+        let open = checklist::list(c, false, None, None).unwrap();
+        assert_eq!(open[0].note_id, "n2");
+        assert_eq!(open[1].note_id, "n1");
+        assert!(open[0].note_updated_at >= open[1].note_updated_at);
+
+        // Trashed notes drop out of the list but keep their rows until purged.
+        let mut trashed = shrunk.clone();
+        trashed.deleted_at = Some(1);
+        append_update(c, "n1", &u, "local", Some(&trashed)).unwrap();
+        assert!(checklist::list(c, true, None, None)
+            .unwrap()
+            .iter()
+            .all(|t| t.note_id == "n2"));
+        let rows: i64 = c
+            .query_row(
+                "SELECT count(*) FROM checklist_items WHERE note_id = 'n1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 2);
+
+        // Purge: unsynced → physical delete, synced → tombstone; both clear the rows.
+        let mut t2 = p2.clone();
+        t2.deleted_at = Some(1);
+        append_update(c, "n2", &u, "local", Some(&t2)).unwrap();
+        set_synced(c, "n2", 2).unwrap();
+        assert_eq!(trash_empty(c).unwrap(), 2);
+        assert!(!exists(c, "n1").unwrap());
+        assert!(get(c, "n2").unwrap().content_text.is_empty());
+        let rows: i64 = c
+            .query_row("SELECT count(*) FROM checklist_items", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 0);
+        let n = checklist::counts(c, None).unwrap();
+        assert_eq!((n.open, n.done), (0, 0));
     }
 }

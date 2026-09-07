@@ -67,6 +67,8 @@ pub fn run() {
             commands::notes::sync_errors_list,
             commands::notes::sync_status_report,
             commands::notes::window_state_get,
+            commands::notes::todos_list,
+            commands::notes::todos_counts,
             // windows
             commands::windows::note_window_open,
             commands::windows::note_window_close,

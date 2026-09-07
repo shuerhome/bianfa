@@ -3,9 +3,29 @@
 //!
 //! Additions vs 02 §2 (documented in README): `notes.body_html` (07 NoteRecord.bodyHtml),
 //! `notes.purged` (tombstone whose body was cleared), `note_attachments` (local refs used by
-//! `note_discard_if_empty`).
+//! `note_discard_if_empty`), and since v2 `checklist_items` (local mirror of the projection's
+//! `checklist`, same shape as the server table plus `updated_at`; backs `todos_list`).
+//!
+//! Migrations are append-only: never edit an older `SCHEMA_Vn`; add `SCHEMA_V(n+1)`, push it
+//! onto `MIGRATIONS` and bump `USER_VERSION`.
 
-pub const USER_VERSION: i64 = 1;
+pub const USER_VERSION: i64 = 2;
+
+/// `(user_version, DDL)` steps applied in order to a database below that version.
+pub const MIGRATIONS: [(i64, &str); 2] = [(1, SCHEMA_V1), (2, SCHEMA_V2)];
+
+pub const SCHEMA_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS checklist_items (
+  note_id TEXT NOT NULL,
+  block_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  checked INTEGER NOT NULL,
+  ordinal INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (note_id, block_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS checklist_items_state_idx ON checklist_items (checked, updated_at DESC);
+"#;
 
 pub const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS notes (

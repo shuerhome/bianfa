@@ -126,6 +126,34 @@ pub struct PendingSync {
     pub head_seq: i64,
 }
 
+/// One row of `todos_list`: a `taskItem` block joined with its (non-trashed) note.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoItem {
+    pub note_id: String,
+    /// First non-empty line of the note text (≤ 120 chars; may carry a `[ ] ` task prefix).
+    pub note_title: String,
+    pub note_color: NoteColor,
+    pub workspace_id: Option<String>,
+    /// `taskItem.attrs.id` (nanoid, 10 chars).
+    pub block_id: String,
+    pub text: String,
+    pub checked: bool,
+    /// Document order within the note, from 0.
+    pub ordinal: i64,
+    pub note_updated_at: i64,
+    /// When this item's text or checked state last changed (unix ms).
+    pub item_updated_at: i64,
+}
+
+/// `todos_counts` result (same exclusions as `todos_list`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoCounts {
+    pub open: i64,
+    pub done: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncErrorItem {
