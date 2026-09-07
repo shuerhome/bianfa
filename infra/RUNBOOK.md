@@ -819,10 +819,10 @@ dc up -d --no-deps --force-recreate api                                  # 两�
 curl -si https://api.<REPLACE_ME:domain>/v1/admin/users -H "Authorization: Bearer <管理员 token>" | head -1   # 期望 404
 ```
 
-- 这个变量**只接受 `0` 或 `1`**：`0` = 关，`1` 或**不设**（含空串，compose 的 `${X:-}` 就是空串）= 开。写成 `false` / `no` 之类的值会让 api **起不动**（启动时 `环境变量校验失败`），别手滑。
+- 判定是**恰好等于 `0` 才算关**：`0` = 关，其余任何值（`1`、空串、不设、甚至手滑写成 `false`）一律 = 开。这是故意做宽松的——应急时手敲进 `.env.prod`，写错一个字符不该让 api 起不来并被 restart 策略拉进重启循环。所以关的时候**务必用下面那条 `curl` 确认真的关上了**，别只看自己写了什么。
 - 关掉后整面返回 **404 而不是 403**——这时这些端点在这个部署里确实不存在，不是权限问题。
 - 这个变量**刻意不在 `infra/docker/.env.prod.example` 里**：`deploy.sh` 会拒绝任何含 `REPLACE_ME` 的必填键，而它是个有安全缺省值的可选开关，不该变成所有自托管实例的部署前置。
-- ⚠️ **前置**：compose 的 `api` 服务 `environment:` 必须显式映射这一行。本栈不给容器灌全量 `env_file`（"一个进程只拿它需要的变量"），`.env.prod` 里写了但 compose 没映射的变量**进不了容器**。动手前先 `grep PLATFORM_ADMIN_ENABLED /srv/bianfa/app/infra/docker/docker-compose.yml`；没有就补一行 `PLATFORM_ADMIN_ENABLED: ${PLATFORM_ADMIN_ENABLED:-}` 走 git 发一版（§3：一切变更走 git）。上面那条期望 404 的 `curl` 就是这条前置的验证，**不要跳过**。
+- compose 的 `api` 服务已经映射了这一行（`PLATFORM_ADMIN_ENABLED: ${PLATFORM_ADMIN_ENABLED:-}`）。本栈不给容器灌全量 `env_file`（"一个进程只拿它需要的变量"），所以这条映射是必需的——`.env.prod` 里写了但 compose 没映射的变量**进不了容器**。如果你的机器还跑在更早的 tag 上，先 `grep PLATFORM_ADMIN_ENABLED /srv/bianfa/app/infra/docker/docker-compose.yml` 确认一下。上面那条期望 404 的 `curl` 就是这条的验证，**不要跳过**。
 - **恢复**：`sudo sed -i '/^PLATFORM_ADMIN_ENABLED=/d' /srv/bianfa/.env.prod`（或把值改成 `1`），再 `dc up -d --no-deps --force-recreate api`；同样用一条 `curl` 确认回到 200/403。
 - CI 下一次 `deploy-with-env` 会用 GitHub Environment 渲染出的 `.env.prod` 覆盖机器上的手改（和 §7.6 同一个坑）。要长期关掉，把它加进 `prod` Environment 的渲染模板。
 
