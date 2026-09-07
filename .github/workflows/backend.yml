@@ -295,6 +295,11 @@ jobs:
             psql -h 127.0.0.1 -p 6432 -U bianfa -d bianfa -At -c "select 1" | grep -qx 1 \
             || { echo "::error::经 PgBouncer(6432) 查询失败：AUTH_TYPE / userlist 配置有问题"; exit 1; }
 
+      # @bianfa/shared 的 exports 指向 dist/，而 pnpm install 不会构建工作区包。
+      # 不先出 dist，下面的 db:migrate（schema 里 import 它）和集成测试会在加载模块时就失败。
+      - name: 构建 @bianfa/shared（迁移与集成测试都从它的 dist 解析）
+        run: pnpm --filter ./packages/shared run build
+
       - name: 迁移（直连，不经 PgBouncer）
         env:
           DATABASE_URL: ${{ env.DATABASE_DIRECT_URL }}
