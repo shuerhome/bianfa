@@ -216,6 +216,8 @@ export class SyncHost {
   }
 
   private onSocketStatus(status: WebSocketStatus): void {
+    // 排查同步问题时最想看的一行：连上了没有、什么时候断的
+    clientLog("info", "sync", `连接状态 ${status} → ${this.wsUrl}`);
     if (status === WebSocketStatus.Connected) {
       this.status.setGlobal(this.paused ? "error" : "syncing");
       for (const e of this.entries.values()) this.recomputeNoteState(e);
@@ -228,13 +230,17 @@ export class SyncHost {
 
   private ensureInbox(workspaceId: string): void {
     if (this.inbox) return;
+    clientLog("info", "sync", `建立收件箱通道 ${inboxName(workspaceId)}`);
     this.inbox = new HocuspocusProvider({
       websocketProvider: this.ensureSocket(),
       name: inboxName(workspaceId),
       document: new Y.Doc(),
       token: () => getSyncToken(),
       onStateless: ({ payload }) => this.onStateless(payload),
-      onAuthenticationFailed: ({ reason }) => this.onAuthFailed(reason, null),
+      onAuthenticationFailed: ({ reason }) => {
+        clientLog("error", "sync", `收件箱鉴权被拒：${reason}`);
+        this.onAuthFailed(reason, null);
+      },
     });
   }
 
