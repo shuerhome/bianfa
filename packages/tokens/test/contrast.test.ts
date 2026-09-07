@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { NOTE_COLORS, notePalette, semantic, THEMES, tokens } from "../dist/tokens.js";
+import { NOTE_COLOR_INFO, NOTE_COLORS, notePalette, semantic, THEMES, tokens } from "../dist/tokens.js";
 
 type Rgb = [number, number, number];
 
@@ -50,8 +50,8 @@ function mixOver(a: string, percent: number, base: Rgb): Rgb {
   return [0, 1, 2].map((i) => Math.round((fa[i] ?? 0) * percent + (base[i] ?? 0) * (1 - percent))) as Rgb;
 }
 
-/** sRGB → OKLCH 彩度（判「墨是不是近中性」用；与 scripts/palette.mjs 同一套系数） */
-function chroma(hex: string): number {
+/** sRGB → OKLab（与 scripts/palette.mjs 同一套系数） */
+function oklab(hex: string): [number, number, number] {
   const lin = solid(hex).map((c) => {
     const s = c / 255;
     return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -60,25 +60,58 @@ function chroma(hex: string): number {
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
-  const bb = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
-  return Math.hypot(a, bb);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+/** OKLCH 彩度（判「墨是不是近中性」「dot 是不是身份色」用） */
+function chroma(hex: string): number {
+  const [, a, b] = oklab(hex);
+  return Math.hypot(a, b);
+}
+
+/** 两色在 OKLab 里的距离（判两张纸认不认得出） */
+function deltaE(x: string, y: string): number {
+  const a = oklab(x);
+  const b = oklab(y);
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
 const WHITE: Rgb = [255, 255, 255];
 const gates = tokens.contrastGates;
 /** 门禁之上再收紧一档：这两条是当前实测下限附近的地板，只能往上走 */
-const NOTE_INK_FLOOR = 10.5; // 实测 10.80–15.07（gates["note-ink"] = 10）
-const NOTE_INK2_FLOOR = 4.8; // 实测 4.93–6.08（gates["note-ink2"] = 4.5）
+const NOTE_INK_FLOOR = 10.5; // 实测 10.56–14.91（gates["note-ink"] = 10）
+const NOTE_INK2_FLOOR = 4.8; // 实测 4.94–6.05（gates["note-ink2"] = 4.5）
+
+/** 20 色 = 10 个色相族 × 淡/浓两档；每档各有一个中性色（不承担身份彩度） */
+type Tier = "pale" | "deep";
+const TIERS = ["pale", "deep"] as const;
+const TIER_NEUTRAL: Record<Tier, string> = { pale: "graphite", deep: "slate" };
+type NoteColorName = (typeof NOTE_COLORS)[number];
+const tierColors = (tier: Tier): NoteColorName[] =>
+  NOTE_COLORS.filter((c) => NOTE_COLOR_INFO[c].tier === tier);
+
 /** 调色板性格：纸必须很浅 / 很深，墨必须近中性 */
-const PAPER_LUM_LIGHT_MIN = 0.86;
+// 淡档是「极浅的纸」（实测 0.871–0.943）；浓档另立一档（实测 0.666–0.709），靠亮度和淡档拉开
+const PAPER_LUM_LIGHT_MIN: Record<Tier, number> = { pale: 0.86, deep: 0.64 };
 const PAPER_LUM_DARK_MAX = 0.075;
 const INK_CHROMA_MAX = 0.02;
-const DOT_CHROMA_MIN = 0.105; // 实测 0.109（松石亮色，受 sRGB 青色域限制）–0.181
+// 淡档实测 0.109（松石亮色）–0.181；浓档的纸更深，dot 得跟着压到 L 0.50–0.56，
+// 而 sRGB 的青色在这一档最多只有 0.097 的彩度（孔雀亮色，见 palette.mjs --gamut），故浓档地板 0.095
+const DOT_CHROMA_MIN: Record<Tier, number> = { pale: 0.105, deep: 0.095 };
+/** 同档内两张纸的可区分目标（OKLab ΔE） */
+const PAPER_DELTA_E_MIN = 0.02;
+/** 20 色里任意两张纸的地板：淡档 rose/coral 只有 0.0142，是 sRGB 的硬限制，不是失误 */
+const PAPER_DELTA_E_HARD_MIN = 0.014;
+/** 淡档这两对够不到 0.020：色相只隔 30°，sRGB 在「相对亮度 ≥0.86」处彩度封顶（palette.mjs 顶部有说明） */
+const DELTA_E_EXEMPT = new Set(["light:rose/coral", "light:coral/amber"]);
 
 describe("便笺色板完整性", () => {
-  it("10 色 × 2 主题 × 7 角色全部存在且为 #RRGGBB", () => {
-    expect(NOTE_COLORS).toHaveLength(10);
+  it("20 色（10 色相 × 淡/浓两档）× 2 主题 × 7 角色全部存在且为 #RRGGBB", () => {
+    expect(NOTE_COLORS).toHaveLength(20);
     for (const theme of THEMES) {
       for (const color of NOTE_COLORS) {
         const p = notePalette[theme][color];
@@ -89,21 +122,48 @@ describe("便笺色板完整性", () => {
     }
   });
 
+  it("两档各 10 色，档内序号 0–9 各一个", () => {
+    for (const tier of TIERS) {
+      const list = tierColors(tier);
+      expect(list, tier).toHaveLength(10);
+      expect(list.map((c) => NOTE_COLOR_INFO[c].slot).sort((a, b) => a - b)).toEqual([
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+      ]);
+      expect(NOTE_COLOR_INFO[TIER_NEUTRAL[tier] as NoteColorName].slot, `${tier} 的中性色排头`).toBe(0);
+    }
+    // 顺序 = 先 10 个淡档再 10 个浓档（tokens.rs 的查表按这个下标）
+    expect(NOTE_COLORS.slice(0, 10).every((c) => NOTE_COLOR_INFO[c].tier === "pale")).toBe(true);
+    expect(NOTE_COLORS.slice(10).every((c) => NOTE_COLOR_INFO[c].tier === "deep")).toBe(true);
+  });
+
   it("柠檬 dim 黄金测试：#FDFBCE → #FDFBE3", () => {
     expect(notePalette.light.citron.paper).toBe("#FDFBCE");
     expect(notePalette.light.citron.paperDim).toBe("#FDFBE3");
+  });
+
+  it("茄紫 dim 黄金测试（浓档）：#FEC2FB → #F0CFEE", () => {
+    expect(notePalette.light.eggplant.paper).toBe("#FEC2FB");
+    expect(notePalette.light.eggplant.paperDim).toBe("#F0CFEE");
   });
 });
 
 // ── 调色板性格断言（scripts/palette.mjs 的设计目标，防止以后被改回「深纸 + 带色的黑」）──
 describe("便笺纸与墨的性格", () => {
-  it(`亮色：每张纸的相对亮度 ≥ ${PAPER_LUM_LIGHT_MIN}（纸必须很浅）`, () => {
-    for (const color of NOTE_COLORS) {
-      const paper = notePalette.light[color].paper;
-      expect(luminance(solid(paper)), `light.${color}.paper ${paper}`).toBeGreaterThanOrEqual(
-        PAPER_LUM_LIGHT_MIN,
-      );
-    }
+  for (const tier of TIERS) {
+    it(`亮色 ${tier}：每张纸的相对亮度 ≥ ${PAPER_LUM_LIGHT_MIN[tier]}（淡档是极浅的纸，浓档另立一档）`, () => {
+      for (const color of tierColors(tier)) {
+        const paper = notePalette.light[color].paper;
+        expect(luminance(solid(paper)), `light.${color}.paper ${paper}`).toBeGreaterThanOrEqual(
+          PAPER_LUM_LIGHT_MIN[tier],
+        );
+      }
+    });
+  }
+
+  it("亮色：浓档的每张纸都明显深于淡档的每张纸（两档不能混成一档）", () => {
+    const paleMin = Math.min(...tierColors("pale").map((c) => luminance(solid(notePalette.light[c].paper))));
+    const deepMax = Math.max(...tierColors("deep").map((c) => luminance(solid(notePalette.light[c].paper))));
+    expect(deepMax).toBeLessThan(paleMin - 0.1);
   });
 
   it(`亮色：每种墨的 OKLCH 彩度 ≤ ${INK_CHROMA_MAX}（墨必须近中性）`, () => {
@@ -131,18 +191,67 @@ describe("便笺纸与墨的性格", () => {
     }
   });
 
-  it(`dot 才是身份色：彩度 ≥ ${DOT_CHROMA_MIN}，且远高于同色的纸与墨`, () => {
+  it(`dot 才是身份色：彩度 ≥ ${DOT_CHROMA_MIN.pale}（浓档 ${DOT_CHROMA_MIN.deep}），且远高于同色的纸与墨`, () => {
     for (const theme of THEMES) {
-      for (const color of NOTE_COLORS) {
-        if (color === "graphite") continue; // 石墨是中性色，没有身份彩度
-        const p = notePalette[theme][color];
-        const label = `${theme}.${color}.dot ${p.dot}`;
-        expect(chroma(p.dot), label).toBeGreaterThanOrEqual(DOT_CHROMA_MIN);
-        expect(chroma(p.dot), label).toBeGreaterThan(chroma(p.paper));
-        expect(chroma(p.dot), label).toBeGreaterThan(chroma(p.ink) * 5);
+      for (const tier of TIERS) {
+        for (const color of tierColors(tier)) {
+          if (color === TIER_NEUTRAL[tier]) continue; // 石墨 / 墨灰是中性色，没有身份彩度
+          const p = notePalette[theme][color];
+          const label = `${theme}.${color}.dot ${p.dot}`;
+          expect(chroma(p.dot), label).toBeGreaterThanOrEqual(DOT_CHROMA_MIN[tier]);
+          expect(chroma(p.dot), label).toBeGreaterThan(chroma(p.paper));
+          expect(chroma(p.dot), label).toBeGreaterThan(chroma(p.ink) * 5);
+        }
       }
     }
   });
+});
+
+// ── 可区分：20 色摆在取色器里，两两之间得认得出（同档看纸，跨档隔着亮度或彩度）──
+describe("便笺色的可区分度", () => {
+  for (const theme of THEMES) {
+    for (const tier of TIERS) {
+      it(`${theme}/${tier}：同档任意两张纸的 OKLab ΔE ≥ ${PAPER_DELTA_E_MIN}`, () => {
+        const list = tierColors(tier);
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length; j++) {
+            const a = list[i] as NoteColorName;
+            const b = list[j] as NoteColorName;
+            if (DELTA_E_EXEMPT.has(`${theme}:${a}/${b}`)) continue;
+            const d = deltaE(notePalette[theme][a].paper, notePalette[theme][b].paper);
+            expect(d, `${theme}.${a}/${b}`).toBeGreaterThanOrEqual(PAPER_DELTA_E_MIN);
+          }
+        }
+      });
+    }
+
+    it(`${theme}：跨档同色相的两张纸 ΔE ≥ ${PAPER_DELTA_E_MIN}（实测最小 0.0244）`, () => {
+      const pale = tierColors("pale");
+      const deep = tierColors("deep");
+      for (let i = 0; i < pale.length; i++) {
+        const a = pale[i] as NoteColorName;
+        const b = deep[i] as NoteColorName;
+        expect(NOTE_COLOR_INFO[a].slot, `${a}/${b} 应是同一个档内序号`).toBe(NOTE_COLOR_INFO[b].slot);
+        const d = deltaE(notePalette[theme][a].paper, notePalette[theme][b].paper);
+        expect(d, `${theme}.${a}/${b}`).toBeGreaterThanOrEqual(PAPER_DELTA_E_MIN);
+      }
+    });
+
+    it(`${theme}：20 色的纸两两不同，且 ΔE ≥ ${PAPER_DELTA_E_HARD_MIN}；dot 也两两不同`, () => {
+      const papers = NOTE_COLORS.map((c) => notePalette[theme][c].paper);
+      const dots = NOTE_COLORS.map((c) => notePalette[theme][c].dot);
+      expect(new Set(papers).size, "paper 撞色").toBe(NOTE_COLORS.length);
+      expect(new Set(dots).size, "dot 撞色").toBe(NOTE_COLORS.length);
+      for (let i = 0; i < NOTE_COLORS.length; i++) {
+        for (let j = i + 1; j < NOTE_COLORS.length; j++) {
+          const d = deltaE(papers[i] as string, papers[j] as string);
+          expect(d, `${theme}.${NOTE_COLORS[i]}/${NOTE_COLORS[j]}`).toBeGreaterThanOrEqual(
+            PAPER_DELTA_E_HARD_MIN,
+          );
+        }
+      }
+    });
+  }
 });
 
 describe("对比度门禁：便笺纸面对类", () => {
@@ -268,15 +377,21 @@ describe("生成物", () => {
     expect(css).toContain(':root:not([data-theme="light"])');
     expect(css).toContain(':root[data-theme="dark"]');
     expect(css).toContain("--p-citron: #FDFBCE;");
+    expect(css).toContain("--p-eggplant: #FEC2FB;");
     expect(css).toContain("--c-accent: #4C5FD5;");
     for (const color of NOTE_COLORS) expect(css).toContain(`[data-color="${color}"]`);
     expect(css).not.toMatch(/https?:\/\//);
   });
-  it("tokens.rs 含 10 色纸面常量与 note_paper()", () => {
+  it("tokens.rs 含 20 色纸面 / 色点常量与 note_paper() / note_dot()", () => {
     const rs = readFileSync(resolve(dist, "tokens.rs"), "utf8");
-    expect(rs).toContain("pub const NOTE_PAPER_LIGHT: [Rgb; 10]");
-    expect(rs).toContain("pub const NOTE_PAPER_DARK: [Rgb; 10]");
+    for (const name of ["NOTE_PAPER_LIGHT", "NOTE_PAPER_DARK", "NOTE_DOT_LIGHT", "NOTE_DOT_DARK"]) {
+      expect(rs).toContain(`pub const ${name}: [Rgb; 20]`);
+    }
     expect(rs).toContain("pub fn note_paper(name: &str, dark: bool) -> Rgb");
+    expect(rs).toContain("pub fn note_dot(name: &str, dark: bool) -> Rgb");
+    // src-tauri 按枚举名查表，20 个名字都得在（查不到会回落成 graphite）
+    for (const color of NOTE_COLORS) expect(rs, color).toContain(`"${color}"`);
     expect(rs).toContain("Rgb { r: 253, g: 251, b: 206 }, // citron");
+    expect(rs).toContain("Rgb { r: 254, g: 194, b: 251 }, // eggplant");
   });
 });

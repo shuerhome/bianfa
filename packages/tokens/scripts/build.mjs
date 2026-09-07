@@ -17,7 +17,7 @@ const NOTE_ROLES = ["paper", "ink", "ink2", "line", "dot", "paperDim", "inkDim"]
 const THEMES = ["light", "dark"];
 const BANNER = "自动生成（pnpm -F @bianfa/tokens build），勿手改；来源 packages/tokens/src/tokens.json";
 
-// ── 校验：10 色 × 2 主题 × 7 角色全是 6 位 hex；语义色是 hex 或 rgba ──
+// ── 校验：noteColors × 2 主题 × 7 角色全是 6 位 hex；语义色是 hex 或 rgba ──
 for (const theme of THEMES) {
   for (const color of src.noteColors) {
     const entry = src.note[theme]?.[color];
@@ -189,7 +189,10 @@ export interface NoteColorInfo {
   readonly zh: string;
   readonly en: string;
   readonly hue: number;
-  readonly shortcut: number;
+  /** 浓淡档：pale = 浅纸，deep = 浓纸（同一组色相各有一份） */
+  readonly tier: "pale" | "deep";
+  /** 档内序号 0–9（换色快捷键由 tier + slot 推导） */
+  readonly slot: number;
 }
 export type SemanticName = ${semanticNames.map((n) => `"${n}"`).join(" | ")};
 export const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>> = ${json(src.noteColorInfo)};
@@ -272,7 +275,10 @@ export interface NoteColorInfo {
   readonly zh: string;
   readonly en: string;
   readonly hue: number;
-  readonly shortcut: number;
+  /** 浓淡档：pale = 浅纸，deep = 浓纸（同一组色相各有一份） */
+  readonly tier: "pale" | "deep";
+  /** 档内序号 0–9（换色快捷键由 tier + slot 推导） */
+  readonly slot: number;
 }
 export type SemanticName = ${semanticNames.map((n) => `"${n}"`).join(" | ")};
 export declare const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>>;
@@ -313,7 +319,7 @@ impl Rgb {
     }
 }
 
-/// 10 色枚举名，顺序 = 换色快捷键顺序（0 = Ctrl/Cmd+Shift+0，1..9 = Ctrl/Cmd+1..9）
+/// 便笺色枚举名，顺序 = 先 10 个淡档、再 10 个浓档（同档内的序号 = noteColorInfo.slot）
 pub const NOTE_COLORS: [&str; ${src.noteColors.length}] = [${src.noteColors.map((c) => `"${c}"`).join(", ")}];
 pub const DEFAULT_NOTE_COLOR: &str = "graphite";
 

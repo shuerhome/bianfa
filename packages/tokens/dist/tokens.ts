@@ -9,7 +9,17 @@ export const NOTE_COLORS = [
   "teal",
   "azure",
   "violet",
-  "fuchsia"
+  "fuchsia",
+  "slate",
+  "carmine",
+  "vermilion",
+  "ochre",
+  "olive",
+  "pine",
+  "peacock",
+  "indigo",
+  "wisteria",
+  "eggplant"
 ] as const;
 export type NoteColor = (typeof NOTE_COLORS)[number];
 export type Theme = "light" | "dark";
@@ -28,7 +38,10 @@ export interface NoteColorInfo {
   readonly zh: string;
   readonly en: string;
   readonly hue: number;
-  readonly shortcut: number;
+  /** 浓淡档：pale = 浅纸，deep = 浓纸（同一组色相各有一份） */
+  readonly tier: "pale" | "deep";
+  /** 档内序号 0–9（换色快捷键由 tier + slot 推导） */
+  readonly slot: number;
 }
 export type SemanticName = "canvas" | "surface-1" | "surface-2" | "surface-3" | "overlay" | "hover" | "active" | "selected" | "text-1" | "text-2" | "text-3" | "text-disabled" | "text-on-accent" | "border-subtle" | "border" | "border-strong" | "accent" | "accent-hover" | "accent-active" | "accent-subtle" | "accent-border" | "danger" | "danger-hover" | "danger-active" | "danger-subtle" | "danger-border" | "success" | "success-subtle" | "warning" | "warning-subtle" | "info" | "focus" | "scrim" | "tooltip-bg" | "tooltip-text";
 export const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>> = {
@@ -36,61 +49,141 @@ export const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>> = {
     "zh": "石墨",
     "en": "Graphite",
     "hue": 96,
-    "shortcut": 0
+    "tier": "pale",
+    "slot": 0
   },
   "rose": {
     "zh": "玫瑰",
     "en": "Rose",
     "hue": 358,
-    "shortcut": 1
+    "tier": "pale",
+    "slot": 1
   },
   "coral": {
     "zh": "珊瑚",
     "en": "Coral",
     "hue": 28,
-    "shortcut": 2
+    "tier": "pale",
+    "slot": 2
   },
   "amber": {
     "zh": "琥珀",
     "en": "Amber",
     "hue": 68,
-    "shortcut": 3
+    "tier": "pale",
+    "slot": 3
   },
   "citron": {
     "zh": "柠檬",
     "en": "Citron",
     "hue": 105,
-    "shortcut": 4
+    "tier": "pale",
+    "slot": 4
   },
   "fern": {
     "zh": "竹绿",
     "en": "Fern",
     "hue": 145,
-    "shortcut": 5
+    "tier": "pale",
+    "slot": 5
   },
   "teal": {
     "zh": "松石",
     "en": "Teal",
     "hue": 188,
-    "shortcut": 6
+    "tier": "pale",
+    "slot": 6
   },
   "azure": {
     "zh": "天青",
     "en": "Azure",
     "hue": 232,
-    "shortcut": 7
+    "tier": "pale",
+    "slot": 7
   },
   "violet": {
     "zh": "紫罗兰",
     "en": "Violet",
     "hue": 288,
-    "shortcut": 8
+    "tier": "pale",
+    "slot": 8
   },
   "fuchsia": {
     "zh": "品红",
     "en": "Fuchsia",
     "hue": 328,
-    "shortcut": 9
+    "tier": "pale",
+    "slot": 9
+  },
+  "slate": {
+    "zh": "墨灰",
+    "en": "Slate",
+    "hue": 250,
+    "tier": "deep",
+    "slot": 0
+  },
+  "carmine": {
+    "zh": "胭脂",
+    "en": "Carmine",
+    "hue": 358,
+    "tier": "deep",
+    "slot": 1
+  },
+  "vermilion": {
+    "zh": "朱砂",
+    "en": "Vermilion",
+    "hue": 28,
+    "tier": "deep",
+    "slot": 2
+  },
+  "ochre": {
+    "zh": "秋香",
+    "en": "Ochre",
+    "hue": 68,
+    "tier": "deep",
+    "slot": 3
+  },
+  "olive": {
+    "zh": "橄榄",
+    "en": "Olive",
+    "hue": 105,
+    "tier": "deep",
+    "slot": 4
+  },
+  "pine": {
+    "zh": "松针",
+    "en": "Pine",
+    "hue": 145,
+    "tier": "deep",
+    "slot": 5
+  },
+  "peacock": {
+    "zh": "孔雀",
+    "en": "Peacock",
+    "hue": 188,
+    "tier": "deep",
+    "slot": 6
+  },
+  "indigo": {
+    "zh": "靛蓝",
+    "en": "Indigo",
+    "hue": 232,
+    "tier": "deep",
+    "slot": 7
+  },
+  "wisteria": {
+    "zh": "藤紫",
+    "en": "Wisteria",
+    "hue": 288,
+    "tier": "deep",
+    "slot": 8
+  },
+  "eggplant": {
+    "zh": "茄紫",
+    "en": "Eggplant",
+    "hue": 328,
+    "tier": "deep",
+    "slot": 9
   }
 };
 export const notePalette: Readonly<Record<Theme, Readonly<Record<NoteColor, NotePalette>>>> = {
@@ -184,6 +277,96 @@ export const notePalette: Readonly<Record<Theme, Readonly<Record<NoteColor, Note
       "dot": "#B952B7",
       "paperDim": "#FBF0FA",
       "inkDim": "#2B252B"
+    },
+    "slate": {
+      "paper": "#D4DAE0",
+      "ink": "#202326",
+      "ink2": "#53575B",
+      "line": "#BBC2C9",
+      "dot": "#5E646A",
+      "paperDim": "#D8DBDE",
+      "inkDim": "#25282B"
+    },
+    "carmine": {
+      "paper": "#FFC7D8",
+      "ink": "#282023",
+      "ink2": "#625257",
+      "line": "#EEAAC0",
+      "dot": "#CF1374",
+      "paperDim": "#F1D1DA",
+      "inkDim": "#2D2528"
+    },
+    "vermilion": {
+      "paper": "#FFCAC2",
+      "ink": "#292120",
+      "ink2": "#63524F",
+      "line": "#EEAEA5",
+      "dot": "#D81518",
+      "paperDim": "#F0D3CF",
+      "inkDim": "#2E2524"
+    },
+    "ochre": {
+      "paper": "#FFCF9C",
+      "ink": "#27221C",
+      "ink2": "#605449",
+      "line": "#EEB473",
+      "dot": "#A36400",
+      "paperDim": "#F0D6BB",
+      "inkDim": "#2C2721"
+    },
+    "olive": {
+      "paper": "#E1DC92",
+      "ink": "#24231C",
+      "ink2": "#585849",
+      "line": "#CBC465",
+      "dot": "#7F7700",
+      "paperDim": "#DFDDB5",
+      "inkDim": "#282821"
+    },
+    "pine": {
+      "paper": "#AEEAAF",
+      "ink": "#1F251F",
+      "ink2": "#4F5A4F",
+      "line": "#8AD58C",
+      "dot": "#008D24",
+      "paperDim": "#C4E4C4",
+      "inkDim": "#242923"
+    },
+    "peacock": {
+      "paper": "#9BE9E1",
+      "ink": "#1C2524",
+      "ink2": "#485B59",
+      "line": "#6ED4CB",
+      "dot": "#00867F",
+      "paperDim": "#BBE4DF",
+      "inkDim": "#202A29"
+    },
+    "indigo": {
+      "paper": "#A8E1FF",
+      "ink": "#1D2428",
+      "ink2": "#4A5961",
+      "line": "#82CAEF",
+      "dot": "#007FAC",
+      "paperDim": "#C0DFF0",
+      "inkDim": "#21292D"
+    },
+    "wisteria": {
+      "paper": "#D6D4FF",
+      "ink": "#222229",
+      "ink2": "#565563",
+      "line": "#BEBAEF",
+      "dot": "#6E47E2",
+      "paperDim": "#D9D8F0",
+      "inkDim": "#27272E"
+    },
+    "eggplant": {
+      "paper": "#FEC2FB",
+      "ink": "#262126",
+      "ink2": "#5E525D",
+      "line": "#EDA3EA",
+      "dot": "#B42FB4",
+      "paperDim": "#F0CFEE",
+      "inkDim": "#2B252B"
     }
   },
   "dark": {
@@ -275,6 +458,96 @@ export const notePalette: Readonly<Record<Theme, Readonly<Record<NoteColor, Note
       "line": "#473045",
       "dot": "#D37ED0",
       "paperDim": "#282028",
+      "inkDim": "#DDD7DD"
+    },
+    "slate": {
+      "paper": "#252B31",
+      "ink": "#DCE0E5",
+      "ink2": "#9EA2A6",
+      "line": "#323A43",
+      "dot": "#7F8790",
+      "paperDim": "#24272A",
+      "inkDim": "#D5DADF"
+    },
+    "carmine": {
+      "paper": "#481329",
+      "ink": "#E6DDDF",
+      "ink2": "#AD9DA2",
+      "line": "#651539",
+      "dot": "#E5488C",
+      "paperDim": "#381C26",
+      "inkDim": "#DFD6D9"
+    },
+    "vermilion": {
+      "paper": "#4B1410",
+      "ink": "#E6DDDC",
+      "ink2": "#AE9D9A",
+      "line": "#691612",
+      "dot": "#FC594C",
+      "paperDim": "#3A1D19",
+      "inkDim": "#DFD7D6"
+    },
+    "ochre": {
+      "paper": "#3F2400",
+      "ink": "#E4DFD9",
+      "ink2": "#AA9F94",
+      "line": "#533000",
+      "dot": "#D38401",
+      "paperDim": "#332414",
+      "inkDim": "#DED8D2"
+    },
+    "olive": {
+      "paper": "#2E2B00",
+      "ink": "#E0E0D9",
+      "ink2": "#A3A294",
+      "line": "#3F3B00",
+      "dot": "#A69C00",
+      "paperDim": "#292713",
+      "inkDim": "#DAD9D2"
+    },
+    "pine": {
+      "paper": "#03340A",
+      "ink": "#DCE1DB",
+      "ink2": "#9AA59A",
+      "line": "#00470E",
+      "dot": "#09AB30",
+      "paperDim": "#172C17",
+      "inkDim": "#D5DBD5"
+    },
+    "peacock": {
+      "paper": "#00312E",
+      "ink": "#D9E2E1",
+      "ink2": "#94A6A4",
+      "line": "#00433F",
+      "dot": "#00AFA6",
+      "paperDim": "#152B29",
+      "inkDim": "#D2DBDA"
+    },
+    "indigo": {
+      "paper": "#002E41",
+      "ink": "#D9E1E5",
+      "ink2": "#96A4AC",
+      "line": "#003F57",
+      "dot": "#00A6DF",
+      "paperDim": "#152933",
+      "inkDim": "#D3DADE"
+    },
+    "wisteria": {
+      "paper": "#292050",
+      "ink": "#DFDFE6",
+      "ink2": "#A0A0AE",
+      "line": "#392A72",
+      "dot": "#856AF6",
+      "paperDim": "#25223C",
+      "inkDim": "#D8D8DF"
+    },
+    "eggplant": {
+      "paper": "#3F173E",
+      "ink": "#E4DDE3",
+      "ink2": "#A99DA8",
+      "line": "#581C58",
+      "dot": "#CF5ACD",
+      "paperDim": "#321E32",
       "inkDim": "#DDD7DD"
     }
   }
