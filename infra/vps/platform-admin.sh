@@ -20,8 +20,12 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+# .env.prod 是 root:root 0600（infra/vps/bootstrap.sh），非 root 跑只会拿到一句 docker compose 的读取错误
+[[ $EUID -eq 0 ]] || { echo "请用 sudo 运行（要读 $ENV_FILE）" >&2; exit 1; }
+
 # 用当前已部署的 tag（deploy.sh 成功后写 .tag.current），而不是 .env.prod 里可能过时的 TAG
 CUR="$(tr -d '[:space:]' < "$BIANFA_ROOT/.tag.current" 2>/dev/null || true)"
-[[ -n "$CUR" ]] && export TAG="$CUR"
+# 命令行前置的 TAG= 优先：镜像里还没有 dist/platform-admin.js 时，可以 TAG=<新 tag> 临时指定一次
+[[ -n "$CUR" ]] && export TAG="${TAG:-$CUR}"
 echo "使用镜像 tag：${TAG:-<.env.prod 中的 TAG>}"
 compose run --rm --no-deps -T worker node dist/platform-admin.js "$@"

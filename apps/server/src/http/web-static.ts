@@ -28,6 +28,8 @@ export const HSTS = "max-age=63072000; includeSubDomains; preload";
 /** 与 apps/web/src/router.ts 的 matchRoute 一致；/invite/:token 单独用正则 */
 export const WEB_PAGE_PATHS = [
   "/",
+  // 总管理员管理台：全部视图收在 /admin 一个路径 + 查询串，所以这一条就够
+  "/admin",
   "/login",
   "/signup",
   "/forgot-password",

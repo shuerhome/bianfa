@@ -161,6 +161,13 @@ export async function createAuthWithInternals(deps: CreateAuthDeps): Promise<Aut
       verify: async (d) => (await auth.$context).password.verify(d),
     },
     // 安全码重置：经 internalAdapter 写 credential account 的 password（没有 credential account 的社交账号则补建一条）
+    // 管理台在浏览器里跑，浏览器拿不到桌面端那种不透明 access token；给 /v1/admin/* 单开一条
+    // 同源 cookie 通道（CSRF 由 admin 侧的 Origin 校验 + Better Auth 的 SameSite=Lax cookie 一起挡）
+    resolveSession: async (headers) => {
+      const s = await auth.api.getSession({ headers });
+      if (!s?.user?.id) return null;
+      return { userId: s.user.id, email: s.user.email, emailVerified: s.user.emailVerified === true };
+    },
     setUserPassword: async (userId, newPassword) => {
       const ctx = await auth.$context;
       const hash = await ctx.password.hash(newPassword);

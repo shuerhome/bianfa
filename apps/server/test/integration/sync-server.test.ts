@@ -537,7 +537,9 @@ describe.skipIf(!hasDb)("sync-ws server", () => {
       60_000,
       "64 documents authenticated",
     );
-    expect(h.sync.registry.sockets.size).toBeGreaterThanOrEqual(1);
+    // 鉴权通过 ≠ 已登记：socket 是在 connected 里登记的（文档还要加载一会儿），
+    // 认证完立刻读 sockets.size 是在赌一个时序。等它出现，断言的内容没变，只是不再假设它是瞬时的。
+    await waitFor(() => h.sync.registry.sockets.size >= 1, 10_000, "socket 登记");
     const limitBefore = await counter("rejected", "limit");
     const freshToken = await tokenFor(owner.userId);
     const extra = track(

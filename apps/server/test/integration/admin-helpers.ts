@@ -11,7 +11,7 @@ import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type pg from "pg";
 import { pino } from "pino";
-import { loadAuthEnv } from "../../src/auth/env.js";
+import { loadAuthEnv, TEST_APP_ORIGIN } from "../../src/auth/env.js";
 import type { BearerVerifier } from "../../src/auth/index.js";
 import { buildV1Routes } from "../../src/auth/routes.js";
 import type { ServiceDeps } from "../../src/auth/services/context.js";
@@ -53,6 +53,11 @@ export interface HarnessOptions {
   enabled?: boolean;
   /** 连接池上限；测「身份不残留」时设 1，强制复用同一条连接 */
   max?: number;
+  /**
+   * 同源 cookie 会话解析（真实实现由 createAuth 注入 Better Auth 的 getSession）。
+   * 测试里用 `cookie: session=<userId>` 冒充；不设则这条通道不可用（等价于没注入 resolveSession）。
+   */
+  sessionFromCookie?: boolean;
 }
 
 /** 以 bianfa_rls_test（NOBYPASSRLS，成员于 bianfa_app）连接，挂真实的 /v1 路由 */
@@ -79,6 +84,15 @@ export function openHarness(opts: HarnessOptions = {}): AdminHarness {
     setUserPassword: async (userId, password) => {
       passwordsSet.push({ userId, password });
     },
+    ...(opts.sessionFromCookie
+      ? {
+          resolveSession: async (headers: Headers) => {
+            const m = /(?:^|;\s*)session=([^;]+)/.exec(headers.get("cookie") ?? "");
+            if (!m?.[1]) return null;
+            return { userId: m[1], email: `${m[1]}@test.invalid`, emailVerified: true };
+          },
+        }
+      : {}),
   };
   const app = new Hono();
   app.route("/v1", buildV1Routes(deps, fakeVerify));
@@ -110,10 +124,25 @@ export async function req<T = Record<string, unknown>>(
   app: Hono,
   method: string,
   path: string,
-  opts: { as?: string; body?: unknown } = {},
+  opts: {
+    as?: string;
+    body?: unknown;
+    /** 同源会话通道：伪造 cookie（不带 Bearer） */
+    cookieAs?: string;
+    /** 默认带 X-Bianfa-Admin: 1；显式设 false 用来测缺这个头会不会被拒 */
+    adminHeader?: boolean;
+    /** 非 GET 请求的 Origin；默认取 APP_ORIGIN 的第一个 */
+    origin?: string | null;
+  } = {},
 ): Promise<Res<T>> {
   const headers: Record<string, string> = {};
   if (opts.as) headers.authorization = `Bearer test.${opts.as}`;
+  if (opts.cookieAs) {
+    headers.cookie = `session=${opts.cookieAs}`;
+    if (opts.adminHeader !== false) headers["x-bianfa-admin"] = "1";
+    const origin = opts.origin === undefined ? TEST_APP_ORIGIN : opts.origin;
+    if (origin) headers.origin = origin;
+  }
   let payload: string | undefined;
   if (opts.body !== undefined) {
     headers["content-type"] = "application/json";

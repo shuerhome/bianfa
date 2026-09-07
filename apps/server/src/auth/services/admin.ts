@@ -31,6 +31,11 @@ export const ADMIN_ACTIONS = [
   "admin.user_listed",
 ] as const;
 
+/** LIKE 模式里的 % _ \\ 要转义，配合 SQL 里的 ESCAPE */
+function escapeLike(v: string): string {
+  return v.replace(/[\\\\%_]/g, (ch) => `\\\\${ch}`);
+}
+
 function clampLimit(v: number | undefined): number {
   if (!v || !Number.isFinite(v)) return 50;
   return Math.min(Math.max(Math.trunc(v), 1), MAX_LIMIT);
@@ -80,8 +85,10 @@ export async function listUsers(deps: ServiceDeps, actor: Actor, input: ListUser
   const needle = input.q?.trim().toLowerCase();
   // "user" 表不受 RLS 约束（规格 02 §1.8：Better Auth 表不加 RLS），直接查即可
   const where = and(
+    // LIKE 的通配符要转义，否则搜一个 % 就把全部用户都匹配上（参数化没有注入问题，但语义是错的）
     needle
-      ? sql`(lower(${user.email}) LIKE ${`%${needle}%`} OR lower(${user.name}) LIKE ${`%${needle}%`})`
+      ? sql`(lower(${user.email}) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\'
+             OR lower(${user.name}) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\')`
       : undefined,
     input.frozenOnly ? sql`${user.frozenAt} IS NOT NULL` : undefined,
   );
@@ -298,10 +305,10 @@ export async function freezeUser(
 
 export async function unfreezeUser(deps: ServiceDeps, actor: Actor, targetUserId: string) {
   const target = await requireTarget(deps, targetUserId);
-  if (target.frozenAt === null) throw new ApiFailure(409, "not_frozen");
-  // 只在账号没被注销时才清 banned：banned 同时是 account-purge 的墓碑标记，
-  // 无条件清掉会把一个已经匿名化的账号复活
+  // 先判已注销：banned 同时是 account-purge 的墓碑标记，无条件清掉会把已匿名化的账号复活。
+  // 这个顺序也让「已注销但从没被冻结」拿到 user_deleted 而不是 not_frozen —— 后者会让操作者去找根本不存在的冻结记录。
   if (target.deletedAt) throw new ApiFailure(409, "user_deleted");
+  if (target.frozenAt === null) throw new ApiFailure(409, "not_frozen");
 
   await withUserTx(
     actor.userId,
@@ -473,7 +480,7 @@ export async function listUserNotes(
              WHERE n.purged_at IS NULL
                AND (${input.includeDeleted ? sql`true` : sql`n.deleted_at IS NULL`})
                AND (${input.workspaceId ? sql`n.workspace_id = ${input.workspaceId}::uuid` : sql`true`})
-               AND (${needle ? sql`lower(n.content_text) LIKE ${`%${needle}%`}` : sql`true`})
+               AND (${needle ? sql`lower(n.content_text) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\'` : sql`true`})
              ORDER BY n.updated_at DESC
              LIMIT ${limit + 1} OFFSET ${offset}`,
       ),
@@ -485,7 +492,10 @@ export async function listUserNotes(
       workspace_id: n.workspace_id,
       workspace_name: n.workspace_name,
       created_by: n.created_by,
-      title: n.title,
+      // title_cache 是 content_text 的生成列。今天投影器对 e2ee 直接跳过（jobs/project.ts），
+      // 所以它恒为空；但只要将来出现「已投影过的便笺转成 e2ee」而不清 content_text 的路径，
+      // 标题就会从这里漏出去 —— 不把「今天恰好安全」写成契约。
+      title: n.encryption === "e2ee" ? null : n.title,
       excerpt: n.encryption === "e2ee" ? "" : n.excerpt,
       color: n.color,
       readable: n.encryption !== "e2ee",
@@ -572,8 +582,17 @@ export async function listAdminAudit(
                  u.email AS actor_email
             FROM audit_log a
             LEFT JOIN "user" u ON u.id = a.actor_id
-           WHERE (a.action LIKE 'admin.%' OR a.action = 'auth.sign_in_denied')
-             AND (${input.targetUserId ? sql`a.target_id = ${input.targetUserId}` : sql`true`})
+           WHERE (a.action LIKE 'admin.%'
+                  OR a.action = 'auth.sign_in_denied'
+                  -- 「谁在摸管理端点被挡了」是这里最值得看的信号，不该只留在库里
+                  OR (a.action = 'authz.denied' AND a.metadata->>'required' = 'platform_admin'))
+             AND (${
+               input.targetUserId
+                 ? // 看正文那条审计的 target_id 是便笺 id，被看的人在 metadata.subject_user_id 里；
+                   // 只按 target_id 过滤会把「谁看过这个人的便笺」整类漏掉，而那正是最该查的
+                   sql`(a.target_id = ${input.targetUserId} OR a.metadata->>'subject_user_id' = ${input.targetUserId})`
+                 : sql`true`
+})
            ORDER BY a.at DESC
            LIMIT ${limit + 1} OFFSET ${offset}`,
     ),

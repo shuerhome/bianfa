@@ -148,6 +148,10 @@ services:
       PUBLIC_API_URL: https://api.${BIANFA_DOMAIN:?BIANFA_DOMAIN 未设置}
       BETTER_AUTH_URL: https://api.${BIANFA_DOMAIN:?BIANFA_DOMAIN 未设置}
       APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN 未设置}
+      # 总管理员管理面（/v1/admin/*）的关停开关。空串按未设处理（= 开启），设成 0 则整面 404。
+      # 用 :- 而不是 :? —— 这是个有安全缺省值的可选开关，不能让它变成部署前置
+      # （compose 的 :? 会让 `docker compose config` 直接失败，deploy.sh 第 0 步就卡住，连回滚都做不了）。
+      PLATFORM_ADMIN_ENABLED: ${PLATFORM_ADMIN_ENABLED:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET 未设置}
       SYNC_TOKEN_SECRET: ${SYNC_TOKEN_SECRET:?SYNC_TOKEN_SECRET 未设置}
       # 全部业务查询走 PgBouncer（transaction 模式；node-postgres 需禁用 prepared statements，见 S3）

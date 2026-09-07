@@ -44,8 +44,10 @@ export type { AppDeps, RouteEnv } from "./routes/context.js";
 export const HEALTHZ_DB_TIMEOUT_MS = 2000;
 
 const ANON_V1 = /^\/v1\/(notice|telemetry|invites\/[^/]+\/preview|auth\/reset-with-code)$/;
+/** /v1/admin/* 自带 requireAdminActor（Bearer 或同源会话 cookie），不能被只认 Bearer 的 bearerOnly 提前挡掉 */
+const ADMIN_V1 = /^\/v1\/admin(\/|$)/;
 export function isAnonymousV1Path(path: string): boolean {
-  return ANON_V1.test(path);
+  return ANON_V1.test(path) || ADMIN_V1.test(path);
 }
 
 function resolveDeps(deps: AppDeps): RouteDeps {

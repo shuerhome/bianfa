@@ -634,19 +634,34 @@ describe.skipIf(!hasDb)("/v1/admin/*（平台总管理员）", () => {
     for (const action of ["admin.user_frozen", "admin.user_unfrozen", "admin.password_set"]) {
       expect(actions.has(action), action).toBe(true);
     }
+    // 这个入口刻意只收三类：管理员自己的动作、登录被拒、以及「谁在摸管理端点被挡了」
+    // （authz.denied 且 required=platform_admin）—— 最后这类是最值得看的信号，不该只留在库里
     expect(
-      r.body.entries.every((e) => e.action.startsWith("admin.") || e.action === "auth.sign_in_denied"),
+      r.body.entries.every(
+        (e) =>
+          e.action.startsWith("admin.") || e.action === "auth.sign_in_denied" || e.action === "authz.denied",
+      ),
     ).toBe(true);
 
-    // user_id 过滤
-    const filtered = await req<{ entries: Array<{ target_id: string }> }>(
-      h.app,
-      "GET",
-      `/v1/admin/audit?user_id=${target.userId}&limit=200`,
-      { as: superAdmin.userId },
-    );
+    // user_id 过滤：既要命中 target_id 是这个人的条目，也要命中「看了这个人的便笺」——
+    // 后者的 target_id 是便笺 id，被看的人在 metadata.subject_user_id 里
+    const filtered = await req<{
+      entries: Array<{ target_id: string; action: string; metadata: Record<string, unknown> }>;
+    }>(h.app, "GET", `/v1/admin/audit?user_id=${target.userId}&limit=200`, {
+      as: superAdmin.userId,
+    });
     expect(filtered.body.entries.length).toBeGreaterThan(0);
-    expect(filtered.body.entries.every((e) => e.target_id === target.userId)).toBe(true);
+    expect(
+      filtered.body.entries.every(
+        (e) => e.target_id === target.userId || e.metadata?.subject_user_id === target.userId,
+      ),
+    ).toBe(true);
+    // 「看正文」那类条目必须能被这个过滤器捞到，否则「查某人被谁看过」是查不出来的
+    expect(
+      filtered.body.entries.some(
+        (e) => e.action === "admin.content_viewed" && e.metadata?.subject_user_id === target.userId,
+      ),
+    ).toBe(true);
 
     // org 侧入口硬编码 WHERE org_id = 当前 org：管理员条目的 org_id 恒为 NULL，永远查不到
     const orgSide = await listAudit(

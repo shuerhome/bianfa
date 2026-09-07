@@ -10,7 +10,7 @@ import { zValidator } from "@hono/zod-validator";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { rateLimit } from "../security/rate-limit.js";
-import { requireSuperAdmin } from "./admin-guard.js";
+import { requireAdminActor, requireSuperAdmin } from "./admin-guard.js";
 import {
   ApiFailure,
   emailSchema,
@@ -154,80 +154,30 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
     },
   );
 
-  // ---------------------------------------------------------------- 以下全部 Bearer + 600/min/user
-  app.use("*", requireBearer(verify));
-  app.use(
+  // ---------------------------------------------------------------- 平台总管理员（/v1/admin/*）
+  // 用 route("/admin", …) 显式前缀挂载：如果写成 route("/", adminApp) 且 adminApp 内部 use("*")，
+  // 那个闸门会命中整个 /v1（包括 /v1/notes），全站瘫痪。
+  // 挂在下面那句全局 requireBearer **之前**：管理台在浏览器里跑、只有同源会话 cookie，
+  // 走不通只认 Bearer 的那条路（详见 requireAdminActor 的注释）。
+  const adminApp = new Hono<V1Env>();
+  adminApp.use(
+    "*",
+    requireAdminActor({
+      db: deps.db,
+      enabled: deps.env.platformAdminEnabled,
+      verify,
+      resolveSession: deps.resolveSession,
+      appOrigins: deps.env.appOrigins,
+    }),
+  );
+  adminApp.use(
     "*",
     rateLimit({
-      name: "v1_user",
+      name: "v1_admin",
       key: (c) => (c.get("auth") as AuthVariables["auth"] | undefined)?.userId ?? null,
       ...AUTHENTICATED_RATE_LIMIT,
     }),
   );
-
-  // ---- me
-  app.get("/me", async (c) => ok(c, await getMe(deps, actorOf(c))));
-  app.get("/me/devices", async (c) => ok(c, await listDevices(deps, actorOf(c))));
-  app.delete("/me/devices/:id", async (c) => {
-    const id = uuidSchema.safeParse(c.req.param("id"));
-    if (!id.success) return fail(c, 404, "not_found");
-    return ok(c, await revokeDevice(deps, actorOf(c), id.data));
-  });
-  app.post(
-    "/me/devices/revoke-all",
-    zValidator(
-      "json",
-      z.object({ keep_current: z.boolean().optional() }).strict().optional(),
-      validationHook,
-    ),
-    async (c) => {
-      const body = c.req.valid("json") ?? {};
-      return ok(c, await revokeAllDevices(deps, actorOf(c), { keepCurrent: body.keep_current ?? false }));
-    },
-  );
-  app.post("/me/security-code", zValidator("json", changeSecurityCodeBody, validationHook), async (c) => {
-    const body = c.req.valid("json");
-    return ok(
-      c,
-      await changeSecurityCode(deps, actorOf(c), {
-        password: body.password,
-        newSecurityCode: body.new_security_code,
-      }),
-    );
-  });
-  app.post("/me/delete", zValidator("json", confirmDelete, validationHook), async (c) =>
-    ok(c, await scheduleDeletion(deps, actorOf(c)), 202),
-  );
-  app.post("/me/delete/cancel", async (c) => ok(c, await cancelDeletion(deps, actorOf(c))));
-
-  // ---- invites（被邀请人视角）
-  app.post(
-    "/invites/accept",
-    zValidator("json", z.object({ token: tokenSchema }).strict(), validationHook),
-    async (c) => ok(c, await acceptInvitationByToken(deps, actorOf(c), c.req.valid("json").token)),
-  );
-  app.post(
-    "/invites/reject",
-    zValidator("json", z.object({ token: tokenSchema }).strict(), validationHook),
-    async (c) => ok(c, await rejectInvitationByToken(deps, actorOf(c), c.req.valid("json").token)),
-  );
-
-  // ---- orgs（不需要 X-Organization-Id 的两条）
-  app.post(
-    "/orgs",
-    zValidator(
-      "json",
-      z.object({ name: nameSchema, slug: z.string().trim().min(2).max(40).optional() }).strict(),
-      validationHook,
-    ),
-    async (c) => ok(c, await createOrg(deps, actorOf(c), c.req.valid("json")), 201),
-  );
-  app.get("/orgs", async (c) => ok(c, await listOrgs(deps, actorOf(c))));
-
-  // ---------------------------------------------------------------- 平台总管理员（/v1/admin/*）
-  // 用 route("/admin", …) 显式前缀挂载：如果写成 route("/", adminApp) 且 adminApp 内部 use("*")，
-  // 那个闸门会命中整个 /v1（包括 /v1/notes），全站瘫痪。
-  const adminApp = new Hono<V1Env>();
   adminApp.use("*", requireSuperAdmin({ db: deps.db, enabled: deps.env.platformAdminEnabled }));
 
   adminApp.get("/users", async (c) => {
@@ -297,6 +247,76 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
   adminApp.route("/users/:id", adminUser);
 
   app.route("/admin", adminApp);
+
+  // ---------------------------------------------------------------- 以下全部 Bearer + 600/min/user
+  app.use("*", requireBearer(verify));
+  app.use(
+    "*",
+    rateLimit({
+      name: "v1_user",
+      key: (c) => (c.get("auth") as AuthVariables["auth"] | undefined)?.userId ?? null,
+      ...AUTHENTICATED_RATE_LIMIT,
+    }),
+  );
+
+  // ---- me
+  app.get("/me", async (c) => ok(c, await getMe(deps, actorOf(c))));
+  app.get("/me/devices", async (c) => ok(c, await listDevices(deps, actorOf(c))));
+  app.delete("/me/devices/:id", async (c) => {
+    const id = uuidSchema.safeParse(c.req.param("id"));
+    if (!id.success) return fail(c, 404, "not_found");
+    return ok(c, await revokeDevice(deps, actorOf(c), id.data));
+  });
+  app.post(
+    "/me/devices/revoke-all",
+    zValidator(
+      "json",
+      z.object({ keep_current: z.boolean().optional() }).strict().optional(),
+      validationHook,
+    ),
+    async (c) => {
+      const body = c.req.valid("json") ?? {};
+      return ok(c, await revokeAllDevices(deps, actorOf(c), { keepCurrent: body.keep_current ?? false }));
+    },
+  );
+  app.post("/me/security-code", zValidator("json", changeSecurityCodeBody, validationHook), async (c) => {
+    const body = c.req.valid("json");
+    return ok(
+      c,
+      await changeSecurityCode(deps, actorOf(c), {
+        password: body.password,
+        newSecurityCode: body.new_security_code,
+      }),
+    );
+  });
+  app.post("/me/delete", zValidator("json", confirmDelete, validationHook), async (c) =>
+    ok(c, await scheduleDeletion(deps, actorOf(c)), 202),
+  );
+  app.post("/me/delete/cancel", async (c) => ok(c, await cancelDeletion(deps, actorOf(c))));
+
+  // ---- invites（被邀请人视角）
+  app.post(
+    "/invites/accept",
+    zValidator("json", z.object({ token: tokenSchema }).strict(), validationHook),
+    async (c) => ok(c, await acceptInvitationByToken(deps, actorOf(c), c.req.valid("json").token)),
+  );
+  app.post(
+    "/invites/reject",
+    zValidator("json", z.object({ token: tokenSchema }).strict(), validationHook),
+    async (c) => ok(c, await rejectInvitationByToken(deps, actorOf(c), c.req.valid("json").token)),
+  );
+
+  // ---- orgs（不需要 X-Organization-Id 的两条）
+  app.post(
+    "/orgs",
+    zValidator(
+      "json",
+      z.object({ name: nameSchema, slug: z.string().trim().min(2).max(40).optional() }).strict(),
+      validationHook,
+    ),
+    async (c) => ok(c, await createOrg(deps, actorOf(c), c.req.valid("json")), 201),
+  );
+  app.get("/orgs", async (c) => ok(c, await listOrgs(deps, actorOf(c))));
 
   // ---- orgs/:id（X-Organization-Id 必须与路径一致）
   const org = new Hono<V1Env>();

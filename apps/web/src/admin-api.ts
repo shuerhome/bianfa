@@ -30,15 +30,17 @@ function queryString(params: Record<string, string | number | boolean | null | u
 /**
  * `/v1/admin/*` 一次请求。
  *
- * 注意：/v1 只认 `Authorization: Bearer`，Web 面持有的是同源 cookie 会话 —— 我们照常把 cookie 带上
- * （credentials: same-origin），能不能通过由服务端决定；拿到 401 时页面会显示「会话无法访问管理接口」
- * 而不是装作没事。前端不去自造令牌：那等于在浏览器里复刻一份桌面端的凭据，得不偿失。
+ * /v1 的其余部分只认 `Authorization: Bearer`（桌面端的不透明令牌），但管理台跑在浏览器里拿不到那种令牌，
+ * 所以服务端给 `/v1/admin/*` 单开了一条同源会话通道（apps/server/src/auth/admin-guard.ts 的
+ * requireAdminActor）。这里配合它做两件事：带上同源 cookie，以及带上 X-Bianfa-Admin 头 ——
+ * 这个自定义头是 CSRF 防线的一环：跨源请求要带自定义头必须先过 CORS 预检，而预检只放行 APP_ORIGIN。
+ * 前端不去自造令牌：那等于在浏览器里复刻一份桌面端的凭据，一次 XSS 就全失守。
  */
 async function adminFetch<T>(
   path: string,
   init: { method?: "GET" | "POST"; body?: unknown } = {},
 ): Promise<Result<T>> {
-  const headers: Record<string, string> = { accept: "application/json" };
+  const headers: Record<string, string> = { accept: "application/json", "x-bianfa-admin": "1" };
   if (init.body !== undefined) headers["content-type"] = "application/json";
   try {
     const res = await fetch(`/v1/admin${path}`, {

@@ -17,6 +17,15 @@ export interface ServiceDeps {
   password?: PasswordHasher;
   /** 经 Better Auth internalAdapter 设置用户密码（credential account 不存在时创建）；由 createAuth 注入 */
   setUserPassword?: (userId: string, newPassword: string) => Promise<void>;
+  /**
+   * 用同源 cookie 解析出 Better Auth 会话；由 createAuth 注入。
+   * **只有 /v1/admin/* 用它** —— /v1 的其余部分按规格 04 §1.5 只认 Bearer，这条口子不扩大到别处。
+   */
+  resolveSession?: (headers: Headers) => Promise<{
+    userId: string;
+    email: string;
+    emailVerified: boolean;
+  } | null>;
 }
 
 export interface Actor {
