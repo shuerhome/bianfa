@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type Filter = "all" | "open" | "pinned" | "trash" | "team";
+export type Filter = "all" | "open" | "pinned" | "todos" | "trash" | "team";
 export type View = "grid" | "list";
 export type Sort = "updated" | "created" | "title" | "color";
 

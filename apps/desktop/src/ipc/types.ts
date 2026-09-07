@@ -225,6 +225,27 @@ export interface Notice {
   url: string | null;
 }
 
+// ── 待办聚合（todos_list / todos_counts：跨便笺的 checklist 行，Rust 从本地投影表读） ──
+export interface TodoItem {
+  noteId: string;
+  noteTitle: string;
+  noteColor: NoteColor;
+  workspaceId: string | null;
+  /** taskItem.attrs.id（nanoid(10)） */
+  blockId: string;
+  text: string;
+  checked: boolean;
+  /** 便笺内文档序，从 0 起 */
+  ordinal: number;
+  noteUpdatedAt: number;
+  itemUpdatedAt: number;
+}
+
+export interface TodoCounts {
+  open: number;
+  done: number;
+}
+
 export type SyncErrCode = "forbidden" | "too_large" | "quota" | "gone";
 
 export interface SyncErrorEntry {

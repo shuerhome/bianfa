@@ -24,6 +24,8 @@ import type {
   Settings,
   SyncErrCode,
   SyncErrorEntry,
+  TodoCounts,
+  TodoItem,
   UpdateCheckResult,
   UpdateOrigin,
   WindowState,
@@ -96,6 +98,12 @@ export const notesPendingSync = () => call<{ noteId: string; headSeq: number }[]
 export const trashEmpty = () => call<{ purged: number }>("trash_empty");
 
 export const notesPurgeExpired = () => call<{ purged: number }>("notes_purge_expired");
+
+// ── 待办聚合（跨便笺 checklist 行；workspaceId null = 本机全部便笺） ──
+export const todosList = (args: { includeDone: boolean; workspaceId: string | null; limit?: number }) =>
+  call<TodoItem[]>("todos_list", args);
+
+export const todosCounts = () => call<TodoCounts>("todos_counts");
 
 // ── 版本 / 同步状态（协调者修订） ──
 export const noteVersionSave = (args: { noteId: string; stateV2B64: string; label: string }) =>
