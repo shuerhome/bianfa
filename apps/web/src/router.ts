@@ -13,6 +13,7 @@ export type Route =
   | { name: "device" }
   | { name: "invite"; token: string }
   | { name: "account" }
+  | { name: "admin" }
   | { name: "not-found" };
 
 export function matchRoute(pathname: string): Route {
@@ -38,6 +39,10 @@ export function matchRoute(pathname: string): Route {
       return { name: "device" };
     case "/account":
       return { name: "account" };
+    // 总管理员管理台。故意不做 /admin/users/:id 这样的子路径：全部视图共用 /admin + 查询串，
+    // 服务端只要放行一个路径就够（见 pages/admin/route.ts）。
+    case "/admin":
+      return { name: "admin" };
     default: {
       const m = /^\/invite\/([A-Za-z0-9_-]{1,128})$/.exec(path);
       if (m?.[1]) return { name: "invite", token: m[1] };
