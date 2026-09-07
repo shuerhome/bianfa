@@ -242,6 +242,13 @@ export class SyncHost {
         this.onAuthFailed(reason, null);
       },
     });
+    // 必须显式 attach：HocuspocusProvider 的构造末尾是 `if (this.manageSocket) this.attach()`，
+    // 而 manageSocket 只有在**不传 websocketProvider**（它自己建 socket）时才为 true。
+    // 我们所有 provider 都共用一条 socket，所以走的是 manageSocket=false 那一支 ——
+    // 不自己调 attach()，provider 根本不会注册到 socket 上：既不发鉴权消息，也收不到任何数据。
+    // 现象是「socket 连上了、服务端却什么都没发生」：connections / documents / auth_failures 全 0。
+    // destroy() 里会调 detach()，所以这里补 attach 不会造成监听器泄漏。
+    this.inbox.attach();
   }
 
   private onStateless(payload: string): void {
@@ -538,6 +545,8 @@ export class SyncHost {
       onStatus: () => this.recomputeNoteState(entry),
       onAwarenessUpdate: () => undefined,
     });
+    // 同上：共享 socket 的 provider 必须显式 attach，否则这张便笺永远不会同步
+    entry.provider.attach();
     entry.provider.on("unsyncedChanges", () => this.recomputeNoteState(entry));
     this.setAwareness(entry, false);
     this.entries.set(noteId, entry);

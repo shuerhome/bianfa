@@ -13,6 +13,8 @@ interface ProviderStub {
   destroyed: boolean;
   onAuthenticationFailed?: ((p: { reason: string }) => void) | undefined;
   onStateless?: ((p: { payload: string }) => void) | undefined;
+  /** 共享 socket 时必须由我们显式 attach，见下面那条回归用例 */
+  attached?: boolean;
 }
 
 const hoisted = vi.hoisted(() => ({ providers: [] as ProviderStub[] }));
@@ -28,6 +30,7 @@ vi.mock("@hocuspocus/provider", () => {
     isSynced = false;
     hasUnsyncedChanges = false;
     destroyed = false;
+    attached = false;
     name: string;
     onAuthenticationFailed: ProviderStub["onAuthenticationFailed"];
     onStateless: ProviderStub["onStateless"];
@@ -40,6 +43,12 @@ vi.mock("@hocuspocus/provider", () => {
       this.onAuthenticationFailed = cfg.onAuthenticationFailed;
       this.onStateless = cfg.onStateless;
       hoisted.providers.push(this);
+    }
+    attach() {
+      this.attached = true;
+    }
+    detach() {
+      this.attached = false;
     }
     on() {}
     setAwarenessField() {}
@@ -328,5 +337,18 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     inboxOf(PERSONAL).onStateless?.({ payload: JSON.stringify({ t: "bump", workspace_id: TEAM }) });
     await vi.waitFor(() => expect(providersNamed(documentName(TEAM, T1))).toHaveLength(2));
     expect(created).toHaveLength(3);
+  });
+
+  it("每个 provider 都必须 attach 到共享 socket 上（不 attach 就整个同步静默失效）", async () => {
+    // HocuspocusProvider 的构造末尾是 `if (this.manageSocket) this.attach()`，而 manageSocket
+    // 只有在**不传 websocketProvider**时才为 true。我们所有 provider 共用一条 socket，走的是
+    // manageSocket=false 那一支，必须自己调 attach()。漏掉的后果不是报错，而是：socket 连得上、
+    // 但 provider 从不注册到它上面 —— 不发鉴权消息、不收数据，服务端 connections/documents/
+    // auth_failures 全是 0。线上就是这么静默地一条便笺都没同步上去的，所以这条用例钉住它。
+    await startHost();
+    expect(hoisted.providers.length).toBeGreaterThan(0);
+    for (const p of hoisted.providers) {
+      expect(p.attached, `${p.name} 没有 attach 到共享 socket`).toBe(true);
+    }
   });
 });
