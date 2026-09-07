@@ -161,6 +161,12 @@ export async function createAuthWithInternals(deps: CreateAuthDeps): Promise<Aut
       verify: async (d) => (await auth.$context).password.verify(d),
     },
     // 安全码重置：经 internalAdapter 写 credential account 的 password（没有 credential account 的社交账号则补建一条）
+    // 按 token 清会话缓存：deleteUserSessions 依赖的 active-sessions-<uid> 索引键在 allkeys-lru 下会被淘汰，
+    // 淘汰之后 findSession 仍会从缓存命中 —— 冻结就成了空操作。逐 token 删不依赖那个索引键。
+    revokeSessionTokens: async (tokens) => {
+      const ctx = await auth.$context;
+      await ctx.internalAdapter.deleteSessions(tokens);
+    },
     // 管理台在浏览器里跑，浏览器拿不到桌面端那种不透明 access token；给 /v1/admin/* 单开一条
     // 同源 cookie 通道（CSRF 由 admin 侧的 Origin 校验 + Better Auth 的 SameSite=Lax cookie 一起挡）
     resolveSession: async (headers) => {

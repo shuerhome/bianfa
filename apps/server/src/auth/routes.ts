@@ -180,18 +180,25 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
   );
   adminApp.use("*", requireSuperAdmin({ db: deps.db, enabled: deps.env.platformAdminEnabled }));
 
-  adminApp.get("/users", async (c) => {
-    const q = c.req.query("q");
-    return ok(
+  /** 分页参数：坏值一律回落到缺省，不让一个手抖的查询串变成 500 */
+  const page = (c: Context<V1Env>) => {
+    const n = (v: string | undefined, d: number) => {
+      const x = Number(v);
+      return Number.isFinite(x) && x >= 0 ? x : d;
+    };
+    return { limit: n(c.req.query("limit"), 50), offset: n(c.req.query("offset"), 0) };
+  };
+
+  adminApp.get("/users", async (c) =>
+    ok(
       c,
       await listUsers(deps, actorOf(c), {
-        q,
-        limit: Number(c.req.query("limit") ?? 50),
-        offset: Number(c.req.query("offset") ?? 0),
+        q: c.req.query("q"),
+        ...page(c),
         frozenOnly: c.req.query("frozen") === "1",
       }),
-    );
-  });
+    ),
+  );
 
   adminApp.get("/admins", async (c) => ok(c, await listPlatformAdmins(deps)));
 
@@ -199,8 +206,7 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
     ok(
       c,
       await listAdminAudit(deps, actorOf(c), {
-        limit: Number(c.req.query("limit") ?? 50),
-        offset: Number(c.req.query("offset") ?? 0),
+        ...page(c),
         targetUserId: c.req.query("user_id"),
       }),
     ),
@@ -213,16 +219,24 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
     return id.data;
   };
 
+  const workspaceIdOf = (c: Context<V1Env>): string | undefined => {
+    const raw = c.req.query("workspace_id");
+    if (raw === undefined || raw === "") return undefined;
+    const parsed = uuidSchema.safeParse(raw);
+    if (!parsed.success) throw new ApiFailure(400, "validation_failed");
+    return parsed.data;
+  };
+
   adminUser.get("/", async (c) => ok(c, await getUserDetail(deps, actorOf(c), targetOf(c))));
   adminUser.get("/workspaces", async (c) => ok(c, await listUserWorkspaces(deps, actorOf(c), targetOf(c))));
   adminUser.get("/notes", async (c) =>
     ok(
       c,
       await listUserNotes(deps, actorOf(c), targetOf(c), {
-        workspaceId: c.req.query("workspace_id"),
+        // 未校验的 workspace_id 直接进 ::uuid 会让一个手敲的查询串变成 500
+        workspaceId: workspaceIdOf(c),
         q: c.req.query("q"),
-        limit: Number(c.req.query("limit") ?? 50),
-        offset: Number(c.req.query("offset") ?? 0),
+        ...page(c),
         includeDeleted: c.req.query("include_deleted") === "1",
       }),
     ),

@@ -31,9 +31,9 @@ export const ADMIN_ACTIONS = [
   "admin.user_listed",
 ] as const;
 
-/** LIKE 模式里的 % _ \\ 要转义，配合 SQL 里的 ESCAPE */
+/** LIKE 模式里的 % _ \ 要转义，配合 SQL 里的 ESCAPE '\'（转义符本身只能有一个反斜杠） */
 function escapeLike(v: string): string {
-  return v.replace(/[\\\\%_]/g, (ch) => `\\\\${ch}`);
+  return v.replace(/[\\\\%_]/g, (ch) => `\\${ch}`);
 }
 
 function clampLimit(v: number | undefined): number {
@@ -259,6 +259,53 @@ async function revokeEverything(tx: Tx, targetUserId: string): Promise<number> {
   return devices.length;
 }
 
+/**
+ * Web 会话：**在事务里**删库行并取回 token。
+ *
+ * 不能只依赖 Better Auth 的 deleteUserSessions：配了 secondaryStorage（Redis）时 findSession 命中缓存
+ * 就不查库，而 deleteUserSessions 清缓存的唯一依据是 `active-sessions-<uid>` 这个索引键 —— 在
+ * allkeys-lru 下它正是最先被淘汰的一类。索引键一没，就会出现「库里 0 行 session、getSession 仍返回该用户」。
+ * 所以库行交给本事务（与 frozen_at 同生共死），Redis 缓存按 token 逐个清（见 dropSessionCaches）。
+ */
+async function deleteSessionRows(tx: Tx, targetUserId: string): Promise<string[]> {
+  const r = await tx.execute<{ token: string }>(
+    sql`DELETE FROM "session" WHERE "userId" = ${targetUserId} RETURNING token`,
+  );
+  return r.rows.map((x) => x.token).filter((t): t is string => typeof t === "string");
+}
+
+/**
+ * Redis 缓存清理：best-effort。
+ * 原来这一步是在事务之外裸 await 的，Redis 抖一下（ioredis 配的是 maxRetriesPerRequest: 2）就会在删任何
+ * 东西之前抛出去 —— user 行已提交为冻结、审计已落，接口却回 500，操作者无从知道冻结其实生效了一半。
+ * 现在失败只降级并如实回报，冻结这件事本身不再被 Redis 的可用性绑架。
+ */
+async function dropSessionCaches(
+  deps: ServiceDeps,
+  targetUserId: string,
+  tokens: string[],
+): Promise<boolean> {
+  let ok = true;
+  const warn = (err: unknown, how: string) => {
+    ok = false;
+    deps.log.error(
+      { err: err instanceof Error ? err.message : String(err), targetUserId, how },
+      "会话缓存清理失败",
+    );
+  };
+  try {
+    if (tokens.length > 0) await deps.revokeSessionTokens?.(tokens);
+  } catch (err) {
+    warn(err, "by_token");
+  }
+  try {
+    await deps.revokeWebSessions?.(targetUserId);
+  } catch (err) {
+    warn(err, "by_user");
+  }
+  return ok;
+}
+
 export async function freezeUser(
   deps: ServiceDeps,
   actor: Actor,
@@ -285,22 +332,24 @@ export async function freezeUser(
         })
         .where(eq(user.id, targetUserId));
       const n = await revokeEverything(tx, targetUserId);
+      const tokens = await deleteSessionRows(tx, targetUserId);
       await audit(
         tx,
         actorEntry(actor, {
           action: "admin.user_frozen",
           targetType: "user",
           targetId: targetUserId,
-          metadata: { reason, revoked_devices: n },
+          metadata: { reason, revoked_devices: n, revoked_sessions: tokens.length },
         }),
       );
-      return n;
+      return { devices: n, tokens };
     },
     deps.db,
   );
-  await deps.revokeWebSessions?.(targetUserId);
-  deps.log.warn({ actor: actor.userId, target: targetUserId }, "platform admin froze user");
-  return { ok: true as const, revoked_devices: revoked };
+  const cleared = await dropSessionCaches(deps, targetUserId, revoked.tokens);
+  deps.log.warn({ actor: actor.userId, target: targetUserId, cleared }, "platform admin froze user");
+  // 如实回报：缓存没清干净时操作者需要知道去补一刀，而不是收到一个语焉不详的 500
+  return { ok: true as const, revoked_devices: revoked.devices, session_caches_cleared: cleared };
 }
 
 export async function unfreezeUser(deps: ServiceDeps, actor: Actor, targetUserId: string) {
@@ -351,22 +400,23 @@ export async function adminSetPassword(
     async (tx) => {
       await tx.update(user).set({ updatedAt: new Date() }).where(eq(user.id, targetUserId));
       const n = await revokeEverything(tx, targetUserId);
+      const tokens = await deleteSessionRows(tx, targetUserId);
       await audit(
         tx,
         actorEntry(actor, {
           action: "admin.password_set",
           targetType: "user",
           targetId: targetUserId,
-          metadata: { via: "platform_admin", revoked_devices: n },
+          metadata: { via: "platform_admin", revoked_devices: n, revoked_sessions: tokens.length },
         }),
       );
-      return n;
+      return { devices: n, tokens };
     },
     deps.db,
   );
-  await deps.revokeWebSessions?.(targetUserId);
-  deps.log.warn({ actor: actor.userId, target: targetUserId }, "platform admin set user password");
-  return { ok: true as const, revoked_devices: revoked };
+  const cleared = await dropSessionCaches(deps, targetUserId, revoked.tokens);
+  deps.log.warn({ actor: actor.userId, target: targetUserId, cleared }, "platform admin set user password");
+  return { ok: true as const, revoked_devices: revoked.devices, session_caches_cleared: cleared };
 }
 
 async function requireTarget(deps: ServiceDeps, targetUserId: string) {
@@ -421,6 +471,16 @@ export async function listUserWorkspaces(deps: ServiceDeps, actor: Actor, target
               FROM workspaces w
               LEFT JOIN organization o ON o.id = w.org_id
               LEFT JOIN team t ON t.id = w.team_id
+               -- RLS 是兜底不是主授权：0002 的策略只判 member 行是否存在，而应用层（services/workspaces.ts、
+               -- effective_note_permission、sync 的 queryWorkspacePerm）一律还要 m.status='active'，
+               -- 并且跳过已归档的工作区。不补这两条，管理台会把「这个人早就没权限的第三方组织内容」
+               -- 当成「他自己看得见的东西」摊开 —— 那是一次以查看之名的越界披露。
+               WHERE w.archived_at IS NULL
+                 AND (w.org_id IS NULL
+                      OR EXISTS (SELECT 1 FROM member m
+                                  WHERE m."organizationId" = w.org_id
+                                    AND m."userId" = ${targetUserId}
+                                    AND m.status = 'active'))
              ORDER BY w.kind, w.name`,
       ),
   );
@@ -478,9 +538,18 @@ export async function listUserNotes(
               FROM notes n
               JOIN workspaces w ON w.id = n.workspace_id
              WHERE n.purged_at IS NULL
+               -- 与 listUserWorkspaces 同一口径：只算目标用户**现在**真的还看得见的工作区
+               AND w.archived_at IS NULL
+               AND (w.org_id IS NULL
+                    OR EXISTS (SELECT 1 FROM member m
+                                WHERE m."organizationId" = w.org_id
+                                  AND m."userId" = ${targetUserId}
+                                  AND m.status = 'active'))
                AND (${input.includeDeleted ? sql`true` : sql`n.deleted_at IS NULL`})
                AND (${input.workspaceId ? sql`n.workspace_id = ${input.workspaceId}::uuid` : sql`true`})
-               AND (${needle ? sql`lower(n.content_text) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\'` : sql`true`})
+               -- E2EE 便笺不进搜索：正文对管理员不可读，那么「搜某个词命中了」本身也不该泄漏出去，
+               -- 否则就成了一个可以逐字试探明文的探针
+               AND (${needle ? sql`(n.encryption <> 'e2ee' AND lower(n.content_text) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\')` : sql`true`})
              ORDER BY n.updated_at DESC
              LIMIT ${limit + 1} OFFSET ${offset}`,
       ),

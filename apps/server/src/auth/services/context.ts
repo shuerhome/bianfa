@@ -18,6 +18,12 @@ export interface ServiceDeps {
   /** 经 Better Auth internalAdapter 设置用户密码（credential account 不存在时创建）；由 createAuth 注入 */
   setUserPassword?: (userId: string, newPassword: string) => Promise<void>;
   /**
+   * 按 token 逐个清掉会话缓存（secondaryStorage）；由 createAuth 注入。
+   * 与 revokeWebSessions 的区别：后者清缓存要先读 `active-sessions-<uid>` 索引键，
+   * 那个键在 Redis 的 allkeys-lru 下会被淘汰，淘汰之后就清不干净了。
+   */
+  revokeSessionTokens?: (tokens: string[]) => Promise<void>;
+  /**
    * 用同源 cookie 解析出 Better Auth 会话；由 createAuth 注入。
    * **只有 /v1/admin/* 用它** —— /v1 的其余部分按规格 04 §1.5 只认 Bearer，这条口子不扩大到别处。
    */

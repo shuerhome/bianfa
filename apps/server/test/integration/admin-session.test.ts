@@ -103,6 +103,34 @@ describe.skipIf(!hasDb)("/v1/admin/* 的同源会话通道", () => {
     }
   });
 
+  it("被冻结的总管理员，cookie 通道一样进不来（403 account_frozen）", async () => {
+    // 这是复审里最重的一条：getSession 只回用户基本资料、不看账号状态。
+    // 如果 requireAdminActor 不自己补这条判定，一个被冻结甚至被注销的管理员，
+    // 只要浏览器里那份会话没过期，就仍然握有全部管理员权限。
+    await f.admin.query('UPDATE "user" SET frozen_at = now(), banned = true WHERE id = $1', [admin.userId]);
+    try {
+      const viaCookie = await req(h.app, "GET", "/v1/admin/admins", { cookieAs: admin.userId });
+      expect(viaCookie.status).toBe(403);
+      expect((viaCookie.body as { error?: string }).error).toBe("account_frozen");
+      // Bearer 那一支也走同一条判定（测试用的假校验器本身不查账号状态，正好验证闸门自己在查）
+      const viaBearer = await req(h.app, "GET", "/v1/admin/admins", { as: admin.userId });
+      expect(viaBearer.status).toBe(403);
+      expect((viaBearer.body as { error?: string }).error).toBe("account_frozen");
+    } finally {
+      await f.admin.query('UPDATE "user" SET frozen_at = NULL, banned = false WHERE id = $1', [admin.userId]);
+    }
+  });
+
+  it("已注销的总管理员同样进不来", async () => {
+    await f.admin.query('UPDATE "user" SET deleted_at = now() WHERE id = $1', [admin.userId]);
+    try {
+      const r = await req(h.app, "GET", "/v1/admin/admins", { cookieAs: admin.userId });
+      expect(r.status).toBe(403);
+    } finally {
+      await f.admin.query('UPDATE "user" SET deleted_at = NULL WHERE id = $1', [admin.userId]);
+    }
+  });
+
   it("这个口子没有蔓延到 /v1 的其它路径：带会话 cookie 打 /v1/me 仍然 401", async () => {
     const r = await req(h.app, "GET", "/v1/me", { cookieAs: admin.userId });
     expect(r.status).toBe(401);

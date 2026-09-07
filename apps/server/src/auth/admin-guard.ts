@@ -6,7 +6,7 @@
 // 拒绝时返回 403 insufficient_role（而不是伪装成 404）：/v1 全程要求 Bearer，能走到这里的都是已登录用户，
 // 「存在一个 /v1/admin」本身不是秘密，真正的边界是这里的判定本身；伪装 404 反而要求响应与全局 404 逐字一致，
 // 而 v1 的 fail() 会多一个 server_time 字段，做不到逐字一致，等于给出一个更细的 oracle 还自欺欺人。
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { audit } from "../audit/index.js";
 import type { Db } from "../db/client.js";
@@ -16,6 +16,28 @@ import type { AuthVariables, BearerVerifier } from "./index.js";
 import type { ServiceDeps } from "./services/context.js";
 
 export type AdminVariables = AuthVariables & { platformAdmin: true };
+
+/**
+ * 账号还能用吗（未冻结 / 未封禁 / 未注销）。任何异常一律当作「不能」（fail-closed）。
+ *
+ * 为什么这条判定必须在 requireAdminActor 里、而不是只在 verify-bearer 里：
+ * 同源 cookie 通道走的是 Better Auth 的 getSession，它只回 user 的基本资料，**不看账号状态**。
+ * 全进程其它每一条鉴权路径都查（verify-bearer、sync 的 queryAccountUsable、session.create.before），
+ * 唯独这条不查的话，一个被冻结甚至被注销的总管理员，只要浏览器里那份会话还没到期（滚动 7 天），
+ * 就仍然握有全部管理员权限：列全部用户、读任意人的便笺正文、改任意非管理员的密码。
+ * 那等于「冻结堵五条路」在权限最高的那个面上完全不生效。
+ */
+export async function accountUsable(db: Db, userId: string): Promise<boolean> {
+  try {
+    const r = await db.execute<{ usable: boolean }>(
+      sql`SELECT (u.frozen_at IS NULL AND u.banned IS NOT TRUE AND u.deleted_at IS NULL) AS usable
+            FROM "user" u WHERE u.id = ${userId}`,
+    );
+    return r.rows[0]?.usable === true;
+  } catch {
+    return false;
+  }
+}
 
 /** 名单里有这个人吗。任何异常一律当作「不是」（fail-closed）。 */
 export async function isPlatformAdmin(db: Db, userId: string): Promise<boolean> {
@@ -68,6 +90,7 @@ export function requireAdminActor(
         c.header("WWW-Authenticate", 'Bearer error="invalid_token"');
         throw new ApiFailure(401, "unauthorized");
       }
+      if (!(await accountUsable(deps.db, ctx.userId))) throw new ApiFailure(403, "account_frozen");
       c.set("auth", ctx);
       return next();
     }
@@ -83,6 +106,8 @@ export function requireAdminActor(
 
     const session = await deps.resolveSession?.(c.req.raw.headers);
     if (!session) throw new ApiFailure(401, "unauthorized");
+    // getSession 不看账号状态，这里补上——否则冻结/注销一个总管理员对管理台是空操作
+    if (!(await accountUsable(deps.db, session.userId))) throw new ApiFailure(403, "account_frozen");
     c.set("auth", {
       userId: session.userId,
       sessionId: null,
@@ -106,7 +131,12 @@ export function requireSuperAdmin(deps: AdminGuardDeps): MiddlewareHandler<{ Var
     if (!auth?.userId) throw new ApiFailure(401, "unauthorized");
     if (await isPlatformAdmin(deps.db, auth.userId)) {
       c.set("platformAdmin", true);
-      return next();
+      // 全站唯一一条用浏览器 cookie 认证的 /v1 通道，响应体里是别人的便笺正文 —— 不许进磁盘缓存
+      c.header("Cache-Control", "no-store");
+      c.header("Referrer-Policy", "no-referrer");
+      await next();
+      c.header("Cache-Control", "no-store");
+      return;
     }
     const meta = requestMeta(c);
     // 被拒绝也要留痕：普通用户摸管理端点是值得看见的信号

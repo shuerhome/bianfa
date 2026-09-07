@@ -43,7 +43,9 @@ export const authEnvSchema = baseEnvSchema.extend({
    * 刻意不写进 .env.prod.example：deploy.sh 会拒绝任何含 REPLACE_ME 的必填键，
    * 而这是一个有安全缺省值的可选开关，不该变成所有自托管实例的部署前置。
    */
-  PLATFORM_ADMIN_ENABLED: z.enum(["0", "1"]).optional(),
+  // 刻意用 string 而不是 z.enum(["0","1"])：这是应急时要手敲进 .env.prod 的开关，
+  // 写错一个字符不该让 api 起不来并被 restart 策略拉进重启循环。只有恰好等于 "0" 才算关。
+  PLATFORM_ADMIN_ENABLED: z.string().optional(),
 });
 
 export type AuthEnvRaw = z.output<typeof authEnvSchema>;
