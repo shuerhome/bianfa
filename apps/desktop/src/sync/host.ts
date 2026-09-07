@@ -54,7 +54,25 @@ const MAX_PROVIDERS = 64;
 const PING_MS = 25_000;
 const OFFLINE_POLL_MS = 30_000;
 const AWARENESS_MIN_INTERVAL_MS = 500;
-export const DEFAULT_SYNC_WS_URL = "wss://ws.bianfa.app/ws/v1";
+/** 曾经硬编码的同步地址；只用于识别老设置并迁移掉，不再作为默认值使用（见 syncUrlFromApi）。 */
+export const LEGACY_SYNC_WS_URL = "wss://ws.bianfa.app/ws/v1";
+
+/**
+ * 同步地址由 API 地址推导：`https://x` → `wss://x/ws/v1`。
+ *
+ * 以前这里是一个写死的 `ws.` 子域，假定部署会单独开那个主机名；而实际部署把 WebSocket 挂在
+ * API 同一个主机的 /ws/v1 上。两边对不上时的表现是「登录成功、界面正常、但一条便笺都同步不上去」，
+ * 而且两头都不报错：客户端连不上就换不到同步凭据，服务端于是连一次请求都看不到。
+ * 推导可以让自托管只配一个地址，也就没有第二个地址可以配错。
+ */
+export function syncUrlFromApi(apiBaseUrl: string): string {
+  const base = (apiBaseUrl || "").trim().replace(/\/+$/, "");
+  if (base.startsWith("https://")) return `wss://${base.slice(8)}/ws/v1`;
+  if (base.startsWith("http://")) return `ws://${base.slice(7)}/ws/v1`;
+  return "wss://api.bianfa.app/ws/v1";
+}
+
+export const DEFAULT_SYNC_WS_URL = syncUrlFromApi("https://api.bianfa.app");
 
 export const documentName = (workspaceId: string, noteId: string) =>
   `note:${workspaceId.toLowerCase()}:${noteId.toLowerCase()}`;
@@ -108,8 +126,11 @@ export class SyncHost {
     if (this.started) return;
     this.started = true;
     const settings = await settingsGet().catch(() => null);
-    if (settings?.syncWsUrl) this.wsUrl = settings.syncWsUrl;
-    if (!/\/ws\//.test(this.wsUrl)) this.wsUrl = DEFAULT_SYNC_WS_URL;
+    // 由 apiBaseUrl 推导是缺省；只有用户显式配过、且不是那个作废的老默认值时才用设置里的
+    const derived = settings?.apiBaseUrl ? syncUrlFromApi(settings.apiBaseUrl) : DEFAULT_SYNC_WS_URL;
+    const stored = settings?.syncWsUrl;
+    this.wsUrl = stored && stored !== LEGACY_SYNC_WS_URL ? stored : derived;
+    if (!/\/ws\//.test(this.wsUrl)) this.wsUrl = derived;
     this.unlisten.push(await onAuthChanged((a) => void this.onAuth(a)));
     this.unlisten.push(await onDbChanged((p) => this.onDbChanged(p)));
     await this.onAuth(await authStatus().catch(() => null));

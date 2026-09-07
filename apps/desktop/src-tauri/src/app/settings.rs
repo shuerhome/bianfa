@@ -7,10 +7,16 @@ use crate::model::Settings;
 pub fn load(paths: &Paths) -> Settings {
     match std::fs::read_to_string(&paths.settings_file) {
         Ok(text) => match serde_json::from_str::<Settings>(&text) {
-            Ok(s) if s.validate().is_ok() => s,
-            Ok(_) => {
-                log::warn!("settings.json has invalid values; using defaults");
-                Settings::default()
+            Ok(mut s) => {
+                // 迁移：老安装盘上存着的是硬编码的 wss://ws.<域>/ws/v1，而 WebSocket 实际挂在
+                // API 同一个主机上。持久化的值会盖掉新的默认值，所以光改默认值救不了老安装。
+                s.normalize();
+                if s.validate().is_ok() {
+                    s
+                } else {
+                    log::warn!("settings.json has invalid values; using defaults");
+                    Settings::default()
+                }
             }
             Err(e) => {
                 log::warn!("settings.json unreadable ({e}); using defaults");

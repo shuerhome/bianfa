@@ -272,7 +272,31 @@ pub struct Settings {
 }
 
 pub const DEFAULT_API_BASE_URL: &str = "https://api.bianfa.app";
-pub const DEFAULT_SYNC_WS_URL: &str = "wss://ws.bianfa.app/ws/v1";
+
+/// 曾经的硬编码同步地址。它假定部署会单独开一个 `ws.` 子域，而实际部署把 WebSocket 挂在
+/// API 同一个主机的 `/ws/v1` 上（Caddy 的 `handle /ws/*` 不按主机名区分）。两边一旦对不上，
+/// 表现是「登录成功、界面正常、但一条便笺都同步不上去」——客户端连不上就换不到同步凭据，
+/// 服务端因此连一次请求都看不到，两头都不报错，非常难查。
+///
+/// 现在同步地址默认**从 apiBaseUrl 推导**（见 [`default_sync_ws_url`]），自托管只需配一个地址。
+/// 这个常量保留下来只为一件事：把老安装里存着的这个旧值识别出来并迁移掉（见 [`Settings::normalize`]）。
+pub const LEGACY_SYNC_WS_URL: &str = "wss://ws.bianfa.app/ws/v1";
+
+/// 由 API 地址推导同步地址：`https://x/` → `wss://x/ws/v1`（http → ws）。
+/// 推导失败（地址畸形）时回落到用默认 API 地址推出来的那个。
+pub fn default_sync_ws_url(api_base_url: &str) -> String {
+    let trimmed = api_base_url.trim_end_matches('/');
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        format!("wss://{rest}/ws/v1")
+    } else if let Some(rest) = trimmed.strip_prefix("http://") {
+        format!("ws://{rest}/ws/v1")
+    } else {
+        format!(
+            "wss://{}/ws/v1",
+            DEFAULT_API_BASE_URL.trim_start_matches("https://")
+        )
+    }
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -287,7 +311,7 @@ impl Default for Settings {
             color_patterns: false,
             reduce_transparency: false,
             api_base_url: DEFAULT_API_BASE_URL.into(),
-            sync_ws_url: DEFAULT_SYNC_WS_URL.into(),
+            sync_ws_url: default_sync_ws_url(DEFAULT_API_BASE_URL),
             acked_notice_ids: Vec::new(),
             tray_hint_shown: false,
         }
@@ -348,6 +372,18 @@ impl Settings {
             return Err("syncWsUrl must be ws(s)".into());
         }
         Ok(())
+    }
+
+    /// 读盘之后、校验之前调用。目前只做一件事：把老安装里存着的 `wss://ws.<域>/ws/v1`
+    /// 迁移成由 apiBaseUrl 推导出来的地址。
+    ///
+    /// 为什么必须迁移而不是只改默认值：这个字段是**持久化**的，老安装启动时读到的是盘上那个旧值，
+    /// 新的默认值根本轮不到生效。不迁移的话，升级完照样同步不了，而且更难查——因为代码里已经写着新地址了。
+    /// 只认那一个确切的旧字符串，用户自己手改过的地址不动。
+    pub fn normalize(&mut self) {
+        if self.sync_ws_url == LEGACY_SYNC_WS_URL || self.sync_ws_url.is_empty() {
+            self.sync_ws_url = default_sync_ws_url(&self.api_base_url);
+        }
     }
 }
 
@@ -457,5 +493,57 @@ mod tests {
         assert_eq!(p.schema_version, 1);
         assert_eq!(p.color, NoteColor::Graphite);
         assert!(p.checklist.is_empty());
+    }
+
+    #[test]
+    fn sync_url_is_derived_from_api_url() {
+        assert_eq!(
+            default_sync_ws_url("https://api.bianfa.app"),
+            "wss://api.bianfa.app/ws/v1"
+        );
+        // 末尾斜杠不该多出一段
+        assert_eq!(
+            default_sync_ws_url("https://api.example.test/"),
+            "wss://api.example.test/ws/v1"
+        );
+        // 本地开发用明文
+        assert_eq!(
+            default_sync_ws_url("http://127.0.0.1:3000"),
+            "ws://127.0.0.1:3000/ws/v1"
+        );
+        // 畸形输入回落到默认主机，而不是拼出一个非法地址
+        assert_eq!(
+            default_sync_ws_url("nonsense"),
+            "wss://api.bianfa.app/ws/v1"
+        );
+    }
+
+    #[test]
+    fn normalize_migrates_the_dead_legacy_sync_url() {
+        // 老安装：盘上存着那个从来连不上的 ws. 子域
+        let mut s = Settings {
+            sync_ws_url: LEGACY_SYNC_WS_URL.into(),
+            api_base_url: "https://api.bianfa.app".into(),
+            ..Settings::default()
+        };
+        s.normalize();
+        assert_eq!(s.sync_ws_url, "wss://api.bianfa.app/ws/v1");
+
+        // 自托管：apiBaseUrl 改过，同步地址跟着走
+        let mut s = Settings {
+            sync_ws_url: LEGACY_SYNC_WS_URL.into(),
+            api_base_url: "https://n.example.test".into(),
+            ..Settings::default()
+        };
+        s.normalize();
+        assert_eq!(s.sync_ws_url, "wss://n.example.test/ws/v1");
+
+        // 用户自己手改过的地址不许动
+        let mut s = Settings {
+            sync_ws_url: "wss://my.own.host/ws/v1".into(),
+            ..Settings::default()
+        };
+        s.normalize();
+        assert_eq!(s.sync_ws_url, "wss://my.own.host/ws/v1");
     }
 }
