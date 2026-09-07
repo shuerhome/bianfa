@@ -144,6 +144,36 @@
     "emptyHint": "Create one, or drag a note here.",
     "editing": "✎ {{name}} is editing"
   },
+  "todos": {
+    "title": "To-dos",
+    "segments": "To-do filter",
+    "seg": {
+      "open": "Open",
+      "done": "Done",
+      "all": "All"
+    },
+    "scope": "Scope",
+    "scopeLocal": "My notes",
+    "member": "Member",
+    "allMembers": "All members",
+    "empty": "No to-dos yet",
+    "emptyHint": "Press {{key}} inside a note to add one",
+    "emptyDone": "Nothing completed yet.",
+    "emptyScope": "No to-dos in this scope.",
+    "loadFailed": "Couldn't load to-dos.",
+    "loadMore": "Load more",
+    "openNote": "Open this note",
+    "notLocal": "This note isn't on this device yet; open it first to check items here.",
+    "toggleFailed": "Couldn't update this to-do.",
+    "itemMissing": "This to-do is no longer in the note.",
+    "emptyItem": "(empty to-do)",
+    "progress": "{{done}} / {{total}} done",
+    "openCount_one": "{{count}} open",
+    "openCount_other": "{{count}} open",
+    "doneCount_one": "{{count}} done",
+    "doneCount_other": "{{count}} done",
+    "badge": "{{count}} open to-dos"
+  },
   "palette": {
     "title": "Command palette",
     "placeholder": "Search notes or type a command…",

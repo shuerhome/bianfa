@@ -1,0 +1,178 @@
+/* 待办页（主窗侧栏「待办」）：头部分段 + 范围 · 按便笺分组的卡片 · 行内 16px 复选框与 prose 待办同款 · 侧栏角标 */
+.todos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 760px;
+}
+.todos-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+}
+.todos-head__scope {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.todos-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* 分组 = 一张便笺：左 3px 身份条沿用 note-card 的 --note-dot */
+.todo-group {
+  position: relative;
+  border: 1px solid var(--c-border-subtle);
+  border-radius: var(--r-md);
+  background: var(--c-surface-1);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+  padding-left: 3px;
+}
+.todo-group::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: var(--note-dot);
+}
+.todo-group--skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 12px 15px;
+}
+.todo-group__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  transition: background-color var(--dur-1) linear;
+}
+.todo-group__head:hover {
+  background: var(--c-hover);
+}
+.todo-group__head:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: -2px;
+}
+.todo-group__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--note-dot);
+}
+.todo-group__title {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.todo-group__meta {
+  flex: none;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+}
+.todo-group__items {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+}
+
+/* 行：整行可点（label），复选框 16×16 stroke 1.5，完成项文字 text-2 不划线（与 prose 一致） */
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-height: 32px;
+  padding: 6px 12px 6px 24px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-cjk);
+  color: var(--c-text-1);
+  transition: background-color var(--dur-1) linear;
+}
+.todo-item:hover {
+  background: var(--c-hover);
+}
+.todo-item__check {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: calc((var(--lh-cjk) * 1em - 16px) / 2) 0 0;
+  border: 1.5px solid var(--c-text-2);
+  border-radius: var(--r-xs);
+  background: transparent;
+  display: grid;
+  place-content: center;
+  color: var(--c-text-1);
+}
+.todo-item__check::before {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg) scale(0.9);
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-out) 40ms;
+}
+.todo-item__check:checked::before {
+  opacity: 1;
+}
+.todo-item__check:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+.todo-item__check:disabled {
+  border-color: var(--c-text-3);
+  color: var(--c-text-3);
+}
+.todo-item__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.todo-item[data-checked="true"] .todo-item__text {
+  color: var(--c-text-2);
+}
+.todo-item:has(.todo-item__check:disabled) {
+  color: var(--c-text-3);
+}
+.todos-more {
+  align-self: center;
+}
+
+/* 侧栏角标：未完成数 */
+.todos-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-full);
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+  font-size: var(--fs-2xs);
+  line-height: 18px;
+  text-align: center;
+}
+.main-sidebar__item--current .todos-badge {
+  background: var(--c-accent);
+  color: var(--c-surface-1);
+}

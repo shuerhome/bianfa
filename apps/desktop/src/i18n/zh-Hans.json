@@ -144,6 +144,36 @@
     "emptyHint": "新建一张，或者把便笺拖进来。",
     "editing": "✎ {{name}} 正在编辑"
   },
+  "todos": {
+    "title": "待办",
+    "segments": "待办筛选",
+    "seg": {
+      "open": "未完成",
+      "done": "已完成",
+      "all": "全部"
+    },
+    "scope": "范围",
+    "scopeLocal": "我的便笺",
+    "member": "成员",
+    "allMembers": "所有成员",
+    "empty": "还没有待办",
+    "emptyHint": "在便笺里按 {{key}} 插入一个",
+    "emptyDone": "还没有完成的待办。",
+    "emptyScope": "这个范围里没有待办。",
+    "loadFailed": "没能加载待办。",
+    "loadMore": "加载更多",
+    "openNote": "打开这张便笺",
+    "notLocal": "这张便笺还没同步到本机，先打开这张便笺后才能在这里勾选。",
+    "toggleFailed": "没能更新这条待办。",
+    "itemMissing": "这条待办已不在便笺里。",
+    "emptyItem": "（空白待办）",
+    "progress": "{{done}} / {{total}} 已完成",
+    "openCount_one": "{{count}} 项未完成",
+    "openCount_other": "{{count}} 项未完成",
+    "doneCount_one": "{{count}} 项已完成",
+    "doneCount_other": "{{count}} 项已完成",
+    "badge": "{{count}} 项未完成待办"
+  },
   "palette": {
     "title": "命令面板",
     "placeholder": "搜索便笺或输入命令…",

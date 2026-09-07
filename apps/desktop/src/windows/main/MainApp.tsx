@@ -1,4 +1,4 @@
-// 主窗（specs/06 §4.2）：顶栏搜索 · 侧栏筛选（全部/桌面上/置顶/回收站/团队）· 卡片网格 · 批量条 · 命令面板 · 更新条。
+// 主窗（specs/06 §4.2）：顶栏搜索 · 侧栏筛选（全部/桌面上/置顶/待办/回收站/团队）· 卡片网格 · 批量条 · 命令面板 · 更新条。
 import { Button, IconButton, Menu, MenuItem, MenuSeparator, useToast } from "@bianfa/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,9 +23,11 @@ import { useDbInvalidation, useNotes } from "./hooks.js";
 import { type Filter, useMainStore } from "./main-store.js";
 import { NoteCard } from "./NoteCard.js";
 import { TeamWall } from "./TeamWall.js";
+import { TodosBadge } from "./todos/TodosBadge.js";
+import { TodosPanel } from "./todos/TodosPanel.js";
 import { UpdateBanner } from "./UpdateBanner.js";
 
-const FILTERS: Filter[] = ["all", "open", "pinned", "trash", "team"];
+const FILTERS: Filter[] = ["all", "open", "pinned", "todos", "trash", "team"];
 const SKELETON_KEYS = Array.from({ length: 12 }, (_, i) => `sk-${i}`);
 
 export function MainApp({ initialSection }: { initialSection: string | null }) {
@@ -44,7 +46,8 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅启动一次
   useEffect(() => {
-    if (initialSection === "trash" || initialSection === "team") s.set({ filter: initialSection });
+    if (initialSection === "trash" || initialSection === "team" || initialSection === "todos")
+      s.set({ filter: initialSection });
     void notesPurgeExpired().catch(() => undefined);
     void updateCheck(false)
       .then((r) => r.available && r.version && s.set({ updateBanner: { version: r.version } }))
@@ -111,7 +114,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
     }
   });
 
-  const filterLabel = (f: Filter) => t(`list.filter.${f}`);
+  const filterLabel = (f: Filter) => (f === "todos" ? t("todos.title") : t(`list.filter.${f}`));
   const emptyForFilter = () => {
     if (notes.searching) {
       return (
@@ -220,6 +223,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
               onClick={() => s.set({ filter: f, selected: new Set() })}
             >
               <span>{filterLabel(f)}</span>
+              {f === "todos" ? <TodosBadge /> : null}
             </button>
           ))}
           <div className="main-sidebar__spacer" />
@@ -228,7 +232,9 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
           </button>
         </nav>
         <main className="main-content">
-          {s.filter === "team" ? (
+          {s.filter === "todos" ? (
+            <TodosPanel auth={auth.data ?? null} />
+          ) : s.filter === "team" ? (
             <TeamWall auth={auth.data ?? null} />
           ) : notes.isLoading ? (
             <div className="note-grid" aria-busy="true">
