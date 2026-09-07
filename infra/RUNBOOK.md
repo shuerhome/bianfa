@@ -1,11 +1,12 @@
 <!--
   文件作用：bianfa 生产环境运维手册（给运维者 = 开发者自己）。事故当天照着敲，不需要再翻方案文档。
-            架构一图 → 首次部署 30 天 → 日常发版 → 备份恢复 → 7 条告警 → 6 类故障 → 密钥清单 → 升级决策 → 演练日历。
+            架构一图 → 首次部署 30 天 → 日常发版 → 备份恢复 → 7 条告警 → 7 类故障 → 密钥清单 → 升级决策 → 演练日历 → 平台总管理员。
   来源章节：第 1 章 0.3 S3/S5、0.4 架构图；第 3 章 2.4（签名 / updater / 灰度）+ docs/ADR-001（v1 不买代码签名，macOS 自签名）；
             第 9 章 8.4–8.13；第 10 章 9.3.5（kill switch）、
-            9.4.5（容器加固）；第 17 章 #28/#29/#30/#74；以及 infra/vps/*、infra/cloudflare/* 里已经写好的脚本与手册。
+            9.4.5（容器加固）；第 17 章 #28/#29/#30/#74；§7.7 与 §11 另据第 6 章 5.6（总管理员端点与边界）与第 10 章 9.4.6（设计理由）；
+            以及 infra/vps/*、infra/cloudflare/* 里已经写好的脚本与手册。
             与第 9/10 章正文冲突处，以第 1 章跨模块裁定为准（Tunnel 架构、pg-boss、Redis 纯 ephemeral、三把 R2 key）。
-  本文每一条命令的参数都对照了脚本源码（deploy.sh / backup.sh / restore.sh / bootstrap.sh / break-glass.sh / notify.sh /
+  本文每一条命令的参数都对照了脚本源码（deploy.sh / backup.sh / restore.sh / bootstrap.sh / break-glass.sh / notify.sh / platform-admin.sh /
             cron.d/bianfa、两个 Worker 的 wrangler.toml 与 src/index.ts）。脚本没有的参数，本文不写。
   必须人工替换（全文统一写法，不要用会被误当真值的假数据）：
     <REPLACE_ME:domain>            根域，例如 example.com（api. / ws. / ssh. / update. / cdn. 都挂在它下面）
@@ -59,7 +60,7 @@ alias dc='sudo docker compose --project-directory /srv/bianfa/app/infra/docker -
 | `/srv/bianfa/log/{deploy,backup,restore,break-glass,cron}.log` | 各脚本日志，logrotate 每周 |
 | `/srv/bianfa/run/` | `deploy.lock`、break-glass 的 `compose.break-glass.yml` / `Caddyfile.break-glass` / `break-glass.active` |
 | `/var/lib/bianfa/{prepared,locked_down}` | bootstrap.sh 的阶段标记 |
-| `/srv/bianfa/app/infra/vps/*.sh` | `bootstrap` / `deploy` / `backup` / `restore` / `break-glass` / `notify` |
+| `/srv/bianfa/app/infra/vps/*.sh` | `bootstrap` / `deploy` / `backup` / `restore` / `break-glass` / `notify` / `platform-admin`（§11） |
 
 ### 0.3 十条最常用命令
 
@@ -666,6 +667,21 @@ openssl pkcs12 -in selfsign.p12 -nokeys -passin pass:"$P12_PASSWORD" | openssl x
 - **验证**：一小时后重跑 SQL，增速归零；Telegram 无新告警。
 - **事后**：预算数字与 `monthly-budget-usd` 是否一致；是否需要把 80% 告警改成 50% + 80% 两级；`ai_usage` 里是否有 `fallback_from` 大量出现（fallback 到贵模型）。
 
+### 7.7 总管理员账号被盗用 / 管理面要立刻停掉
+
+- **判定**：`GET /v1/admin/audit`（或下面那条 SQL）里出现你不认识的 `admin.content_viewed` / `admin.password_set` / `admin.user_frozen`；或某个总管理员的设备/凭据丢了；或任何"可能"——按盗用处理。
+  ```sh
+  dc exec -T -u postgres postgres psql -X -c \
+    "select a.at, u.email, a.action, a.target_id, a.metadata from audit_log a
+       left join \"user\" u on u.id = a.actor_id
+      where a.action like 'admin.%' and a.at > now() - interval '24 hours' order by a.at desc"
+  ```
+- **威胁**：总管理员能只读看到目标用户能看到的一切（含其团队工作区，E2EE 便笺除外）、能改任意非管理员用户的密码、能冻结账号。**不能**改另一个总管理员的密码、不能冻结另一个总管理员、不能写任何用户数据、不能在界面上给自己或别人授予身份。
+- **处置（顺序不能换）**：① 先把整个管理面下线（§11.3，一分钟），**不要**先去删名单——撤销只对之后的请求生效（在途请求不受影响），而且事发当时你未必能确定是哪个账号；关闸一次覆盖所有管理员；② 撤销该管理员身份（§11.2）；③ 该账号本身按普通账号处理：改密码 / 冻结（管理面此刻已 404，所以要么直接 psql 置 `frozen_at = now(), banned = true` 再等 token 自然失效，要么等第 ① 步的闸抬起来之后由另一个管理员做）；④ 从 `audit_log` 拉出被查看过的 `subject_user_id` 清单，评估要不要按泄露通知（第 10 章 9.6.2，72 小时）。
+- **验证**：带管理员 token 打 `/v1/admin/users` 返回 404；`sudo …/platform-admin.sh list` 里没有那个人。
+- **事后**：恢复管理面（§11.3 末）；重新授予时换一个账号而不是沿用被盗的那个；核对 `authz.denied` 里有没有其他人也在摸 `/v1/admin/*`。
+
+
 ---
 
 ## 8. 密钥清单
@@ -750,6 +766,126 @@ sudo -u ops git -C /srv/bianfa/app pull --ff-only && dc up -d postgres && dc res
 | 日期 | 演练 | 结果 / 用时 | 备注 |
 |---|---|---|---|
 | | | | |
+
+## 11. 平台总管理员（实例级超级管理员）
+
+**它是什么**：一个**实例级**角色，不属于任何 organization，权限也与 org 的 owner/admin/member 无关——自托管场景里"机器的主人"就是它。名单在 `platform_admin` 表，**只能从 SSH 授予**（§11.1）：这张表开了 RLS 且只给 `bianfa_app` 一条 SELECT 策略，而 api 进程是 NOBYPASSRLS，写入需要 `bianfa_worker`（BYPASSRLS）。**api 即使被完全攻陷，也铸不出一个新的总管理员。**
+
+**能做三件事**：改任意**非管理员**用户的密码、冻结/解冻账号、只读查看该用户能看到的全部内容（含其所在团队的工作区）。
+**不能做的**：不能改另一个总管理员的密码、不能冻结另一个总管理员、不能写任何用户数据（查看走只读事务）、不能读 E2EE 便笺的正文（服务端只有密文）、**不能在界面上授予或撤销总管理员身份**——界面上没有这个入口，也不该有。
+
+API 全在 `/v1/admin/*`（Bearer + 名单判定），端点清单与响应字段见第 6 章 5.6；为什么这么设计见第 10 章 9.4.6。
+
+### 11.1 首次开出第一个总管理员
+
+顺序不能换——脚本按邮箱在 `"user"` 表里找人，人不存在就没法授予：
+
+1. 让本人在 Web 端 `https://api.<REPLACE_ME:domain>/signup` 正常注册（邮箱 + 密码 + 安全码），确认能登录。
+2. `ssh bianfa-prod`
+3. ```sh
+   sudo /srv/bianfa/app/infra/vps/platform-admin.sh grant you@example.com "首个总管理员 2026-09-07"
+   sudo /srv/bianfa/app/infra/vps/platform-admin.sh list     # 确认：邮箱 <TAB> 授予时间 <TAB> 备注
+   ```
+4. 让本人登录后用桌面端的 Bearer token 打一次 `GET /v1/admin/admins`，应为 200（非管理员是 `403 {"error":"insufficient_role","required":"platform_admin"}`）。
+
+脚本走的是 **worker 容器**（`compose run --rm --no-deps -T worker node dist/platform-admin.js …`），因为 worker 的 `DATABASE_URL` 用的才是 `bianfa_worker`。两个前置：
+
+- 它用 `/srv/bianfa/.tag.current` 里的 tag 起容器，所以**该 tag 的镜像里必须有 `dist/platform-admin.js`**——这个入口是随本特性新增的（`apps/server/scripts/build.mjs` 的第六个 entry），更早的镜像跑起来会是 "Cannot find module"。真撞上就先 `deploy.sh` 到带这个入口的 tag。**注意脚本会用 `.tag.current` 覆盖你在命令行前置的 `TAG=`**（`[[ -n "$CUR" ]] && export TAG="$CUR"`），要临时指定别的 tag 只能绕开脚本直接敲：
+  ```sh
+  sudo TAG=<新 tag> docker compose --project-directory /srv/bianfa/app/infra/docker --env-file /srv/bianfa/.env.prod \
+    run --rm --no-deps -T worker node dist/platform-admin.js list
+  ```
+- `--no-deps` 不拉依赖，pgbouncer / postgres 必须已经在跑（正常生产状态即满足）。
+
+grant / revoke 各写一条 `actor_type='system'` 的审计（`admin.granted` / `admin.revoked`，`actor_id` 为 NULL）——SSH 上敲命令的人不对应任何登录会话。授予是幂等的（`ON CONFLICT DO UPDATE`，只补备注）；对已注销（`deleted_at` 非空）的用户拒绝授予。
+
+### 11.2 撤销
+
+```sh
+sudo /srv/bianfa/app/infra/vps/platform-admin.sh revoke someone@example.com
+```
+
+**即刻生效**：判定不带缓存，每个 `/v1/admin/*` 请求都查一次 `platform_admin`（低频高危面，用一次索引命中换"撤销立即生效"）。撤销**不动**账号本身：不冻结、不登出、不改密码，那个人还是普通用户。
+
+撤到 0 人时脚本会明说——管理台从此对所有人 403，只能再从这条命令授回来。**别在没有 SSH 通道的时候撤掉最后一个管理员。**
+
+### 11.3 出事时：一分钟关掉整个管理面
+
+```sh
+ssh bianfa-prod
+sudo sed -i '/^PLATFORM_ADMIN_ENABLED=/d' /srv/bianfa/.env.prod          # 先去掉可能已有的那行（可能是 =1）
+echo 'PLATFORM_ADMIN_ENABLED=0' | sudo tee -a /srv/bianfa/.env.prod >/dev/null
+dc up -d --no-deps --force-recreate api                                  # 两个副本同时重建，约 5 秒中断（§3）
+curl -si https://api.<REPLACE_ME:domain>/v1/admin/users -H "Authorization: Bearer <管理员 token>" | head -1   # 期望 404
+```
+
+- 这个变量**只接受 `0` 或 `1`**：`0` = 关，`1` 或**不设**（含空串，compose 的 `${X:-}` 就是空串）= 开。写成 `false` / `no` 之类的值会让 api **起不动**（启动时 `环境变量校验失败`），别手滑。
+- 关掉后整面返回 **404 而不是 403**——这时这些端点在这个部署里确实不存在，不是权限问题。
+- 这个变量**刻意不在 `infra/docker/.env.prod.example` 里**：`deploy.sh` 会拒绝任何含 `REPLACE_ME` 的必填键，而它是个有安全缺省值的可选开关，不该变成所有自托管实例的部署前置。
+- ⚠️ **前置**：compose 的 `api` 服务 `environment:` 必须显式映射这一行。本栈不给容器灌全量 `env_file`（"一个进程只拿它需要的变量"），`.env.prod` 里写了但 compose 没映射的变量**进不了容器**。动手前先 `grep PLATFORM_ADMIN_ENABLED /srv/bianfa/app/infra/docker/docker-compose.yml`；没有就补一行 `PLATFORM_ADMIN_ENABLED: ${PLATFORM_ADMIN_ENABLED:-}` 走 git 发一版（§3：一切变更走 git）。上面那条期望 404 的 `curl` 就是这条前置的验证，**不要跳过**。
+- **恢复**：`sudo sed -i '/^PLATFORM_ADMIN_ENABLED=/d' /srv/bianfa/.env.prod`（或把值改成 `1`），再 `dc up -d --no-deps --force-recreate api`；同样用一条 `curl` 确认回到 200/403。
+- CI 下一次 `deploy-with-env` 会用 GitHub Environment 渲染出的 `.env.prod` 覆盖机器上的手改（和 §7.6 同一个坑）。要长期关掉，把它加进 `prod` Environment 的渲染模板。
+
+### 11.4 回滚注意事项：冻结状态跨版本的行为
+
+冻结落在**两列**上：`"user".frozen_at`（随本特性新增）与 `"user".banned`（老列，冻结时一并置 true）。一并置 `banned` 是故意的——老镜像的 `verify-bearer` 只认 `banned`。因此**回滚到不认识 `frozen_at` 的旧镜像后**：
+
+| 面 | 旧镜像下的行为 |
+|---|---|
+| 桌面端 Bearer（`/v1/*`） | **仍然关着**（`banned` 判定，老代码就有） |
+| Web cookie 登录 | **会恢复**——冻结的建会话判定在 `databaseHooks.session.create.before` 里，旧镜像没有这段代码 |
+| 同步 WebSocket | 冻结当时的连接已被 `authz_revoked` 关掉且不会重连：拿新房间凭据要先过 `/v1/sync/token`，那是 Bearer 面 |
+| `/v1/admin/*` | 旧镜像没有这些路由 → 404 |
+
+**回滚前先看一眼有没有在冻结的账号**：
+
+```sh
+dc exec -T -u postgres postgres psql -X -c \
+  "select id, email, frozen_at, frozen_reason, banned from \"user\" where frozen_at is not null order by frozen_at desc"
+```
+
+有的话，就要知道：回滚窗口期内这些人能登进 Web 面看到自己的便笺（桌面同步仍然不通）。对策是把回滚窗口压短，或在回滚前先确认这些账号确实不需要挡住 Web 面——**不要**为此去设 `deleted_at`，那是注销语义，会启动 30 天清除流程。
+
+`frozen_at` / `frozen_by` / `frozen_reason` 都是 `ADD COLUMN IF NOT EXISTS` 加的可空列，旧镜像不认识它们但也不会报错（§4.1.3 的 expand → 部署 → contract 纪律）。反向回滚（旧 → 新）不需要任何操作。
+
+### 11.5 谁看了谁的内容（审计追溯）
+
+管理员的每一次动作都留痕，**包括只读查看**；而且查看的那条审计是在读之前用一笔独立事务写的（读本身跑在只读事务里，写不进 `audit_log`），所以"读失败"同样留痕。
+
+线上入口（管理员自己就能查）：
+
+```
+GET /v1/admin/audit?limit=&offset=&user_id=<被查的人的 user id>
+```
+
+它捞 `action LIKE 'admin.%'` **或** `action = 'auth.sign_in_denied'` 的条目。`user_id` 过滤的是 **`target_id`**：看用户详情 / 工作区 / 便笺列表时 `target_id` 就是被查看的人，但**看便笺正文那一条的 `target_id` 是便笺 id**，用这个参数捞不到——要一个不漏，用下面的 SQL 按 `metadata->>'subject_user_id'` 过滤。为什么要单开一个入口：org 侧的审计接口硬编码 `WHERE org_id = <当前 org>`，而管理员条目的 `org_id` 恒为 NULL，结构上永远查不到。
+
+上机直接查（管理面已关停、或要导出时）：
+
+```sh
+dc exec -T -u postgres postgres psql -X -c \
+  "select a.at, u.email as actor, a.action, a.target_type, a.target_id, a.outcome, a.metadata
+     from audit_log a left join \"user\" u on u.id = a.actor_id
+    where a.action like 'admin.%' order by a.at desc limit 50"
+# 只看某个人被谁看过（'admin.content_viewed' 的 metadata 里一定有 subject_user_id）：
+dc exec -T -u postgres postgres psql -X -c \
+  "select a.at, u.email as actor, a.action, a.metadata->>'view' as view, a.target_id
+     from audit_log a left join \"user\" u on u.id = a.actor_id
+    where a.metadata->>'subject_user_id' = '<被查的人的 user id>' order by a.at desc"
+```
+
+| action | 什么时候写 | metadata 里看什么 |
+|---|---|---|
+| `admin.user_listed` | 翻用户名单 | `q`、`frozen_only`、`offset`、`limit` |
+| `admin.content_viewed` | 看用户详情 / 工作区 / 便笺列表 / 便笺正文 | `subject_user_id`（**被看的人**）、`view` = `detail` \| `workspaces` \| `notes` \| `note_body`；`target_id` 在 `note_body` 时是便笺 id |
+| `admin.user_frozen` / `admin.user_unfrozen` | 冻结 / 解冻 | `reason`、`revoked_devices` |
+| `admin.password_set` | 管理员改了某人的密码 | `via: "platform_admin"`、`revoked_devices` |
+| `admin.granted` / `admin.revoked` | SSH 上跑 `platform-admin.sh` | `email`、`via: "cli"`；`actor_type='system'`、`actor_id` 为 NULL |
+| `auth.sign_in_denied` | 被冻结/封禁的账号尝试登录（建会话被挡） | `reason` = `frozen` \| `banned`；`outcome='denied'` |
+| `authz.denied` | 非管理员摸了 `/v1/admin/*` | `required: "platform_admin"`、`path`、`method`——**这条单独看**：普通用户不会误触管理端点。注意 `GET /v1/admin/audit` **不返回它**（那个接口只捞 `admin.%` 与 `auth.sign_in_denied`），要看就把上面 SQL 的条件换成 `a.action = 'authz.denied' and a.metadata->>'required' = 'platform_admin'` |
+
+`audit_log` 对 `bianfa_app` 只授 SELECT / INSERT（UPDATE、DELETE 被 REVOKE），**管理员抹不掉自己的痕迹**——要改只能从 `bianfa_worker` 或超级用户，即再一次回到 SSH。
+
 
 ---
 
