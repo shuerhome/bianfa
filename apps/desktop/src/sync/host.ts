@@ -18,6 +18,8 @@ import {
 import { HocuspocusProvider, HocuspocusProviderWebsocket, WebSocketStatus } from "@hocuspocus/provider";
 import * as Y from "yjs";
 import { fetchNotesSince } from "../api/notes.js";
+import { fetchSharedWithMe } from "../api/shares.js";
+import { fetchWorkspaces } from "../api/workspaces.js";
 import { buildProjection } from "../editor/projection.js";
 import {
   attachmentsPendingUpload,
@@ -37,7 +39,7 @@ import {
 } from "../ipc/commands.js";
 import { isIpcError } from "../ipc/errors.js";
 import { onAuthChanged, onDbChanged } from "../ipc/events.js";
-import type { AuthStatus, DbChangedPayload, SyncErrCode } from "../ipc/types.js";
+import type { AuthStatus, DbChangedPayload, NoteColor, SyncErrCode, ZMode } from "../ipc/types.js";
 import { fromB64, toB64 } from "../lib/base64.js";
 import { debounce } from "../lib/time.js";
 import { useSyncStatusStore } from "./status-store.js";
@@ -85,7 +87,8 @@ export class SyncHost {
   private paused = false;
   private timers: number[] = [];
   private unlisten: Array<() => void> = [];
-  private discoveryVersion = 0;
+  /** 便笺发现水位，按工作区分别记（个人 / 各团队工作区） */
+  private discoveryVersions = new Map<string, number>();
   private started = false;
   /** 附件上传串行队列（同一时刻只跑一个 presign/PUT/commit） */
   private uploadChain: Promise<void> = Promise.resolve();
@@ -194,51 +197,103 @@ export class SyncHost {
     else if (msg.t === "authz.revoked" && msg.note_id) void this.onRevoked(msg.note_id);
   }
 
-  /** 便笺发现（specs/03 §2.6）：union，绝不本地删除；since_version 水位 + has_more 翻页 */
+  /**
+   * 便笺发现（specs/03 §2.6）：union，绝不本地删除；每个工作区各自的 since_version 水位 + has_more 翻页。
+   * 以个人工作区触发（登录 / 重连）时顺带发现：可见的团队工作区（GET /v1/workspaces）与共享给我的便笺
+   * （GET /v1/shared-with-me）——都只建本地行（workspace_id = 便笺自身所在工作区），正文等 provider 同步。
+   * inbox bump 带的是具体 workspace_id，只发现那一个工作区。
+   */
   private discovering = false;
   private async discover(workspaceId: string): Promise<void> {
     if (this.discovering || this.paused || !this.auth?.loggedIn) return;
     this.discovering = true;
     try {
-      let since = this.discoveryVersion;
-      for (let page = 0; page < 20; page += 1) {
-        const res = await fetchNotesSince(workspaceId, since);
-        for (const n of res.notes) {
-          // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
-          if (n.purgedAt !== null) continue;
-          const local = await noteGet(n.id).catch((err) =>
-            isIpcError(err) && err.code === "not_found" ? null : err,
-          );
-          if (local === null) {
-            const doc = createNoteDoc(n.id, {
-              meta: {
-                color: n.color,
-                zMode: n.zMode,
-                createdAt: n.createdAt,
-                updatedAt: n.updatedAt,
-                deletedAt: n.deletedAt,
-              },
-              origin: "remote",
-            });
-            await noteCreate({
-              noteId: n.id,
-              updateV2B64: toB64(encodeStateV2(doc)),
-              projection: buildProjection(doc),
-              workspaceId,
-            }).catch(() => undefined);
-            doc.destroy();
+      await this.discoverWorkspace(workspaceId);
+      if (workspaceId === this.auth.personalWorkspaceId) {
+        const all = await fetchWorkspaces();
+        for (const w of all) {
+          if (w.kind === "team" && w.archivedAt === null && w.id !== workspaceId) {
+            await this.discoverWorkspace(w.id);
           }
-          await this.ensureProvider(n.id, { pending: true });
         }
-        since = res.nextVersion;
-        if (!res.hasMore) break;
+        await this.discoverSharedWithMe();
       }
-      this.discoveryVersion = since;
     } catch (err) {
       if (isIpcError(err) && err.code === "upgrade_required") this.pause("upgrade-required");
     } finally {
       this.discovering = false;
     }
+  }
+
+  /** 一个工作区：GET /v1/notes?workspace_id&since_version 翻页；水位按工作区分别记（this.discoveryVersions） */
+  private async discoverWorkspace(workspaceId: string): Promise<void> {
+    // provider 的房间名目前只按个人工作区拼（ensureProvider → documentName(personalWorkspaceId, id)），
+    // 服务端对 workspace 不匹配的订阅回 forbidden；所以团队工作区的便笺这里只建行，不主动订阅。
+    const personal = workspaceId === this.auth?.personalWorkspaceId;
+    let since = this.discoveryVersions.get(workspaceId) ?? 0;
+    for (let page = 0; page < 20; page += 1) {
+      const res = await fetchNotesSince(workspaceId, since);
+      for (const n of res.notes) {
+        // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
+        if (n.purgedAt !== null) continue;
+        await this.ensureLocalRow(n.id, workspaceId, {
+          color: n.color,
+          zMode: n.zMode,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+          deletedAt: n.deletedAt,
+        });
+        if (personal) await this.ensureProvider(n.id, { pending: true });
+      }
+      since = res.nextVersion;
+      if (!res.hasMore) break;
+    }
+    this.discoveryVersions.set(workspaceId, since);
+  }
+
+  /** 共享给我：GET /v1/shared-with-me 游标翻页；便笺留在共享者的工作区里（workspace_id 取自条目） */
+  private async discoverSharedWithMe(): Promise<void> {
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const res = await fetchSharedWithMe(cursor ? { cursor, limit: 200 } : { limit: 200 });
+      for (const item of res.items) {
+        await this.ensureLocalRow(item.noteId, item.workspaceId, {
+          color: item.color,
+          zMode: item.zMode,
+          createdAt: item.updatedAt,
+          updatedAt: item.updatedAt,
+          deletedAt: null,
+        });
+      }
+      if (!res.nextCursor) break;
+      cursor = res.nextCursor;
+    }
+  }
+
+  /** 远端有、本地没有 → 建本地行（只带 meta；本地已有则什么都不做，绝不覆盖） */
+  private async ensureLocalRow(
+    noteId: string,
+    workspaceId: string,
+    meta: {
+      color: NoteColor;
+      zMode: ZMode;
+      createdAt: number;
+      updatedAt: number;
+      deletedAt: number | null;
+    },
+  ): Promise<void> {
+    const local = await noteGet(noteId).catch((err) =>
+      isIpcError(err) && err.code === "not_found" ? null : err,
+    );
+    if (local !== null) return;
+    const doc = createNoteDoc(noteId, { meta, origin: "remote" });
+    await noteCreate({
+      noteId,
+      updateV2B64: toB64(encodeStateV2(doc)),
+      projection: buildProjection(doc),
+      workspaceId,
+    }).catch(() => undefined);
+    doc.destroy();
   }
 
   private pause(reason: string): void {

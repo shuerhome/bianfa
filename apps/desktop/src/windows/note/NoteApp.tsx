@@ -28,6 +28,7 @@ import { type ShortcutAction, shortcutLabel, useHotkeys } from "../../lib/shortc
 import { applyNoteColor } from "../../lib/theme.js";
 import { debounce } from "../../lib/time.js";
 import { effectiveState } from "../../sync/status-store.js";
+import { ShareDialog } from "../main/team/ShareDialog.js";
 import { ColorPopover } from "./ColorPopover.js";
 import { NoteBody } from "./NoteBody.js";
 import { useNoteStore } from "./note-store.js";
@@ -56,6 +57,7 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [globalSync, setGlobalSync] = useState<SyncStatusPayload | null>(null);
   const [noteSync, setNoteSync] = useState<SyncStatusPayload | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const colorBtnRef = useRef<HTMLButtonElement>(null);
   const toolbarColorBtnRef = useRef<HTMLButtonElement>(null);
@@ -600,6 +602,15 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
           {t("note.copyLink")}
         </MenuItem>
         <MenuItem
+          icon="users"
+          onSelect={() => {
+            store.set({ overlay: "none" });
+            setShareOpen(true);
+          }}
+        >
+          {t("share.menu")}
+        </MenuItem>
+        <MenuItem
           icon="layout-grid"
           shortcut={shortcutLabel("openList")}
           onSelect={() => void mainWindowOpen("notes")}
@@ -614,6 +625,7 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
           {t("note.delete")}
         </MenuItem>
       </Menu>
+      <ShareDialog open={shareOpen} noteId={noteId} noteTitle={title} onClose={() => setShareOpen(false)} />
     </div>
   );
 }

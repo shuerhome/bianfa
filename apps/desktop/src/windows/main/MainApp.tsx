@@ -22,7 +22,8 @@ import { EmptyState } from "./EmptyState.js";
 import { useDbInvalidation, useNotes } from "./hooks.js";
 import { type Filter, useMainStore } from "./main-store.js";
 import { NoteCard } from "./NoteCard.js";
-import { TeamWall } from "./TeamWall.js";
+import { ShareDialog } from "./team/ShareDialog.js";
+import { TeamPanel } from "./team/TeamPanel.js";
 import { UpdateBanner } from "./UpdateBanner.js";
 
 const FILTERS: Filter[] = ["all", "open", "pinned", "trash", "team"];
@@ -37,6 +38,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [shareNote, setShareNote] = useState<NoteListItem | null>(null);
   useDbInvalidation();
 
   const notes = useNotes(s.filter, s.query, s.sort);
@@ -229,7 +231,7 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
         </nav>
         <main className="main-content">
           {s.filter === "team" ? (
-            <TeamWall auth={auth.data ?? null} />
+            <TeamPanel auth={auth.data ?? null} />
           ) : notes.isLoading ? (
             <div className="note-grid" aria-busy="true">
               {SKELETON_KEYS.map((k) => (
@@ -333,6 +335,17 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
                 {t("list.closeWindow")}
               </MenuItem>
             ) : null}
+            {auth.data?.loggedIn ? (
+              <MenuItem
+                icon="users"
+                onSelect={() => {
+                  if (contextNote) setShareNote(contextNote);
+                  setContextNote(null);
+                }}
+              >
+                {t("share.menu")}
+              </MenuItem>
+            ) : null}
             <MenuSeparator />
             <MenuItem icon="trash-2" danger onSelect={() => contextNote && void trashNote(contextNote.id)}>
               {t("note.delete")}
@@ -344,6 +357,12 @@ export function MainApp({ initialSection }: { initialSection: string | null }) {
           </MenuItem>
         )}
       </Menu>
+      <ShareDialog
+        open={shareNote !== null}
+        noteId={shareNote?.id ?? null}
+        noteTitle={shareNote?.title}
+        onClose={() => setShareNote(null)}
+      />
       <CommandPalette
         open={s.paletteOpen}
         onClose={() => s.set({ paletteOpen: false })}
