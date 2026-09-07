@@ -186,8 +186,13 @@ jobs:
           cache: pnpm
       - name: 安装依赖（--ignore-scripts：checklist #11 要求整条链在此模式下可跑）
         run: pnpm install --frozen-lockfile --ignore-scripts
+      # apps/desktop 与 apps/web 此前不在任何 job 的过滤器里：它们的单测在 CI 中一次都没跑过。
+      # 桌面端的同步用例（sync-host.test.ts）正是钉「一条便笺都同步不上去」那类事故的，
+      # 在 CI 里是死的等于没有。desktop.yml / desktop-dev.yml 只构建、不测，补不上这个口子。
       - name: lint / typecheck / 单测
-        run: pnpm turbo run lint typecheck test --filter='./apps/server' --filter='./packages/*'
+        run: >-
+          pnpm turbo run lint typecheck test
+          --filter='./apps/server' --filter='./apps/desktop' --filter='./apps/web' --filter='./packages/*'
 
   # ---------------------------------------------------------------------------
   # 集成测试 = 第 9 章 8.10 的「没有 staging」替代：每次 PR 全新一套 PG18 + PgBouncer + Redis
