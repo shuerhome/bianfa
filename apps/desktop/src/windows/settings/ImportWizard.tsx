@@ -18,13 +18,20 @@ type Step =
   | { kind: "sources"; sources: ImportSource[]; loading: boolean }
   | { kind: "preview"; path: string; notes: ImportPreviewNote[]; selected: Set<string>; archivedTo: string }
   | { kind: "committing"; done: number; total: number }
-  | { kind: "result"; result: ImportCommitResult; degraded: number; ink: number }
+  | {
+      kind: "result";
+      result: ImportCommitResult;
+      degraded: number;
+      ink: number;
+      failed: { externalId: string; title: string; error: string }[];
+    }
   | { kind: "error"; message: string };
 
 /** 一条 plum 便笺 → import_commit 项（纯函数，可测）。Rust 预览已附 *_ms；缺失时再从 ISO 解析 */
 export function buildCommitItem(note: ImportPreviewNote): ImportCommitItem {
   const noteId = uuidv7();
-  const { doc, init } = plumNoteToNoteDoc(note, noteId);
+  // shared 侧：Markdown/schema 校验失败会退化为逐行纯段落（bodyFallback=true），一个字都不丢，只标记格式降级
+  const { doc, init, bodyFallback } = plumNoteToNoteDoc(note, noteId);
   const projection = buildProjection(doc);
   const w = note.window;
   const item: ImportCommitItem = {
@@ -38,7 +45,7 @@ export function buildCommitItem(note: ImportPreviewNote): ImportCommitItem {
         ? { x: w.x, y: w.y, w: w.w, h: w.h, displayId: w.display_id ?? "" }
         : null,
     sourceUpdatedAt: note.updated_at_ms ?? plumTimeToMs(note.updated_at),
-    degraded: note.import_degraded,
+    degraded: note.import_degraded || bodyFallback,
   };
   doc.destroy();
   return item;
@@ -80,25 +87,49 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
     if (r.path) await preview(r.path);
   };
 
+  // 每批 50 条提交一次：进度真实可见、单条失败只跳过这一条（首批真实数据实测：一条便笺抛错会让整个导入卡死在进度条上）
+  const COMMIT_BATCH = 50;
   const commit = async () => {
     if (step.kind !== "preview") return;
     const chosen = step.notes.filter((n) => step.selected.has(n.external_id));
-    setStep({ kind: "committing", done: 0, total: chosen.length });
-    const items: ImportCommitItem[] = [];
-    for (const [i, n] of chosen.entries()) {
-      items.push(buildCommitItem(n));
-      if (i % 20 === 0) {
-        setStep({ kind: "committing", done: i, total: chosen.length });
-        await new Promise((r) => setTimeout(r, 0));
-      }
-    }
+    const total = chosen.length;
+    setStep({ kind: "committing", done: 0, total });
+    const failed: { externalId: string; title: string; error: string }[] = [];
+    const sum: ImportCommitResult = { imported: 0, updated: 0, skipped: 0 };
     try {
-      const result = await importCommit(step.path, items);
+      for (let start = 0; start < total; start += COMMIT_BATCH) {
+        const slice = chosen.slice(start, start + COMMIT_BATCH);
+        const items: ImportCommitItem[] = [];
+        for (const [j, n] of slice.entries()) {
+          try {
+            items.push(buildCommitItem(n));
+          } catch (e) {
+            console.error("import: skip note", n.external_id, e);
+            failed.push({
+              externalId: n.external_id,
+              title: (n.markdown || n.text || "").split("\n")[0]?.slice(0, 40) ?? "",
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          if (j % 10 === 9) {
+            setStep({ kind: "committing", done: start + j + 1, total });
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+        if (items.length > 0) {
+          const r = await importCommit(step.path, items);
+          sum.imported += r.imported;
+          sum.updated += r.updated;
+          sum.skipped += r.skipped;
+        }
+        setStep({ kind: "committing", done: Math.min(start + COMMIT_BATCH, total), total });
+      }
       setStep({
         kind: "result",
-        result,
+        result: { ...sum, skipped: sum.skipped + failed.length },
         degraded: chosen.filter((n) => n.import_degraded).length,
         ink: chosen.filter((n) => n.has_ink).length,
+        failed,
       });
     } catch (e) {
       setStep({ kind: "error", message: (e as Error).message });
@@ -208,6 +239,19 @@ export function ImportWizard({ open, onClose }: { open: boolean; onClose: () => 
           <p className="settings-hint">
             {t("import.resultDetail", { degraded: step.degraded, ink: step.ink })}
           </p>
+          {step.failed.length > 0 ? (
+            <div className="import-failed">
+              <p className="settings-hint">{t("import.failedList", { count: step.failed.length })}</p>
+              <ul>
+                {step.failed.slice(0, 20).map((f) => (
+                  <li key={f.externalId}>
+                    <span>{f.title || f.externalId}</span>
+                    <span className="settings-hint"> — {f.error}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="bf-dialog__footer">
             <Button variant="primary" onClick={onClose}>
               {t("common.done")}

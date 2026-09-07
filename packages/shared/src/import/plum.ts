@@ -4,7 +4,7 @@ import { z } from "zod";
 import { type NoteColor, noteColorSchema } from "../colors.js";
 import { type ImportExt, type NoteMeta, Origins, ZMode } from "../doc.js";
 import { SCHEMA_VERSION } from "../editor/version.js";
-import { inlineLinesToPmJson } from "../markdown.js";
+import { inlineLinesToPmJson, plainLinesToPmJson } from "../markdown.js";
 import { type PMJson, prosemirrorJsonToNoteDoc } from "../projector.js";
 
 export const plumExportAttachmentSchema = z.object({
@@ -136,10 +136,24 @@ export function plumNoteToDocInit(note: PlumExportNote, options: PlumImportOptio
 /** 单条导出记录 → 新 Y.Doc（origin 'import'）；noteId 由调用方生成（UUIDv7） */
 export function plumNoteToNoteDoc(note: PlumExportNote, noteId: string, options: PlumImportOptions = {}) {
   const init = plumNoteToDocInit(note, options);
-  const doc = prosemirrorJsonToNoteDoc(
-    init.content,
-    { noteId, meta: init.meta, ext: init.ext },
-    Origins.import,
-  );
-  return { doc, init };
+  try {
+    const doc = prosemirrorJsonToNoteDoc(
+      init.content,
+      { noteId, meta: init.meta, ext: init.ext },
+      Origins.import,
+    );
+    return { doc, init, bodyFallback: false as const };
+  } catch (err) {
+    // Markdown 解析或 schema 校验对某些原版内容抛错（首批真实数据实测）：退到"逐行纯段落"，一个字都不丢，
+    // 标记 degraded 让用户知道该便笺的格式没有还原。
+    const plain = plainLinesToPmJson(note.markdown);
+    const ext = { ...init.ext, import: { ...init.ext.import, degraded: true } };
+    const doc = prosemirrorJsonToNoteDoc(plain, { noteId, meta: init.meta, ext }, Origins.import);
+    return {
+      doc,
+      init: { ...init, content: plain, ext },
+      bodyFallback: true as const,
+      bodyError: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

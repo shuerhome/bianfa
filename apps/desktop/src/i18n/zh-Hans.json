@@ -298,7 +298,8 @@
     "result": "成功 {{imported}} / 更新 {{updated}} / 跳过 {{skipped}}",
     "resultDetail": "格式降级 {{degraded}} · 含墨迹 {{ink}}",
     "failed": "导入没有完成。",
-    "failedHint": "原始文件没有被改动；可以稍后重试。"
+    "failedHint": "原始文件没有被改动；可以稍后重试。",
+    "failedList": "有 {{count}} 条便笺内容异常，已跳过（其余全部导入）："
   },
   "about": {
     "version": "版本",

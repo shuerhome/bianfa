@@ -124,6 +124,22 @@ export function markdownToPmJson(markdown: string, options: MarkdownImportOption
  * 把「每行一段、只含行内标记」的文本（原版便笺导出的 markdown 形态）解析成 PM JSON：
  * 每个 `\n` 都是段落边界，空行 = 空段落；行首的块级语法按字面量处理。
  */
+/**
+ * 纯文本按行 → 段落，不走任何 Markdown 解析（导入兜底：markdown 解析/schema 校验抛错时保证"一个字都不丢"）。
+ * 控制字符（除 \t）剔除，避免 ProseMirror 校验拒绝；空行 = 空段落。
+ */
+export function plainLinesToPmJson(text: string): PMJson {
+  const content: PMJson[] = [];
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: 明确剔除控制字符
+  const strip = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+  for (const rawLine of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = rawLine.replace(strip, "");
+    if (line.length === 0) content.push({ type: "paragraph" });
+    else content.push({ type: "paragraph", content: [{ type: "text", text: line }] });
+  }
+  return { type: "doc", content };
+}
+
 export function inlineLinesToPmJson(text: string, options: MarkdownImportOptions = {}): PMJson {
   const content: PMJson[] = [];
   for (const rawLine of text.replace(/\r\n?/g, "\n").split("\n")) {

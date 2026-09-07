@@ -103,6 +103,7 @@ export {
   type MarkdownImportOptions,
   markdownToPmJson,
   normalizePmJson,
+  plainLinesToPmJson,
   pmJsonToMarkdown,
 } from "./markdown.js";
 export {

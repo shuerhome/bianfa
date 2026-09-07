@@ -298,7 +298,8 @@
     "result": "Imported {{imported}} / updated {{updated}} / skipped {{skipped}}",
     "resultDetail": "Formatting degraded {{degraded}} · with ink {{ink}}",
     "failed": "The import didn't finish.",
-    "failedHint": "The original files were not modified; you can try again later."
+    "failedHint": "The original files were not modified; you can try again later.",
+    "failedList": "{{count}} notes had unreadable content and were skipped (everything else was imported):"
   },
   "about": {
     "version": "Version",

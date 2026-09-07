@@ -436,3 +436,16 @@ body {
   font-size: var(--fs-xs);
   color: var(--c-text-2);
 }
+
+/* 导入结果里被跳过的便笺列表（内容异常，已跳过） */
+.import-failed ul {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-4);
+  max-height: 160px;
+  overflow: auto;
+  font-size: var(--fs-sm);
+}
+.import-failed li {
+  margin-bottom: var(--sp-1);
+  word-break: break-all;
+}
