@@ -28,13 +28,16 @@ const swatchInput = (color: string) =>
   document.querySelector<HTMLInputElement>(`.color-swatch[data-color="${color}"] input[type="radio"]`);
 
 describe("ColorPopover 色块带", () => {
-  it("10 个色块都是真 radio，aria-label 带名称 + 快捷键", () => {
+  it("20 个色块都是真 radio，aria-label 带名称 + 快捷键", () => {
     renderPopover();
     const inputs = document.querySelectorAll('.color-band input[type="radio"]');
     expect(inputs).toHaveLength(NOTE_COLORS.length);
-    // 石墨 = Ctrl/Cmd+Shift+0；柠檬是第 5 个 → Ctrl/Cmd+4
+    // 石墨 = Ctrl/Cmd+Shift+0；柠檬是浅色档第 5 个 → Ctrl/Cmd+4；橄榄是浓色档第 5 个 → Ctrl/Cmd+Shift+4
     expect(swatchInput("graphite")?.getAttribute("aria-label")).toMatch(/^石墨 · .*0$/);
     expect(swatchInput("citron")?.getAttribute("aria-label")).toMatch(/^柠檬 · .*4$/);
+    expect(swatchInput("olive")?.getAttribute("aria-label")).toMatch(/^橄榄 · .*4$/);
+    // 墨灰没有快捷键（Ctrl/Cmd+Shift+0 已经归石墨），aria-label 只有名字
+    expect(swatchInput("slate")?.getAttribute("aria-label")).toBe("墨灰");
     // 单选组：同名，才有原生方向键行为
     const names = new Set([...inputs].map((el) => (el as HTMLInputElement).name));
     expect(names.size).toBe(1);
@@ -59,6 +62,25 @@ describe("ColorPopover 色块带", () => {
     fireEvent.pointerEnter(fern);
     expect(caption?.textContent).toContain("竹绿");
     expect(caption?.textContent).not.toContain("当前");
+  });
+
+  it("两档各 10 格，中间有分隔与档位标题", () => {
+    renderPopover();
+    const bands = document.querySelectorAll(".color-band");
+    expect(bands).toHaveLength(2);
+    for (const band of bands) expect(band.querySelectorAll('input[type="radio"]')).toHaveLength(10);
+    expect([...document.querySelectorAll(".color-tier__label")].map((el) => el.textContent)).toEqual([
+      "浅色",
+      "浓色",
+    ]);
+  });
+
+  it("点选浓色档的色块也回调新颜色", () => {
+    const { onChange } = renderPopover();
+    const eggplant = swatchInput("eggplant");
+    if (!eggplant) throw new Error("茄紫色块缺失");
+    fireEvent.click(eggplant);
+    expect(onChange).toHaveBeenCalledWith("eggplant");
   });
 
   it("点选色块回调新颜色", () => {

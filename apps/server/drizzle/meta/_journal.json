@@ -57,6 +57,13 @@
       "when": 1788900000000,
       "tag": "0007_security_code",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789000000000,
+      "tag": "0008_note_colors_20",
+      "breakpoints": true
     }
   ]
 }

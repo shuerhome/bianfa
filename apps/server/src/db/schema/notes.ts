@@ -4,6 +4,8 @@
 // 序列 global_lsn（change feed 唯一权威顺序）由 custom migration 0000 用 CREATE SEQUENCE IF NOT EXISTS 建，
 // 这里只通过 DEFAULT nextval('global_lsn') 引用，不用 pgSequence()（否则 drizzle-kit 会再生成一遍 CREATE SEQUENCE）。
 // notes_list_idx 带 INCLUDE 子句，drizzle 索引 builder 表达不了，同样放在 custom migration 0002。
+
+import { NOTE_COLORS, type NoteColor } from "@bianfa/shared";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -22,6 +24,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 import { device } from "./device.js";
+
 import { bytea } from "./types.js";
 import { workspaces } from "./workspaces.js";
 
@@ -29,19 +32,11 @@ export const GLOBAL_LSN_SEQUENCE = "global_lsn";
 /** `nextval('global_lsn')`：notes.lsn / note_updates.lsn 的默认值，也可在 UPDATE notes SET lsn = … 时复用 */
 export const nextGlobalLsn = sql`nextval('global_lsn')`;
 
-export const NOTE_COLORS = [
-  "graphite",
-  "rose",
-  "coral",
-  "amber",
-  "citron",
-  "fern",
-  "teal",
-  "azure",
-  "violet",
-  "fuchsia",
-] as const;
-export type NoteColor = (typeof NOTE_COLORS)[number];
+// 20 色的唯一定义在 @bianfa/shared（枚举名 = 存储值），这里只转出去，避免两处清单各改各的
+export { NOTE_COLORS, type NoteColor } from "@bianfa/shared";
+
+/** CHECK 约束里的颜色字面量列表；迁移 0008 与本文件必须一致 */
+const NOTE_COLOR_LITERALS = NOTE_COLORS.map((c) => `'${c}'`).join(",");
 
 export const EMPTY_DOC = { type: "doc", content: [] } as const;
 
@@ -85,10 +80,7 @@ export const notes = pgTable(
     purgedAt: timestamp("purged_at", { withTimezone: true }),
   },
   (t) => [
-    check(
-      "notes_color_check",
-      sql`${t.color} IN ('graphite','rose','coral','amber','citron','fern','teal','azure','violet','fuchsia')`,
-    ),
+    check("notes_color_check", sql`${t.color} IN (${sql.raw(NOTE_COLOR_LITERALS)})`),
     check("notes_z_mode_check", sql`${t.zMode} BETWEEN 0 AND 2`),
     check("notes_import_source_check", sql`${t.importSource} IN ('plum.sqlite','snt','json')`),
     check("notes_encryption_check", sql`${t.encryption} IN ('server','e2ee')`),

@@ -12,10 +12,12 @@ describe("theme applier", () => {
     expect(root.hasAttribute("data-theme")).toBe(false);
   });
 
-  it("data-color 只接受 10 色，未知回落 graphite", () => {
+  it("data-color 只接受这 20 色，未知回落 graphite", () => {
     const el = document.createElement("div");
     expect(applyNoteColor(el, "citron")).toBe("citron");
     expect(el.getAttribute("data-color")).toBe("citron");
+    expect(applyNoteColor(el, "peacock")).toBe("peacock");
+    expect(el.getAttribute("data-color")).toBe("peacock");
     expect(applyNoteColor(el, "hotpink")).toBe("graphite");
     expect(el.getAttribute("data-color")).toBe("graphite");
   });

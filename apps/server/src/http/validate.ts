@@ -1,5 +1,6 @@
 // zod 校验（规格 04 §7.3）：所有 body/query/param 走 .strict()；失败 → 400 { error:'validation_error', issues }。
 // 硬限：limit ≤ 500、批量 ≤ 200、标题 ≤ 200、评论 ≤ 4000、UUID 必须 v7、email 小写归一化。
+import { noteColorSchema } from "@bianfa/shared";
 import { zValidator } from "@hono/zod-validator";
 import type { Env, MiddlewareHandler, ValidationTargets } from "hono";
 import { z } from "zod";
@@ -27,18 +28,8 @@ export const emailLower = z
 export const isoDateTime = z.iso.datetime({ offset: true });
 export const listLimit = z.coerce.number().int().min(1).max(LIMITS.listMax).default(100);
 export const notePerm = z.enum(["viewer", "commenter", "editor", "manager"]);
-export const noteColor = z.enum([
-  "graphite",
-  "rose",
-  "coral",
-  "amber",
-  "citron",
-  "fern",
-  "teal",
-  "azure",
-  "violet",
-  "fuchsia",
-]);
+/** 20 色，唯一定义在 @bianfa/shared */
+export const noteColor = noteColorSchema;
 export const zMode = z.union([z.literal(0), z.literal(1), z.literal(2)]);
 
 type Target = keyof ValidationTargets;

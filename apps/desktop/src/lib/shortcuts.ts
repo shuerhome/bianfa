@@ -1,7 +1,7 @@
 // 应用内快捷键终表（specs/05 §8，18-裁决7）。全局热键 Ctrl+Alt+N/⌥⌘N 在 Rust 侧，这里不注册。
 // 原则：handler 首行 IME 守卫；单一 capture-phase 监听承载 preventDefault；编辑类用 key、导航类用 code。
 
-import { NOTE_COLORS, type NoteColor } from "@bianfa/shared";
+import { DEEP_NOTE_COLORS, NOTE_COLOR_INFO, type NoteColor, PALE_NOTE_COLORS } from "@bianfa/shared";
 import { useEffect, useRef } from "react";
 import { isMac, keyCombo } from "./platform.js";
 
@@ -55,13 +55,16 @@ export function matchShortcut(e: ShortcutEvent, mac: boolean = isMac()): Shortcu
   if (mod && !e.altKey) {
     const digit = isDigitCode(e.code);
     if (digit !== null) {
-      if (e.shiftKey && digit === 0) return "color:graphite";
-      if (!e.shiftKey && digit === 0) return "uiScaleReset";
-      if (!e.shiftKey && digit >= 1 && digit <= 9) {
-        const color = NOTE_COLORS[digit];
+      // Ctrl/⌘+0 = 缩放归位；Ctrl/⌘+1…9 = 浅色档；
+      // Ctrl/⌘+Shift+0 = 石墨；Ctrl/⌘+Shift+1…9 = 浓色档（浓档的墨灰没有快捷键）
+      if (!e.shiftKey) {
+        if (digit === 0) return "uiScaleReset";
+        const color = PALE_NOTE_COLORS[digit];
         return color ? `color:${color}` : null;
       }
-      return null;
+      if (digit === 0) return "color:graphite";
+      const deep = DEEP_NOTE_COLORS[digit];
+      return deep ? `color:${deep}` : null;
     }
     if (e.shiftKey) {
       if (key === "k") return "link";
@@ -114,10 +117,15 @@ export function matchShortcut(e: ShortcutEvent, mac: boolean = isMac()): Shortcu
 /** 显示用键位文字（颜色 popover / 菜单 / 设置） */
 export function shortcutLabel(action: ShortcutAction): string {
   if (action.startsWith("color:")) {
-    const color = action.slice(6) as NoteColor;
-    const idx = NOTE_COLORS.indexOf(color);
-    if (idx === 0) return keyCombo({ mod: true, shift: true, key: "0" });
-    return keyCombo({ mod: true, key: String(idx) });
+    const info = NOTE_COLOR_INFO[action.slice(6) as NoteColor];
+    if (!info) return "";
+    if (info.tier === "pale") {
+      return info.slot === 0
+        ? keyCombo({ mod: true, shift: true, key: "0" })
+        : keyCombo({ mod: true, key: String(info.slot) });
+    }
+    // 浓色档的墨灰没有快捷键：Ctrl/⌘+Shift+0 已经归石墨
+    return info.slot === 0 ? "" : keyCombo({ mod: true, shift: true, key: String(info.slot) });
   }
   switch (action) {
     case "newNote":

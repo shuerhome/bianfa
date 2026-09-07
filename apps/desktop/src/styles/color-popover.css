@@ -1,6 +1,6 @@
-/* 颜色 popover：一条横向色块带 + 选中打勾（对齐 Windows 便笺），由 note.css 引入。
-   色块填 --note-paper 的身份来源是 --note-dot：新调色板下十张纸彼此只差一点点色相，
-   小色点认不出来；dot 彩度 0.109–0.181，做 28px 色块非常清楚。
+/* 颜色 popover：两条色块带（浅色档 / 浓色档，各 2×5）+ 选中打勾，由 note.css 引入。
+   色块直接填 --note-paper：20 张纸分两档，同档内靠色相分、跨档靠深浅分，28px 的方块足够认。
+   两档之间用一条发丝线 + 档位小标题分开 —— 只靠色块自身的深浅差，扫一眼容易把两档看成一片。
    "不只靠颜色传达信息"（WCAG 1.4.1）由带下方那行常驻说明承担。 */
 
 .color-popover {
@@ -8,6 +8,26 @@
   border-radius: 8px;
   background: var(--c-surface-1);
   box-shadow: var(--sh-2);
+}
+
+.color-picker {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.color-tier + .color-tier {
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border-subtle, var(--c-border));
+}
+.color-tier__label {
+  margin: 0 0 6px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-snug);
+  color: var(--c-text-3);
+  letter-spacing: 0.04em;
 }
 
 .color-band {

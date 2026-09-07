@@ -30,6 +30,9 @@ describe("shortcut map", () => {
   it("Windows：Ctrl+Shift+0 石墨、Ctrl+1 玫瑰、Ctrl+0 缩放复位、Ctrl+T 删除线", () => {
     expect(matchShortcut(key("0", { ctrl: true, shift: true }), false)).toBe("color:graphite");
     expect(matchShortcut(key("1", { ctrl: true }), false)).toBe("color:rose");
+    // 浓色档走 Ctrl/⌘+Shift+数字；Ctrl/⌘+0 仍是缩放归位
+    expect(matchShortcut(key("1", { ctrl: true, shift: true }), false)).toBe("color:carmine");
+    expect(matchShortcut(key("9", { ctrl: true, shift: true }), false)).toBe("color:eggplant");
     expect(matchShortcut(key("0", { ctrl: true }), false)).toBe("uiScaleReset");
     expect(matchShortcut(key("t", { ctrl: true }), false)).toBe("strike");
     expect(matchShortcut(key("Delete", { ctrl: true, shift: true, code: "Delete" }), false)).toBe(

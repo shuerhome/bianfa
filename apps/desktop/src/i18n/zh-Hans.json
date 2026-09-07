@@ -59,7 +59,11 @@
   },
   "color": {
     "caption": "{{name}} · {{key}}",
-    "current": "当前"
+    "current": "当前",
+    "tier": {
+      "pale": "浅色",
+      "deep": "浓色"
+    }
   },
   "format": {
     "bold": "粗体",

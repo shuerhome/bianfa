@@ -59,7 +59,11 @@
   },
   "color": {
     "caption": "{{name}} · {{key}}",
-    "current": "Selected"
+    "current": "Selected",
+    "tier": {
+      "pale": "Pale",
+      "deep": "Deep"
+    }
   },
   "format": {
     "bold": "Bold",

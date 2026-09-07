@@ -1,7 +1,8 @@
-// 颜色 popover（specs/06 §4.1）：一条横向色块带（两行五列，28×28）+ 选中打勾，
+// 颜色 popover（specs/06 §4.1）：两条色块带（浅色档 / 浓色档，各 2×5 的 28×28 色块）+ 选中打勾，
 // 下方一行常驻说明显示「中文名 · 快捷键」——色块带保持干净，同时不违反 WCAG 1.4.1（不只靠颜色传达信息）。
-// 每格仍是真正的 <input type="radio">：方向键切换、读屏原生；aria-label 保留「名称 + 快捷键」。
-import { NOTE_COLOR_INFO, NOTE_COLORS, type NoteColor } from "@bianfa/shared";
+// 每格仍是真正的 <input type="radio">：20 格共用一个 name，方向键能一路走完两档，读屏原生；
+// aria-label 保留「名称 + 快捷键」。浓色档的墨灰没有快捷键，说明行只显示名字。
+import { NOTE_COLOR_INFO, NOTE_COLOR_TIERS, type NoteColor, noteColorsByTier } from "@bianfa/shared";
 import { Popover } from "@bianfa/ui";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,9 @@ export function ColorPopover({ open, onClose, anchorRef, value, onChange }: Colo
   }, [open]);
 
   const shown = preview ?? value;
-  const shownName = zh ? NOTE_COLOR_INFO[shown].zh : NOTE_COLOR_INFO[shown].en;
+  const shownInfo = NOTE_COLOR_INFO[shown];
+  const shownName = zh ? shownInfo.zh : shownInfo.en;
+  const shownKey = shortcutLabel(`color:${shown}`);
 
   return (
     <Popover
@@ -42,59 +45,82 @@ export function ColorPopover({ open, onClose, anchorRef, value, onChange }: Colo
       autoFocus={false}
     >
       <fieldset
-        className="color-band"
+        className="color-picker"
         aria-label={t("note.colorPicker")}
         onPointerLeave={() => setPreview(null)}
       >
-        {NOTE_COLORS.map((color) => {
-          const info = NOTE_COLOR_INFO[color];
-          const selected = color === value;
-          const key = shortcutLabel(`color:${color}`);
-          return (
-            <label
-              key={color}
-              className={selected ? "color-swatch color-swatch--selected" : "color-swatch"}
-              data-color={color}
-              onPointerEnter={() => setPreview(color)}
-            >
-              <input
-                ref={selected ? selectedRef : undefined}
-                type="radio"
-                name={name}
-                className="bf-sr-only"
-                checked={selected}
-                aria-label={t("color.caption", { name: zh ? info.zh : info.en, key })}
-                onFocus={() => setPreview(color)}
-                onBlur={() => setPreview(null)}
-                onChange={() => {
-                  onChange(color);
-                  onClose();
-                }}
-              />
-              {selected ? (
-                <svg
-                  className="color-swatch__check"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M2.5 7.5l3 3 6-6.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              ) : null}
-            </label>
-          );
-        })}
+        {NOTE_COLOR_TIERS.map((tier) => (
+          // 档位小标题只是视觉分组：每格 radio 的 aria-label 本来就带完整名称，
+          // 再让读屏念一遍「浅色 / 浓色」是重复噪音，所以 aria-hidden。
+          <div className="color-tier" key={tier}>
+            <p className="color-tier__label" aria-hidden="true">
+              {t(`color.tier.${tier}`)}
+            </p>
+            <div className="color-band">
+              {noteColorsByTier(tier).map((color) => {
+                const info = NOTE_COLOR_INFO[color];
+                const selected = color === value;
+                const key = shortcutLabel(`color:${color}`);
+                return (
+                  <label
+                    key={color}
+                    className={selected ? "color-swatch color-swatch--selected" : "color-swatch"}
+                    data-color={color}
+                    onPointerEnter={() => setPreview(color)}
+                  >
+                    <input
+                      ref={selected ? selectedRef : undefined}
+                      type="radio"
+                      name={name}
+                      className="bf-sr-only"
+                      checked={selected}
+                      aria-label={
+                        key
+                          ? t("color.caption", { name: zh ? info.zh : info.en, key })
+                          : zh
+                            ? info.zh
+                            : info.en
+                      }
+                      onFocus={() => setPreview(color)}
+                      onBlur={() => setPreview(null)}
+                      onChange={() => {
+                        onChange(color);
+                        onClose();
+                      }}
+                    />
+                    {selected ? (
+                      <svg
+                        className="color-swatch__check"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M2.5 7.5l3 3 6-6.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </fieldset>
       <p className="color-caption" aria-hidden="true">
-        {shownName} · <span className="color-caption__key">{shortcutLabel(`color:${shown}`)}</span>
+        {shownName}
+        {shownKey ? (
+          <>
+            {" · "}
+            <span className="color-caption__key">{shownKey}</span>
+          </>
+        ) : null}
         {shown === value ? ` · ${t("color.current")}` : ""}
       </p>
     </Popover>

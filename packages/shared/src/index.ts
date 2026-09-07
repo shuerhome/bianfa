@@ -2,17 +2,22 @@
 export const BIANFA_SHARED_VERSION = "0.0.0";
 
 export {
+  DEEP_NOTE_COLORS,
   DEFAULT_NOTE_COLOR,
   isNoteColor,
   LEGACY_DEFAULT_COLOR,
   LEGACY_THEME_TO_COLOR,
   legacyThemeToColor,
   NOTE_COLOR_INFO,
+  NOTE_COLOR_TIERS,
   NOTE_COLORS,
   type NoteColor,
   type NoteColorInfo,
+  type NoteColorTier,
   noteColorByName,
   noteColorSchema,
+  noteColorsByTier,
+  PALE_NOTE_COLORS,
 } from "./colors.js";
 
 export {

@@ -1,5 +1,5 @@
-//! The 10-colour note palette (02 §5 / 06 §1.2–1.3). Only `paper` is needed on the Rust side
-//! (window background colour); everything else is rendered by the WebView.
+//! 便笺 20 色调色板（02 §5 / 06 §1.2–1.3）：10 个色相 × 浅/浓两档。
+//! Rust 侧只需要 `paper`（窗体背景色）和 `dot`（托盘/强调），其余角色由 WebView 渲染。
 
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,7 @@ pub mod tokens {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum NoteColor {
+    // 浅色档
     #[default]
     Graphite,
     Rose,
@@ -26,10 +27,21 @@ pub enum NoteColor {
     Azure,
     Violet,
     Fuchsia,
+    // 浓色档
+    Slate,
+    Carmine,
+    Vermilion,
+    Ochre,
+    Olive,
+    Pine,
+    Peacock,
+    Indigo,
+    Wisteria,
+    Eggplant,
 }
 
 impl NoteColor {
-    pub const ALL: [NoteColor; 10] = [
+    pub const ALL: [NoteColor; 20] = [
         NoteColor::Graphite,
         NoteColor::Rose,
         NoteColor::Coral,
@@ -40,6 +52,16 @@ impl NoteColor {
         NoteColor::Azure,
         NoteColor::Violet,
         NoteColor::Fuchsia,
+        NoteColor::Slate,
+        NoteColor::Carmine,
+        NoteColor::Vermilion,
+        NoteColor::Ochre,
+        NoteColor::Olive,
+        NoteColor::Pine,
+        NoteColor::Peacock,
+        NoteColor::Indigo,
+        NoteColor::Wisteria,
+        NoteColor::Eggplant,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -54,7 +76,35 @@ impl NoteColor {
             NoteColor::Azure => "azure",
             NoteColor::Violet => "violet",
             NoteColor::Fuchsia => "fuchsia",
+            NoteColor::Slate => "slate",
+            NoteColor::Carmine => "carmine",
+            NoteColor::Vermilion => "vermilion",
+            NoteColor::Ochre => "ochre",
+            NoteColor::Olive => "olive",
+            NoteColor::Pine => "pine",
+            NoteColor::Peacock => "peacock",
+            NoteColor::Indigo => "indigo",
+            NoteColor::Wisteria => "wisteria",
+            NoteColor::Eggplant => "eggplant",
         }
+    }
+
+    /// 浓淡档；与 `packages/shared` 的 `NOTE_COLOR_INFO.tier` 逐项一致。
+    /// 浓色档的纸更深、彩度更高，验收门槛因此不同（见下面的测试）。
+    pub fn is_deep(self) -> bool {
+        matches!(
+            self,
+            NoteColor::Slate |
+            NoteColor::Carmine |
+            NoteColor::Vermilion |
+            NoteColor::Ochre |
+            NoteColor::Olive |
+            NoteColor::Pine |
+            NoteColor::Peacock |
+            NoteColor::Indigo |
+            NoteColor::Wisteria |
+            NoteColor::Eggplant
+        )
     }
 
     /// Unknown values render as graphite (02 §3 meta.color rule).
@@ -89,34 +139,6 @@ impl NoteColor {
         let rgb = tokens::note_dot(self.as_str(), dark);
         (rgb.r, rgb.g, rgb.b)
     }
-
-    /// Reference values from 06 §1.2 / §1.3, kept for the token round-trip test.
-    #[cfg(test)]
-    fn paper_rgb_spec(self, dark: bool) -> (u8, u8, u8) {
-        let hex = match (self, dark) {
-            (NoteColor::Graphite, false) => 0xE5E3D9,
-            (NoteColor::Rose, false) => 0xF8DAE3,
-            (NoteColor::Coral, false) => 0xF8DBD7,
-            (NoteColor::Amber, false) => 0xF8DEC3,
-            (NoteColor::Citron, false) => 0xEBE7A4,
-            (NoteColor::Fern, false) => 0xC6F0C6,
-            (NoteColor::Teal, false) => 0xAEF2EB,
-            (NoteColor::Azure, false) => 0xCBE8F8,
-            (NoteColor::Violet, false) => 0xE1E0F8,
-            (NoteColor::Fuchsia, false) => 0xF8D6F6,
-            (NoteColor::Graphite, true) => 0x2C2B28,
-            (NoteColor::Rose, true) => 0x421D2B,
-            (NoteColor::Coral, true) => 0x451E1A,
-            (NoteColor::Amber, true) => 0x3B260E,
-            (NoteColor::Citron, true) => 0x2F2D11,
-            (NoteColor::Fern, true) => 0x1B321C,
-            (NoteColor::Teal, true) => 0x1A302E,
-            (NoteColor::Azure, true) => 0x112F3E,
-            (NoteColor::Violet, true) => 0x2A2647,
-            (NoteColor::Fuchsia, true) => 0x3B203A,
-        };
-        ((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
-    }
 }
 
 #[cfg(test)]
@@ -129,21 +151,60 @@ mod tests {
             assert_eq!(NoteColor::parse(c.as_str()), c);
         }
         assert_eq!(NoteColor::parse("nope"), NoteColor::Graphite);
+        assert_eq!(NoteColor::parse("eggplant"), NoteColor::Eggplant);
+        assert_eq!(NoteColor::ALL.iter().filter(|c| c.is_deep()).count(), 10);
         assert_eq!(NoteColor::from_plum_theme("Yellow"), NoteColor::Citron);
         assert_eq!(NoteColor::from_plum_theme("Charcoal"), NoteColor::Graphite);
         assert_eq!(NoteColor::from_plum_theme(""), NoteColor::Citron);
     }
 
-    #[test]
-    fn tokens_match_design_spec() {
-        for c in NoteColor::ALL {
-            for dark in [false, true] {
-                assert_eq!(
-                    c.paper_rgb(dark),
-                    c.paper_rgb_spec(dark),
-                    "{c:?} dark={dark}"
-                );
+    /// sRGB 相对亮度（WCAG 2.x），只用于下面的设计不变量断言。
+    fn luminance((r, g, b): (u8, u8, u8)) -> f64 {
+        fn ch(v: u8) -> f64 {
+            let v = f64::from(v) / 255.0;
+            if v <= 0.040_45 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
             }
         }
+        0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    }
+
+    /// 颜色的**精确值**由 `packages/tokens/test/contrast.test.ts` 把关（对比度、色度、色差），
+    /// Rust 侧只断言"生成的 token 确实接上了、且满足设计意图"，不再手抄一份 hex 对照表
+    /// ——手抄表每次调色都会漏改，反而挡住真正的回归。
+    #[test]
+    fn tokens_match_design_intent() {
+        for dark in [false, true] {
+            let mut seen: Vec<(u8, u8, u8)> = Vec::new();
+            for c in NoteColor::ALL {
+                let paper = c.paper_rgb(dark);
+                let dot = c.dot_rgb(dark);
+
+                assert!(!seen.contains(&paper), "{c:?} dark={dark} 纸色与其它颜色重复");
+                seen.push(paper);
+
+                assert_ne!(paper, dot, "{c:?} dark={dark} 身份色与纸色相同");
+
+                let l = luminance(paper);
+                if dark {
+                    assert!(l <= 0.075, "{c:?} 深色主题的纸太亮：{l:.4}");
+                } else if c.is_deep() {
+                    assert!(l >= 0.64, "{c:?} 浓色档的纸太暗：{l:.4}");
+                    assert!(l <= 0.80, "{c:?} 浓色档的纸不够浓：{l:.4}");
+                } else {
+                    assert!(l >= 0.86, "{c:?} 浅色档的纸太暗：{l:.4}");
+                }
+            }
+        }
+    }
+
+    /// 未知色回落到 graphite（02 §3），且默认色就是 graphite。
+    #[test]
+    fn default_is_graphite() {
+        assert_eq!(NoteColor::default(), NoteColor::Graphite);
+        assert_eq!(NoteColor::parse(""), NoteColor::Graphite);
+        assert_eq!(NoteColor::parse("GRAPHITE"), NoteColor::Graphite);
     }
 }
