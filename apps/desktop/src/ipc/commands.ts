@@ -185,12 +185,13 @@ export const authLogout = (wipeLocal = false) => call<void>("auth_logout", { wip
 /** expiresAt = 服务端 expires_at（Unix ms） */
 export const authSyncToken = () => call<{ token: string; expiresAt: number }>("auth_sync_token");
 
-/** 唯一 HTTP 出口；path 必须以 /v1/ 开头 */
+/** 唯一 HTTP 出口；path 必须以 /v1/ 开头。headers 原样加到请求上（Rust 拒绝 Authorization 等代理自有头） */
 export const apiRequest = (args: {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   jsonBody?: unknown;
   timeoutMs?: number;
+  headers?: Record<string, string>;
 }) => {
   if (!args.path.startsWith("/v1/"))
     return Promise.reject(new IpcError("bad_path", "api_request path 必须以 /v1/ 开头"));

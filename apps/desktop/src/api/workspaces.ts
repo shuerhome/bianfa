@@ -62,10 +62,26 @@ export interface TeamWall {
   notes: TeamWallNote[];
 }
 
+/** org 内未归档的 team 工作区（团队页「团队工作区」标签的数据源） */
+export async function fetchTeamWorkspaces(orgId: string): Promise<RemoteWorkspace[]> {
+  const all = await fetchWorkspaces();
+  return all.filter((w) => w.kind === "team" && w.orgId === orgId && w.archivedAt === null);
+}
+
+/** 一个工作区的活跃便笺（去掉回收站 / 已清除），按更新时间倒序 */
+export async function fetchActiveWorkspaceNotes(
+  workspaceId: string,
+): Promise<{ notes: RemoteNoteSummary[]; effectivePerm: NotePerm | null }> {
+  const page = await fetchAllWorkspaceNotes(workspaceId);
+  const notes = page.notes
+    .filter((n) => n.deletedAt === null && n.purgedAt === null)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return { notes, effectivePerm: page.effectivePerm };
+}
+
 /** 团队墙：org 内未归档 team 工作区 → 活跃便笺（去掉回收站 / 已清除），按更新时间倒序 */
 export async function fetchTeamWall(orgId: string): Promise<TeamWall> {
-  const all = await fetchWorkspaces();
-  const workspaces = all.filter((w) => w.kind === "team" && w.orgId === orgId && w.archivedAt === null);
+  const workspaces = await fetchTeamWorkspaces(orgId);
   const pages = await Promise.all(workspaces.map((w) => fetchAllWorkspaceNotes(w.id)));
   const notes: TeamWallNote[] = [];
   pages.forEach((page, i) => {

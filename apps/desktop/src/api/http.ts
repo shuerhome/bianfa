@@ -68,7 +68,7 @@ export function isApiError(err: unknown, code?: string): err is IpcError & { det
   return code === undefined || err.code === code;
 }
 
-/** 请求 + 解析；204 / 空 body 返回 undefined（调用方按需断言） */
+/** 请求 + 解析；204 / 空 body 返回 undefined（调用方按需断言）。headers：额外请求头（如 X-Organization-Id） */
 export async function apiJson<T>(
   method: HttpMethod,
   path: string,
@@ -76,6 +76,7 @@ export async function apiJson<T>(
     body?: unknown;
     timeoutMs?: number;
     query?: Record<string, string | number | boolean | undefined>;
+    headers?: Record<string, string>;
   } = {},
 ): Promise<T> {
   const qs = opts.query
@@ -90,6 +91,7 @@ export async function apiJson<T>(
     path: full,
     ...(opts.body !== undefined ? { jsonBody: opts.body } : {}),
     timeoutMs: opts.timeoutMs ?? 15_000,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   });
   if (res.status < 200 || res.status >= 300) throw toApiError(res);
   if (res.status === 204 || res.bodyText.length === 0) return undefined as T;

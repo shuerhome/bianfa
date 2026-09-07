@@ -3,6 +3,16 @@ import type { NoteColor, ZMode } from "../ipc/types.js";
 import { apiJson, isoToMs, isoToMsOr } from "./http.js";
 import type { NotePerm } from "./notes.js";
 
+/** 共享路由的稳定错误码（服务端 src/routes/shares.ts + http/errors.ts） */
+export const SHARE_ERROR = {
+  notFound: "not_found",
+  insufficientPermission: "insufficient_permission",
+  userNotFound: "user_not_found",
+  vaultNotShareable: "vault_not_shareable",
+  validationError: "validation_error",
+  unauthorized: "unauthorized",
+} as const;
+
 export interface Share {
   id: string;
   noteId: string;

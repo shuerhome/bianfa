@@ -4,6 +4,7 @@ use crate::app::auth;
 use crate::app::state::AppState;
 use crate::error::IpcResult;
 use crate::model::{ApiResponse, AuthStatus};
+use std::collections::HashMap;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -48,6 +49,7 @@ pub async fn api_request(
     path: String,
     json_body: Option<serde_json::Value>,
     timeout_ms: Option<u64>,
+    headers: Option<HashMap<String, String>>,
 ) -> IpcResult<ApiResponse> {
-    auth::api_request(&app, &method, &path, json_body, timeout_ms).await
+    auth::api_request(&app, &method, &path, json_body, timeout_ms, headers).await
 }
