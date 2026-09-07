@@ -88,6 +88,8 @@ interface NoteEntry {
   doc: Y.Doc;
   provider: HocuspocusProvider;
   appliedSeq: number;
+  /** 已经写回本地 sync_state.acked_seq 的水位；只用来避免重复回写 */
+  ackedSeq: number;
   lastActivity: number;
   hasWindow: boolean;
   pending: boolean;
@@ -119,6 +121,8 @@ export class SyncHost {
   /** 正在建 provider 的便笺（发现与 db:changed 可能同时要求建同一张） */
   private opening = new Map<string, Promise<void>>();
   private started = false;
+  /** 本轮 refreshTargets 里因通道占满被跳过的便笺数（只为汇总日志，不参与判定） */
+  private skippedThisPass = 0;
   /** 附件上传串行队列（同一时刻只跑一个 presign/PUT/commit） */
   private uploadChain: Promise<void> = Promise.resolve();
   private uploadQueued = new Set<string>();
@@ -431,6 +435,7 @@ export class SyncHost {
     ]);
     const open = new Set(list.filter((n) => n.isOpen).map((n) => n.id));
     const pend = new Set(pending.map((p) => p.noteId));
+    this.skippedThisPass = 0;
     clientLog(
       "info",
       "sync",
@@ -442,6 +447,9 @@ export class SyncHost {
     for (const e of this.entries.values()) {
       e.hasWindow = open.has(e.noteId);
       if (!pend.has(e.noteId) && e.provider.isSynced && !e.provider.hasUnsyncedChanges) e.pending = false;
+    }
+    if (this.skippedThisPass > 0) {
+      clientLog("info", "sync", `本轮通道已满，${this.skippedThisPass} 张排队等下一轮（每 10 秒重试一次）`);
     }
   }
 
@@ -478,12 +486,17 @@ export class SyncHost {
     noteId: string,
     flags: { hasWindow?: boolean; pending?: boolean },
   ): Promise<void> {
-    if (this.entries.size >= MAX_PROVIDERS) this.evictIdle();
-    if (this.entries.size >= MAX_PROVIDERS) {
-      // 上限占满且淘汰不动：evictIdle 只淘汰 !hasWindow && !pending 的条目，
-      // 而批量导入之后所有条目都是 pending —— 于是剩下的便笺会永远轮不上。
-      // 这条日志是为了让这种"卡住但不报错"的状态在日志里看得见。
-      clientLog("warn", "sync", `通道已满（${MAX_PROVIDERS}）且无可淘汰项，${noteId} 本轮跳过`);
+    // 名额必须把「在途的 open」一起算：下面有两次 await（note_get / note_load_doc），期间
+    // 可能同时有好几轮 refreshTargets 在跑（tick 一轮、db:changed 一轮）。只比 entries.size 的话，
+    // 所有在途的 open 都会以为还有空位，于是一条 socket 上挂出超过上限的文档 —— 服务端 sync 侧
+    // 按 MAX_DOCUMENTS_PER_SOCKET（同样是 64）拒掉多出来的那些，表现又是「静默地少同步了一批」。
+    // 此刻 this.opening 里只有**别人**：ensureProvider 是先调 openProvider、再登记自己的，
+    // 而这几行在第一个 await 之前跑完，所以不会把自己算进去。
+    if (this.entries.size + this.opening.size >= MAX_PROVIDERS) this.evictIdle();
+    if (this.entries.size + this.opening.size >= MAX_PROVIDERS) {
+      // 上限占满且这一轮淘汰不动。每轮只报一次：几百张待同步时逐张打日志会把日志刷爆，
+      // 反而看不见真正的信息。
+      this.skippedThisPass += 1;
       return;
     }
     const personal = this.auth?.personalWorkspaceId;
@@ -511,6 +524,7 @@ export class SyncHost {
       doc,
       provider: null as unknown as HocuspocusProvider,
       appliedSeq: bundle.headSeq,
+      ackedSeq: 0,
       lastActivity: Date.now(),
       hasWindow: flags.hasWindow ?? false,
       pending: flags.pending ?? false,
@@ -575,7 +589,12 @@ export class SyncHost {
     });
     // 同上：共享 socket 的 provider 必须显式 attach，否则这张便笺永远不会同步
     entry.provider.attach();
-    entry.provider.on("unsyncedChanges", () => this.recomputeNoteState(entry));
+    // 这里必须是 onNoteSynced 而不是只刷新状态：provider 的 "synced" 事件只代表握手完成
+    // （收到 SyncStep2），而 startSync() 一开始就把 unsyncedChanges 置成了 1，本地那份改动
+    // 是靠随后单独的一条 SyncStatus 消息才被确认的。也就是说 onSynced 触发时
+    // hasUnsyncedChanges 基本必然还是 true —— 只挂在 onSynced 上的话，回写 acked_seq 的那段
+    // 等于永远不会执行。
+    entry.provider.on("unsyncedChanges", () => this.onNoteSynced(entry));
     this.setAwareness(entry, false);
     this.entries.set(noteId, entry);
     this.recomputeNoteState(entry);
@@ -595,11 +614,22 @@ export class SyncHost {
     });
   }
 
+  /**
+   * 「这一张真的传上去了」：握手完成**并且**本地改动已被服务端确认（unsyncedChanges 归零）。
+   *
+   * 回写 acked_seq 不只是给界面看的。它同时决定这张便笺还在不在 notes_pending_sync 队列里，
+   * 而 entry.pending 又决定这条通道能不能被 evictIdle 淘汰。不回写的后果是：前 64 张占着通道
+   * 永不释放，第 65 张之后的便笺再也拿不到通道 —— 批量导入几百张时就卡死在 64 张不动。
+   */
   private onNoteSynced(entry: NoteEntry): void {
     if (entry.provider.isSynced && !entry.provider.hasUnsyncedChanges) {
       entry.pending = false;
-      void noteSetSynced(entry.noteId, entry.appliedSeq).catch(() => undefined);
-      void syncStateSetError({ noteId: entry.noteId, errCode: null }).catch(() => undefined);
+      // unsyncedChanges 每加一次减一次都会触发这里，水位没往前走就不用再写一次库
+      if (entry.appliedSeq > entry.ackedSeq) {
+        entry.ackedSeq = entry.appliedSeq;
+        void noteSetSynced(entry.noteId, entry.appliedSeq).catch(() => undefined);
+        void syncStateSetError({ noteId: entry.noteId, errCode: null }).catch(() => undefined);
+      }
     }
     this.recomputeNoteState(entry);
   }
@@ -709,6 +739,16 @@ export class SyncHost {
     for (const e of Array.from(this.entries.values())) {
       const idle = !e.hasWindow && !e.pending && e.provider.isSynced && !e.provider.hasUnsyncedChanges;
       if (idle && now - e.lastActivity > IDLE_DESTROY_MS) this.dropProvider(e.noteId);
+    }
+    // 腾出位置之后重新选目标。正常情况下不靠这一步：每张同步完成都会回写 acked_seq，
+    // Rust 那边随之 emit db:changed(sync_state)，onDbChanged 就会重新选一轮。
+    // 这里是兜底 —— 回写失败（IPC 出错被 catch 掉）时那条链就断了，而排在上限之外的
+    // 几百张便笺没有任何别的东西会再来叫醒它们。批量导入时这意味着「剩下的永远不上传」，
+    // 代价只是十秒一次的空转，兜住它是划算的。
+    if (this.entries.size < MAX_PROVIDERS) {
+      void this.refreshTargets().catch((e: unknown) => {
+        clientLog("error", "sync", `重选同步目标失败：${e instanceof Error ? e.message : String(e)}`);
+      });
     }
   }
 

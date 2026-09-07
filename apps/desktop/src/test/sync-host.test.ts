@@ -11,8 +11,14 @@ import { emitTestEvent, mockCommand, resetCommands } from "./setup.js";
 interface ProviderStub {
   name: string;
   destroyed: boolean;
+  isSynced: boolean;
+  hasUnsyncedChanges: boolean;
   onAuthenticationFailed?: ((p: { reason: string }) => void) | undefined;
   onStateless?: ((p: { payload: string }) => void) | undefined;
+  /** 用例用它模拟「服务端回了 SyncStep2、握手完成」 */
+  onSynced?: (() => void) | undefined;
+  /** 用例用它模拟 provider 自己 emit 的事件（目前只有 unsyncedChanges） */
+  emitTest(event: string): void;
   /** 共享 socket 时必须由我们显式 attach，见下面那条回归用例 */
   attached?: boolean;
 }
@@ -28,20 +34,26 @@ vi.mock("@hocuspocus/provider", () => {
   }
   class HocuspocusProvider implements ProviderStub {
     isSynced = false;
-    hasUnsyncedChanges = false;
+    // 和真实实现对齐：attach 后 startSync() 里的 resetUnsyncedChanges() 会先把计数置成 1，
+    // 本地那份改动要等服务端单独回一条 SyncStatus 才归零。
+    hasUnsyncedChanges = true;
     destroyed = false;
     attached = false;
     name: string;
     onAuthenticationFailed: ProviderStub["onAuthenticationFailed"];
     onStateless: ProviderStub["onStateless"];
+    onSynced: ProviderStub["onSynced"];
+    private listeners = new Map<string, Set<() => void>>();
     constructor(cfg: {
       name: string;
       onAuthenticationFailed?: ProviderStub["onAuthenticationFailed"];
       onStateless?: ProviderStub["onStateless"];
+      onSynced?: ProviderStub["onSynced"];
     }) {
       this.name = cfg.name;
       this.onAuthenticationFailed = cfg.onAuthenticationFailed;
       this.onStateless = cfg.onStateless;
+      this.onSynced = cfg.onSynced;
       hoisted.providers.push(this);
     }
     attach() {
@@ -50,7 +62,14 @@ vi.mock("@hocuspocus/provider", () => {
     detach() {
       this.attached = false;
     }
-    on() {}
+    on(event: string, fn: () => void) {
+      const set = this.listeners.get(event) ?? new Set();
+      set.add(fn);
+      this.listeners.set(event, set);
+    }
+    emitTest(event: string) {
+      for (const fn of this.listeners.get(event) ?? []) fn();
+    }
     setAwarenessField() {}
     forceSync() {}
     sendStateless() {}
@@ -350,5 +369,151 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     for (const p of hoisted.providers) {
       expect(p.attached, `${p.name} 没有 attach 到共享 socket`).toBe(true);
     }
+  });
+});
+
+// 批量导入（把 Windows 便笺一次搬进来几百张）会让待同步队列远远超过通道上限。
+// 上限本身没问题：一条 socket 上同时挂几百个文档，服务端 sync 侧的 MAX_DOCUMENTS_PER_SOCKET
+// 同样是 64。问题在于「排在上限之外的那些」必须随着前面的同步完成被顶上来。
+//
+// 线上出过的事故就是这一条：导入 669 张、登录、然后服务端只收到 65 张，之后再也不动。
+// 原因是重新选目标（refreshTargets）的每一个入口都要求「本地又发生了变更」——
+// 而导入完的便笺没人会再去编辑，于是腾出来的位置永远没人来填。
+describe("SyncHost 通道上限：待同步远多于上限时必须一批批排干", () => {
+  /** 与 host.ts 的 MAX_PROVIDERS、服务端 sync 的 MAX_DOCUMENTS_PER_SOCKET 是同一个数 */
+  const CAP = 64;
+  const BULK = 100;
+  const bulk = Array.from(
+    { length: BULK },
+    (_, i) => `019a0000-0000-7000-8000-0000000f${i.toString().padStart(4, "0")}`,
+  );
+  /** 本地库里已经 acked 的便笺（= 已经离开 notes_pending_sync 队列，等价于「传上去了」） */
+  const acked = new Set<string>();
+
+  const localRow = (id: string): NoteRecord => ({
+    id,
+    title: "",
+    excerpt: "",
+    color: "amber",
+    zMode: 0,
+    pinned: false,
+    createdAt: 0,
+    updatedAt: 0,
+    deletedAt: null,
+    isOpen: false,
+    synced: acked.has(id),
+    workspaceId: PERSONAL,
+    bodyHtml: "",
+    schemaVersion: 1,
+    headSeq: 1,
+    contentText: "",
+  });
+
+  /** 活着的便笺通道（收件箱不算） */
+  const liveNoteProviders = () => hoisted.providers.filter((x) => !x.destroyed && x.name.startsWith("note:"));
+
+  /**
+   * 模拟服务端回 SyncStep2：握手完成。
+   *
+   * 注意这一刻 hasUnsyncedChanges **仍然是 true** —— 真实的 provider 在 startSync() 里就把
+   * unsyncedChanges 置成了 1，本地那份改动要等下面 serverAckUpdates 那条消息才算数。
+   * 这个顺序正是问题所在：只把「回写 acked_seq」挂在 onSynced 上，它永远不会执行。
+   */
+  function serverHandshake(): void {
+    for (const x of liveNoteProviders()) {
+      if (x.isSynced) continue;
+      x.isSynced = true;
+      x.onSynced?.();
+    }
+  }
+
+  /** 模拟服务端回 SyncStatus(applied)：本地改动被确认，unsyncedChanges 归零并 emit */
+  function serverAckUpdates(): void {
+    for (const x of liveNoteProviders()) {
+      if (!x.isSynced || !x.hasUnsyncedChanges) continue;
+      x.hasUnsyncedChanges = false;
+      x.emitTest("unsyncedChanges");
+    }
+  }
+
+  beforeEach(() => {
+    resetCommands();
+    hoisted.providers.length = 0;
+    acked.clear();
+    vi.useFakeTimers();
+
+    mockCommand("settings_get", () => ({}));
+    mockCommand("auth_status", () => AUTH);
+    mockCommand("auth_sync_token", () => ({ token: "t", expiresAt: Date.now() + 60_000 }));
+    mockCommand("attachments_pending_upload", () => []);
+    mockCommand("notes_list", () => bulk.map(localRow));
+    // 和 Rust pending_sync 一样：head_seq > acked_seq 的才在队列里，note_set_synced 之后就出队
+    mockCommand("notes_pending_sync", () =>
+      bulk.filter((id) => !acked.has(id)).map((id) => ({ noteId: id, headSeq: 1 })),
+    );
+    mockCommand("note_get", (a) => localRow(a.noteId as string));
+    mockCommand("note_load_doc", () => ({
+      snapshotB64: null,
+      snapshotUptoSeq: 0,
+      updatesB64: [],
+      headSeq: 1,
+    }));
+    mockCommand("note_updates_since", () => ({ updatesB64: [], headSeq: 1 }));
+    mockCommand("note_set_synced", (a) => {
+      const id = a.noteId as string;
+      acked.add(id);
+      // Rust note_set_synced 的 emit：origin system、tables [sync_state, notes]
+      emitTestEvent("db:changed", { rev: 0, origin: "system", tables: ["sync_state", "notes"], ids: [id] });
+      return undefined;
+    });
+    mockCommand("sync_state_set_error", () => undefined);
+    // 发现这一侧不是这条用例的主题：只有个人工作区，服务端没有别人的便笺
+    mockCommand("api_request", (a) => {
+      const url = new URL(`http://x${a.path as string}`);
+      const ok = (body: unknown) => ({ status: 200, headers: {}, bodyText: JSON.stringify(body) });
+      if (url.pathname === "/v1/workspaces")
+        return ok({ workspaces: [workspace(PERSONAL, "personal", null)] });
+      if (url.pathname === "/v1/notes") {
+        return ok({
+          workspace_id: url.searchParams.get("workspace_id"),
+          effective_perm: "editor",
+          notes: [],
+          next_version: 0,
+          has_more: false,
+        });
+      }
+      if (url.pathname === "/v1/shared-with-me") return ok({ items: [], next_cursor: null });
+      return { status: 404, headers: {}, bodyText: JSON.stringify({ error: "not_found" }) };
+    });
+  });
+
+  afterEach(() => {
+    host?.stop();
+    host = null;
+    vi.useRealTimers();
+  });
+
+  it("先建满上限，前面的同步完成后必须自动补上剩下的（不能永远停在 64 张）", async () => {
+    host = new SyncHost();
+    await host.start();
+    await vi.advanceTimersByTimeAsync(1);
+
+    // 第一轮：上限就是上限，一张都不能超建
+    expect(liveNoteProviders()).toHaveLength(CAP);
+    expect(acked.size).toBe(0);
+
+    // 之后不再有任何「本地变更」—— 导入完的便笺没人会去编辑它们。
+    // 唯一还在跑的只有 10 秒一次的 tick，排干必须靠它。
+    let peak = liveNoteProviders().length;
+    for (let round = 0; round < 12 && acked.size < BULK; round += 1) {
+      serverHandshake();
+      serverAckUpdates();
+      await vi.advanceTimersByTimeAsync(10_000);
+      peak = Math.max(peak, liveNoteProviders().length);
+    }
+
+    expect(acked.size, `只传上去 ${acked.size}/${BULK} 张，剩下的再也没有被选中`).toBe(BULK);
+    // 排干的过程里一次都没有突破上限（否则服务端会按 MAX_DOCUMENTS_PER_SOCKET 拒掉）
+    expect(peak).toBeLessThanOrEqual(CAP);
   });
 });
