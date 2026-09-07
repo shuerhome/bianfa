@@ -10,6 +10,7 @@ import { zValidator } from "@hono/zod-validator";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { rateLimit } from "../security/rate-limit.js";
+import { requireSuperAdmin } from "./admin-guard.js";
 import {
   ApiFailure,
   emailSchema,
@@ -24,6 +25,18 @@ import {
 import { type AuthVariables, type BearerVerifier, requireBearer } from "./index.js";
 import { type OrgVariables, requireOrgRole } from "./org-guard.js";
 import { securityCodeSchema } from "./security-code.js";
+import {
+  adminSetPassword,
+  freezeUser,
+  getUserDetail,
+  listAdminAudit,
+  listPlatformAdmins,
+  listUserNotes,
+  listUsers,
+  listUserWorkspaces,
+  readUserNote,
+  unfreezeUser,
+} from "./services/admin.js";
 import { auditToCsv, listAudit } from "./services/audit-query.js";
 import type { Actor, ServiceDeps } from "./services/context.js";
 import { listDevices, revokeAllDevices, revokeDevice } from "./services/devices.js";
@@ -210,6 +223,80 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
     async (c) => ok(c, await createOrg(deps, actorOf(c), c.req.valid("json")), 201),
   );
   app.get("/orgs", async (c) => ok(c, await listOrgs(deps, actorOf(c))));
+
+  // ---------------------------------------------------------------- 平台总管理员（/v1/admin/*）
+  // 用 route("/admin", …) 显式前缀挂载：如果写成 route("/", adminApp) 且 adminApp 内部 use("*")，
+  // 那个闸门会命中整个 /v1（包括 /v1/notes），全站瘫痪。
+  const adminApp = new Hono<V1Env>();
+  adminApp.use("*", requireSuperAdmin({ db: deps.db, enabled: deps.env.platformAdminEnabled }));
+
+  adminApp.get("/users", async (c) => {
+    const q = c.req.query("q");
+    return ok(
+      c,
+      await listUsers(deps, actorOf(c), {
+        q,
+        limit: Number(c.req.query("limit") ?? 50),
+        offset: Number(c.req.query("offset") ?? 0),
+        frozenOnly: c.req.query("frozen") === "1",
+      }),
+    );
+  });
+
+  adminApp.get("/admins", async (c) => ok(c, await listPlatformAdmins(deps)));
+
+  adminApp.get("/audit", async (c) =>
+    ok(
+      c,
+      await listAdminAudit(deps, actorOf(c), {
+        limit: Number(c.req.query("limit") ?? 50),
+        offset: Number(c.req.query("offset") ?? 0),
+        targetUserId: c.req.query("user_id"),
+      }),
+    ),
+  );
+
+  const adminUser = new Hono<V1Env>();
+  const targetOf = (c: Context<V1Env>): string => {
+    const id = idSchema.safeParse(c.req.param("id"));
+    if (!id.success) throw new ApiFailure(404, "not_found");
+    return id.data;
+  };
+
+  adminUser.get("/", async (c) => ok(c, await getUserDetail(deps, actorOf(c), targetOf(c))));
+  adminUser.get("/workspaces", async (c) => ok(c, await listUserWorkspaces(deps, actorOf(c), targetOf(c))));
+  adminUser.get("/notes", async (c) =>
+    ok(
+      c,
+      await listUserNotes(deps, actorOf(c), targetOf(c), {
+        workspaceId: c.req.query("workspace_id"),
+        q: c.req.query("q"),
+        limit: Number(c.req.query("limit") ?? 50),
+        offset: Number(c.req.query("offset") ?? 0),
+        includeDeleted: c.req.query("include_deleted") === "1",
+      }),
+    ),
+  );
+  adminUser.get("/notes/:noteId", async (c) => {
+    const noteId = uuidSchema.safeParse(c.req.param("noteId"));
+    if (!noteId.success) throw new ApiFailure(404, "not_found");
+    return ok(c, await readUserNote(deps, actorOf(c), targetOf(c), noteId.data));
+  });
+  adminUser.post(
+    "/freeze",
+    zValidator("json", z.object({ reason: z.string().trim().max(200).optional() }).strict(), validationHook),
+    async (c) => ok(c, await freezeUser(deps, actorOf(c), targetOf(c), c.req.valid("json").reason ?? null)),
+  );
+  adminUser.post("/unfreeze", async (c) => ok(c, await unfreezeUser(deps, actorOf(c), targetOf(c))));
+  adminUser.post(
+    "/password",
+    zValidator("json", z.object({ new_password: z.string().min(8).max(128) }).strict(), validationHook),
+    async (c) =>
+      ok(c, await adminSetPassword(deps, actorOf(c), targetOf(c), c.req.valid("json").new_password)),
+  );
+  adminApp.route("/users/:id", adminUser);
+
+  app.route("/admin", adminApp);
 
   // ---- orgs/:id（X-Organization-Id 必须与路径一致）
   const org = new Hono<V1Env>();

@@ -17,14 +17,15 @@
 import { DEVICE_CODE_GRANT_TYPE, oauthDeviceAuthorization, oauthProvider } from "@better-auth/oauth-provider";
 import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { hashPassword as scryptHash, verifyPassword as scryptVerify } from "better-auth/crypto";
 import { organization } from "better-auth/plugins/organization";
 import { twoFactor } from "better-auth/plugins/two-factor";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import { type Db, withUserTx } from "../db/client.js";
 import { uuidv7 } from "../db/ids.js";
-import { authSchema } from "../db/schema/auth.js";
+import { authSchema, user } from "../db/schema/auth.js";
 import type { MailProvider } from "../mail/index.js";
 import { randomToken, sha256Base64url } from "../security/tokens.js";
 import { appleConfigured, createAppleSecretProvider } from "./apple-secret.js";
@@ -198,6 +199,10 @@ export function buildAuth(deps: BuildAuthDeps) {
     user: {
       additionalFields: {
         banned: { type: "boolean", required: false, defaultValue: false, input: false },
+        // 冻结（0009）：只读字段，只能由 /v1/admin 的冻结/解冻端点改
+        frozenAt: { type: "date", required: false, input: false, returned: false },
+        frozenBy: { type: "string", required: false, input: false, returned: false },
+        frozenReason: { type: "string", required: false, input: false, returned: false },
         deletedAt: { type: "date", required: false, input: false },
         deletionDueAt: { type: "date", required: false, input: false },
         aiOptIn: { type: "boolean", required: false, defaultValue: false },
@@ -221,6 +226,38 @@ export function buildAuth(deps: BuildAuthDeps) {
       },
     },
     databaseHooks: {
+      // 建会话闸门：冻结 / 封禁 / 已删除的账号不许拿到会话。
+      // 挂在 session.create.before 而不是 /sign-in/email 的 before hook 上，是因为
+      // internalAdapter.createSession 一律走 createWithHooks(data, "session")，所以这一个 hook
+      // 同时覆盖密码登录、社交回调、注册后的 autoSignIn、两步验证通过后建会话 —— 不会漏掉任何一条建会话路径。
+      session: {
+        create: {
+          before: async (s) => {
+            const rows = await db
+              .select({ frozenAt: user.frozenAt, banned: user.banned, deletedAt: user.deletedAt })
+              .from(user)
+              .where(eq(user.id, s.userId))
+              .limit(1);
+            const u = rows[0];
+            if (!u) throw new APIError("UNAUTHORIZED", { message: "账号不存在", code: "USER_NOT_FOUND" });
+            if (u.deletedAt) {
+              throw new APIError("FORBIDDEN", { message: "账号已注销", code: "ACCOUNT_DELETED" });
+            }
+            if (u.frozenAt || u.banned) {
+              await auditStandalone(db, {
+                action: "auth.sign_in_denied",
+                actorId: s.userId,
+                targetType: "user",
+                targetId: s.userId,
+                outcome: "denied",
+                metadata: { reason: u.frozenAt ? "frozen" : "banned" },
+              });
+              throw new APIError("FORBIDDEN", { message: "账号已被冻结", code: "ACCOUNT_FROZEN" });
+            }
+            return { data: s };
+          },
+        },
+      },
       user: {
         create: {
           // 明文安全码 → hash（同一套密码哈希器）；返回 securityCode: undefined 让 adapter 跳过明文字段

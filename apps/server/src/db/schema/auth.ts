@@ -41,6 +41,11 @@ export const user = pgTable(
     twoFactorEnabled: boolean("twoFactorEnabled").default(false),
     // ---- additionalFields（规格 04 §1.3 / §7.9）----
     banned: boolean("banned").notNull().default(false),
+    // 冻结（0009）：总管理员冻结账号。与 banned 分开——banned 已被 account-purge 当作
+    // 「已匿名化的墓碑账号」标记在用，共用一列会让解冻误复活被清除的账号。
+    frozenAt: ts("frozen_at"),
+    frozenBy: text("frozen_by"),
+    frozenReason: text("frozen_reason"),
     deletedAt: ts("deleted_at"),
     deletionDueAt: ts("deletion_due_at"),
     aiOptIn: boolean("ai_opt_in").notNull().default(false),

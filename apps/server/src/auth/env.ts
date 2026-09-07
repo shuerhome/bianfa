@@ -37,6 +37,13 @@ export const authEnvSchema = baseEnvSchema.extend({
   AUTH_RATE_LIMIT: z.enum(["0", "1"]).optional(),
   /** 逗号分隔的可信代理 CIDR（Better Auth ipAddress.trustedProxies）；缺省不配置 */
   AUTH_TRUSTED_PROXIES: optionalString,
+  /**
+   * 总管理员管理面（/v1/admin/*）的总开关。缺省开启；设成 "0" 则整个管理面 404，
+   * 出事时这是一分钟内能落下的闸。注意用 === "0" 判断而不是布尔取反 —— 字符串 "0" 在 JS 里为真。
+   * 刻意不写进 .env.prod.example：deploy.sh 会拒绝任何含 REPLACE_ME 的必填键，
+   * 而这是一个有安全缺省值的可选开关，不该变成所有自托管实例的部署前置。
+   */
+  PLATFORM_ADMIN_ENABLED: z.enum(["0", "1"]).optional(),
 });
 
 export type AuthEnvRaw = z.output<typeof authEnvSchema>;
@@ -52,6 +59,8 @@ export interface AuthEnv extends AuthEnvRaw {
   secureCookies: boolean;
   /** 原始 env（DATA_KEY_* 扫描用） */
   raw: NodeJS.ProcessEnv;
+  /** /v1/admin/* 是否挂载 */
+  platformAdminEnabled: boolean;
 }
 
 export function loadAuthEnv(raw: NodeJS.ProcessEnv): AuthEnv {
@@ -79,5 +88,6 @@ export function loadAuthEnv(raw: NodeJS.ProcessEnv): AuthEnv {
     isTest,
     secureCookies: baseURL.startsWith("https://"),
     raw,
+    platformAdminEnabled: parsed.PLATFORM_ADMIN_ENABLED !== "0",
   };
 }

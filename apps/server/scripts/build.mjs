@@ -1,4 +1,4 @@
-// 五入口打包成 dist/{api,sync,worker,migrate,auth-bootstrap}.js（backend.yml / Dockerfile / infra/vps/deploy.sh 契约）。
+// 六入口打包成 dist/{api,sync,worker,migrate,auth-bootstrap,platform-admin}.js（backend.yml / Dockerfile / infra/vps/deploy.sh 契约）。
 // 依赖保持 external（镜像里带 node_modules），只把本包与 workspace 包内联，启动快、栈迹可读。
 // 另：把 apps/web/dist（Web 面 Vite 产物）复制到 public/web，api 进程同源托管（src/http/web-static.ts）；没有就跳过。
 
@@ -12,7 +12,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 rmSync(resolve(root, "dist"), { recursive: true, force: true });
 await build({
   absWorkingDir: root,
-  entryPoints: ["src/api.ts", "src/sync.ts", "src/worker.ts", "src/migrate.ts", "src/auth-bootstrap.ts"],
+  entryPoints: [
+    "src/api.ts",
+    "src/sync.ts",
+    "src/worker.ts",
+    "src/migrate.ts",
+    "src/auth-bootstrap.ts",
+    "src/platform-admin.ts",
+  ],
   outdir: "dist",
   bundle: true,
   platform: "node",
