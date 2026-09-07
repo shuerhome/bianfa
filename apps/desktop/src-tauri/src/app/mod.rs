@@ -4,6 +4,7 @@
 pub mod attachments;
 pub mod auth;
 pub mod commands;
+pub mod data_location;
 pub mod events;
 pub mod hotkey;
 pub mod keys;
@@ -91,6 +92,9 @@ pub fn run() {
             commands::system::hotkey_set,
             commands::system::open_external,
             commands::system::open_data_dir,
+            commands::system::data_location_get,
+            commands::system::data_location_check,
+            commands::system::data_location_move,
             commands::system::theme_current,
             commands::system::notes_open_count,
             // auth & network
@@ -170,7 +174,21 @@ fn open_database(paths: &Paths, key: &str) -> Result<Db, IpcError> {
 }
 
 fn setup(app: AppHandle, is_autostart: bool) -> Result<(), IpcError> {
-    let data_dir = app.path().app_local_data_dir()?;
+    let default_dir = app.path().app_local_data_dir()?;
+    // 数据目录可以被搬到别的盘（见 data_location）。指针指向的盘没挂上时**不回落到默认目录**：
+    // 那样用户看到的是一个空应用，会以为便笺全丢了，进而可能去重新导入、覆盖掉云端。
+    // 这里选择带着错误继续启动，界面能把「配置的位置在哪、为什么打不开」显示出来。
+    let (data_dir, location_error) = match data_location::locate(&default_dir) {
+        data_location::Located::Default(d) => (d, None),
+        data_location::Located::Custom(d) => (d, None),
+        data_location::Located::Missing { configured, reason } => {
+            log::error!("数据目录不可用：{} —— {reason}", configured.display());
+            (
+                default_dir.clone(),
+                Some(format!("{}|{reason}", configured.display())),
+            )
+        }
+    };
     let paths = Paths::new(data_dir);
     paths.ensure_dirs()?;
     FileLogger::install(&paths.logs_dir);
@@ -187,17 +205,30 @@ fn setup(app: AppHandle, is_autostart: bool) -> Result<(), IpcError> {
         crate::util::uuid_v7()
     });
 
-    let (db, db_error) = match secrets.db_key() {
-        Ok(key) => match open_database(&paths, &key) {
-            Ok(db) => (Some(db), None),
+    // 配置的数据目录打不开时，绝不去开默认目录里的库 —— 那是另一份数据，
+    // 让用户在"空便笺"和"我的便笺"之间左右横跳是最坏的结果。
+    let (db, db_error) = if let Some(loc) = &location_error {
+        let (dir, reason) = loc.split_once('|').unwrap_or((loc.as_str(), ""));
+        (
+            None,
+            Some(IpcError::new(
+                "data_dir_unavailable",
+                format!("数据目录 {dir} 打不开：{reason}"),
+            )),
+        )
+    } else {
+        match secrets.db_key() {
+            Ok(key) => match open_database(&paths, &key) {
+                Ok(db) => (Some(db), None),
+                Err(e) => {
+                    log::error!("database open failed: {e}");
+                    (None, Some(e))
+                }
+            },
             Err(e) => {
-                log::error!("database open failed: {e}");
+                log::error!("keyring: {e}");
                 (None, Some(e))
             }
-        },
-        Err(e) => {
-            log::error!("keyring: {e}");
-            (None, Some(e))
         }
     };
     let cloud_folder = db::cloud_folder_hint(&paths.data_dir);

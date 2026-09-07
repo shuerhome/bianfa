@@ -1,7 +1,7 @@
 //! 07 §2.3 settings / app / system.
 
 use crate::app::state::AppState;
-use crate::app::{events, hotkey, settings, theme, tray, updater, windows};
+use crate::app::{data_location, events, hotkey, settings, theme, tray, updater, windows};
 use crate::error::{IpcError, IpcResult};
 use crate::model::{AppInfo, Settings};
 use tauri::{AppHandle, Manager, State};
@@ -155,3 +155,90 @@ pub fn notes_open_count(state: State<'_, AppState>) -> IpcResult<usize> {
 
 #[allow(dead_code)]
 fn _unused(_: &windows::NoteWindows) {}
+
+// ─────────────────────────────────────────── 数据目录（可搬到别的盘）
+
+/// 当前数据目录 + 是不是自定义的 + 默认目录在哪。设置页用它渲染「数据位置」那一节。
+#[tauri::command]
+pub fn data_location_get(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> IpcResult<serde_json::Value> {
+    let default_dir = app.path().app_local_data_dir()?;
+    let current = state.paths.data_dir.clone();
+    Ok(serde_json::json!({
+        "current": current.to_string_lossy(),
+        "default": default_dir.to_string_lossy(),
+        "isCustom": current != default_dir,
+        "inCloudFolder": data_location::looks_like_cloud_sync(&current),
+    }))
+}
+
+/// 选目录之前先问一句能不能用，让界面在用户点「确定搬」之前就能拦住明显不行的选择。
+#[tauri::command]
+pub fn data_location_check(
+    state: State<'_, AppState>,
+    target: String,
+) -> IpcResult<serde_json::Value> {
+    let target = std::path::PathBuf::from(target.trim());
+    match data_location::validate_target(&state.paths.data_dir, &target) {
+        Ok(()) => Ok(serde_json::json!({ "ok": true })),
+        Err(reason) => Ok(serde_json::json!({ "ok": false, "reason": reason })),
+    }
+}
+
+/// 把数据目录搬到 `target`（传 null 表示搬回系统默认位置）。
+///
+/// 顺序是刻意的：**先复制 → 再写指针 → 最后才提示重启**，源目录一个字节都不删。
+/// 中途出任何问题，最坏结果是硬盘上多了一份拷贝，而不是唯一一份数据搬丢了。
+/// 旧目录留给用户自己确认没问题后手动删——这是那种「宁可留垃圾也不能删错」的场合。
+#[tauri::command]
+pub fn data_location_move(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    target: Option<String>,
+) -> IpcResult<serde_json::Value> {
+    let default_dir = app.path().app_local_data_dir()?;
+    let current = state.paths.data_dir.clone();
+    let target = match target.as_deref().map(str::trim) {
+        None | Some("") => default_dir.clone(),
+        Some(t) => std::path::PathBuf::from(t),
+    };
+
+    if target == current {
+        return Err(IpcError::new(
+            "invalid_argument",
+            "新位置和当前位置是同一个目录",
+        ));
+    }
+    data_location::validate_target(&current, &target)
+        .map_err(|reason| IpcError::new("invalid_argument", reason))?;
+
+    // 数据库必须先关：SQLCipher 的 WAL 还开着的时候复制出来的库是坏的
+    state.close_db();
+
+    let bytes = data_location::copy_tree(&current, &target)
+        .map_err(|e| IpcError::io(format!("复制数据失败：{e}")))?;
+
+    // 复制完再写指针。写指针失败就等于没搬，源数据原封不动。
+    let pointer_target = if target == default_dir {
+        None
+    } else {
+        Some(target.as_path())
+    };
+    data_location::write_pointer(&default_dir, pointer_target)
+        .map_err(|e| IpcError::io(format!("记录新位置失败：{e}")))?;
+
+    log::warn!(
+        "数据目录已搬迁：{} → {}（{bytes} 字节）；旧目录保留，请确认无误后自行删除",
+        current.display(),
+        target.display()
+    );
+    Ok(serde_json::json!({
+        "ok": true,
+        "from": current.to_string_lossy(),
+        "to": target.to_string_lossy(),
+        "bytes": bytes,
+        "restartRequired": true,
+    }))
+}

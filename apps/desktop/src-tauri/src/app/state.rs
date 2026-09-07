@@ -88,6 +88,21 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// 关掉数据库连接（搬迁数据目录前必须做）。
+    /// SQLCipher 开着 WAL 的时候复制出来的库文件是坏的 —— 必须先 drop 掉连接，
+    /// 让 rusqlite 走完 checkpoint 与收尾，复制到的才是一份能打开的库。
+    pub fn close_db(&self) {
+        if let Ok(mut guard) = self.db.lock() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = self.db_error.lock() {
+            *guard = Some(IpcError::new(
+                "data_dir_moving",
+                "数据目录正在搬迁，请按提示重启应用",
+            ));
+        }
+    }
+
     /// Runs `f` with the open connection; `db` error if the database failed to open.
     pub fn with_db<T>(&self, f: impl FnOnce(&Connection) -> IpcResult<T>) -> IpcResult<T> {
         let guard = self
