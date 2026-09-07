@@ -163,6 +163,22 @@ export async function queryWorkspacePerm(db: Db, userId: string, workspaceId: st
   );
 }
 
+/**
+ * 账号是否还能用同步（冻结 / 封禁 / 已注销）。
+ *
+ * 为什么这道检查非有不可：同步凭据是 60 秒的 JWT，onAuthenticate 只验签名与过期，
+ * 而 authorize() 判的是「这个人对这篇便笺有没有权限」——两者都答不了「这个账号还在不在」。
+ * 冻结时 authz_revoked 会关掉该用户当时所有的 socket，但客户端手里那张还没过期的凭据
+ * 可以立刻重连回来，最长有 60 秒的窗口。这里补上，冻结才是真的立刻断。
+ * 结果与其它判定一起进 AuthzCache（冻结时 invalidateUser 会清掉），不额外增加稳态开销。
+ */
+async function queryAccountUsable(db: Db, userId: string): Promise<boolean> {
+  const r = await db.execute<{ usable: boolean }>(sql`
+    SELECT (u.frozen_at IS NULL AND u.banned IS NOT TRUE AND u.deleted_at IS NULL) AS usable
+      FROM "user" u WHERE u.id = ${userId}`);
+  return r.rows[0]?.usable === true;
+}
+
 export interface AuthorizeOptions {
   /** 客户端 max_schema_version（JWT msv） */
   msv: number;
@@ -175,6 +191,10 @@ export async function authorize(
   ref: DocumentRef,
   opts: AuthorizeOptions,
 ): Promise<AuthzResult> {
+  // 账号先于文档判定：被冻结的人手里可能还攥着一张没过期的同步凭据
+  if (!(await queryAccountUsable(db, userId))) {
+    return { ok: false, reason: "forbidden", detail: "account not usable" };
+  }
   if (ref.kind === "inbox") {
     const perm = await queryWorkspacePerm(db, userId, ref.workspaceId);
     if (!perm) return { ok: false, reason: "forbidden", detail: "no workspace access" };
