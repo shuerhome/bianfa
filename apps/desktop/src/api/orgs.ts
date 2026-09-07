@@ -1,13 +1,9 @@
 // 组织 / 成员 / 邀请（服务端 src/auth/routes.ts B1 路由 + auth/services/{orgs,members,invites}.ts）。
 //   POST /v1/orgs、GET /v1/orgs 不需要额外头；/v1/orgs/:id/** 全部要求请求头 X-Organization-Id 与路径 id 一致
-//   （auth/org-guard.ts：缺 → 400 no_active_organization；不一致 → 400 organization_mismatch）。
-//   头通过 IPC api_request 的 `headers` 参数透传：Rust 侧 api_request 需接受 headers: Option<HashMap<String,String>>
-//   并原样加到请求上；在 Rust 支持之前，服务端会回 no_active_organization，UI 把它映射成「请升级客户端」。
+//   （auth/org-guard.ts：缺 → 400 no_active_organization；不一致 → 400 organization_mismatch；
+//   成员已停用 → 403 member_suspended）。头经 apiJson 的 headers 选项 → IPC api_request(headers) → Rust 原样加到请求上。
 //   B1 的校验失败是 400 validation_failed（与 B2 的 validation_error 不同）。
-import { call } from "../ipc/commands.js";
-import { IpcError } from "../ipc/errors.js";
-import type { ApiResponse } from "../ipc/types.js";
-import { apiJson, type HttpMethod, isoToMs, toApiError } from "./http.js";
+import { apiJson, type HttpMethod, isoToMs } from "./http.js";
 import type { MemberStatus, OrgRole, Plan } from "./me.js";
 
 export const ORG_HEADER = "X-Organization-Id";
@@ -27,38 +23,24 @@ export const ORG_ERROR = {
   cannotModifyOwner: "cannot_modify_owner",
   cannotSuspendSelf: "cannot_suspend_self",
   insufficientRole: "insufficient_role",
+  memberSuspended: "member_suspended",
   memberNotFound: "member_not_found",
   useLeave: "use_leave",
   transferOwnershipFirst: "transfer_ownership_first",
   validationFailed: "validation_failed",
 } as const;
 
-/** 与 http.ts apiJson 同形，但带 X-Organization-Id（apiJson 没有 headers 选项） */
-async function orgJson<T>(
+/** apiJson + X-Organization-Id（/v1/orgs/:id/** 全部要求这个头与路径 id 一致） */
+function orgJson<T>(
   orgId: string,
   method: HttpMethod,
   path: string,
   opts: { body?: unknown } = {},
 ): Promise<T> {
-  if (!path.startsWith("/v1/")) throw new IpcError("bad_path", "api_request path 必须以 /v1/ 开头");
-  const res = await call<ApiResponse>("api_request", {
-    method,
-    path,
-    ...(opts.body !== undefined ? { jsonBody: opts.body } : {}),
-    timeoutMs: 15_000,
+  return apiJson<T>(method, path, {
+    ...(opts.body !== undefined ? { body: opts.body } : {}),
     headers: { [ORG_HEADER]: orgId },
   });
-  if (res.status < 200 || res.status >= 300) throw toApiError(res);
-  if (res.status === 204 || res.bodyText.length === 0) return undefined as T;
-  try {
-    return JSON.parse(res.bodyText) as T;
-  } catch {
-    throw new IpcError("bad_json", "服务端返回了无法解析的内容", {
-      status: res.status,
-      body: null,
-      requestId: null,
-    });
-  }
 }
 
 const orgPath = (orgId: string, rest = "") => `/v1/orgs/${encodeURIComponent(orgId)}${rest}`;

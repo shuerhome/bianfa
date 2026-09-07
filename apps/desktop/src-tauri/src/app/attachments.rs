@@ -329,6 +329,7 @@ pub async fn upload(app: &AppHandle, id: &str) -> IpcResult<AttachmentUploadResu
         api::paths::ATTACHMENT_PRESIGN,
         Some(presign_body),
         Some(30_000),
+        None,
     )
     .await?;
     if r.status == 503 {
@@ -381,6 +382,7 @@ pub async fn upload(app: &AppHandle, id: &str) -> IpcResult<AttachmentUploadResu
         api::paths::ATTACHMENT_COMMIT,
         Some(serde_json::json!({ "attachment_id": id })),
         Some(30_000),
+        None,
     )
     .await?;
     if r.status != 200 {

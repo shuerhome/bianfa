@@ -308,6 +308,7 @@ async fn claim(app: &AppHandle) -> IpcResult<ClaimResponse> {
         paths::CLAIM,
         Some(serde_json::json!({ "local_user_id": install_id })),
         Some(15_000),
+        None,
     )
     .await?;
     if r.status != 200 {
@@ -327,7 +328,7 @@ async fn claim(app: &AppHandle) -> IpcResult<ClaimResponse> {
 
 /// `GET /v1/me` → `AuthStatus` (+ `profile.json`).
 async fn fetch_me(app: &AppHandle) -> IpcResult<MeResponse> {
-    let r = api_request(app, "GET", paths::ME, None, Some(15_000)).await?;
+    let r = api_request(app, "GET", paths::ME, None, Some(15_000), None).await?;
     if r.status != 200 {
         return Err(IpcError::auth(format!("/v1/me returned {}", r.status)));
     }
@@ -748,18 +749,52 @@ pub async fn logout(app: &AppHandle) -> IpcResult<()> {
 // HTTP proxy
 // ---------------------------------------------------------------------------------------------
 
+/// Headers the proxy owns; the WebView may not set or override them via `headers`.
+const RESERVED_HEADERS: &[&str] = &[
+    "authorization",
+    "cookie",
+    "host",
+    "content-length",
+    "content-type",
+    "transfer-encoding",
+    "connection",
+    "x-bianfa-device-id",
+    "x-bianfa-app-version",
+];
+
+/// Extra request headers from the WebView (e.g. `X-Organization-Id` for `/v1/orgs/:id/**`).
+fn extra_headers(
+    headers: Option<HashMap<String, String>>,
+) -> IpcResult<reqwest::header::HeaderMap> {
+    let mut map = reqwest::header::HeaderMap::new();
+    for (k, v) in headers.into_iter().flatten() {
+        let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+            .map_err(|_| IpcError::invalid(format!("bad header name: {k}")))?;
+        if RESERVED_HEADERS.contains(&name.as_str()) {
+            return Err(IpcError::invalid(format!("header not allowed: {k}")));
+        }
+        let value = reqwest::header::HeaderValue::from_str(&v)
+            .map_err(|_| IpcError::invalid(format!("bad header value for {k}")))?;
+        map.insert(name, value);
+    }
+    Ok(map)
+}
+
 /// The only HTTP egress for the WebView (07 §2.4): injects `Authorization`, retries once after a
-/// 401 with a refreshed token. `path` must start with `/v1/`.
+/// 401 with a refreshed token. `path` must start with `/v1/`. `headers` are added verbatim
+/// (see `RESERVED_HEADERS` for what is refused).
 pub async fn api_request(
     app: &AppHandle,
     method: &str,
     path: &str,
     json_body: Option<serde_json::Value>,
     timeout_ms: Option<u64>,
+    headers: Option<HashMap<String, String>>,
 ) -> IpcResult<ApiResponse> {
     if !path.starts_with("/v1/") {
         return Err(IpcError::invalid("path must start with /v1/"));
     }
+    let extra = extra_headers(headers)?;
     let state = app.state::<AppState>();
     if state.network_blocked.load(Ordering::Relaxed) {
         return Err(IpcError::unsupported(
@@ -781,7 +816,8 @@ pub async fn api_request(
             .header(
                 "X-Bianfa-App-Version",
                 app.package_info().version.to_string(),
-            );
+            )
+            .headers(extra.clone());
         if let Some(t) = &token {
             req = req.bearer_auth(t);
         }
@@ -829,6 +865,7 @@ pub async fn sync_token(app: &AppHandle) -> IpcResult<SyncToken> {
         paths::SYNC_TOKEN,
         Some(serde_json::json!({})),
         Some(15_000),
+        None,
     )
     .await?;
     if r.status != 200 {

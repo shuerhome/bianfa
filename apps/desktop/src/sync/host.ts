@@ -4,7 +4,9 @@
 //             推送前写 meta.bodyEditedAt）→ provider 发送。
 //   远端通路：hostDoc updateV2（origin ≠ local-db）→ note_append_update(origin 'remote', projection) → db:changed。
 //   收缩守卫：应用远端事务前后比较 body.toString()；命中 → note_version_save + 便笺级 error 状态。
-//   房间：note:<ws>:<id>；信号房 inbox:<ws>（stateless bump / authz.revoked）。
+//   房间：note:<ws>:<id>，ws = 本地行的 workspace_id（团队 / 共享给我的便笺在各自的工作区；null → 个人）；
+//         服务端按 effective_note_permission 授权，ws 与便笺实际所在工作区不一致 → forbidden。
+//   信号房 inbox:<ws>（stateless bump / authz.revoked）。forbidden / gone 的便笺进 denied，发现再列出前不重订。
 //   附件：db:changed(tables 含 attachments) / 登录 / 重连 → attachment_upload（Rust 走 presign → PUT → commit）。
 import {
   applyUpdateV2,
@@ -89,6 +91,14 @@ export class SyncHost {
   private unlisten: Array<() => void> = [];
   /** 便笺发现水位，按工作区分别记（个人 / 各团队工作区） */
   private discoveryVersions = new Map<string, number>();
+  /** 共享给我的水位：见过的 share_id（服务端按 s.id 倒序返回，翻到见过的就停） */
+  private sharedSeen = new Set<string>();
+  /** 发现状态所属的用户：换账号时清空水位 */
+  private discoveryUser: string | null = null;
+  /** 服务端明确拒绝（forbidden / gone）的便笺：不再从 refreshTargets 重订，直到发现再次列出它 */
+  private denied = new Set<string>();
+  /** 正在建 provider 的便笺（发现与 db:changed 可能同时要求建同一张） */
+  private opening = new Map<string, Promise<void>>();
   private started = false;
   /** 附件上传串行队列（同一时刻只跑一个 presign/PUT/commit） */
   private uploadChain: Promise<void> = Promise.resolve();
@@ -121,6 +131,7 @@ export class SyncHost {
   private status = useSyncStatusStore.getState();
 
   private async onAuth(auth: AuthStatus | null): Promise<void> {
+    const wasLoggedIn = this.auth?.loggedIn === true;
     this.auth = auth;
     if (!auth?.loggedIn || !auth.personalWorkspaceId) {
       this.status.setGlobal("local");
@@ -134,6 +145,15 @@ export class SyncHost {
     invalidateSyncToken();
     this.authFailures = 0;
     this.paused = false;
+    const userId = auth.user?.id ?? null;
+    const userChanged = userId !== this.discoveryUser;
+    if (userChanged) {
+      this.discoveryUser = userId;
+      this.discoveryVersions.clear();
+      this.sharedSeen.clear();
+    }
+    // 新登录 / 换账号：给被拒绝过的便笺一次重试机会
+    if (!wasLoggedIn || userChanged) this.denied.clear();
     this.ensureSocket();
     this.ensureInbox(auth.personalWorkspaceId);
     await this.refreshTargets();
@@ -200,8 +220,8 @@ export class SyncHost {
   /**
    * 便笺发现（specs/03 §2.6）：union，绝不本地删除；每个工作区各自的 since_version 水位 + has_more 翻页。
    * 以个人工作区触发（登录 / 重连）时顺带发现：可见的团队工作区（GET /v1/workspaces）与共享给我的便笺
-   * （GET /v1/shared-with-me）——都只建本地行（workspace_id = 便笺自身所在工作区），正文等 provider 同步。
-   * inbox bump 带的是具体 workspace_id，只发现那一个工作区。
+   * （GET /v1/shared-with-me）——本地行的 workspace_id = 便笺自身所在工作区，provider 订该工作区的房间拉正文。
+   * inbox bump 带的是具体 workspace_id，只发现那一个工作区。服务端列出 = 有权限 → 从 denied 里放出来。
    */
   private discovering = false;
   private async discover(workspaceId: string): Promise<void> {
@@ -227,15 +247,13 @@ export class SyncHost {
 
   /** 一个工作区：GET /v1/notes?workspace_id&since_version 翻页；水位按工作区分别记（this.discoveryVersions） */
   private async discoverWorkspace(workspaceId: string): Promise<void> {
-    // provider 的房间名目前只按个人工作区拼（ensureProvider → documentName(personalWorkspaceId, id)），
-    // 服务端对 workspace 不匹配的订阅回 forbidden；所以团队工作区的便笺这里只建行，不主动订阅。
-    const personal = workspaceId === this.auth?.personalWorkspaceId;
     let since = this.discoveryVersions.get(workspaceId) ?? 0;
     for (let page = 0; page < 20; page += 1) {
       const res = await fetchNotesSince(workspaceId, since);
       for (const n of res.notes) {
         // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
         if (n.purgedAt !== null) continue;
+        this.denied.delete(n.id);
         await this.ensureLocalRow(n.id, workspaceId, {
           color: n.color,
           zMode: n.zMode,
@@ -243,7 +261,7 @@ export class SyncHost {
           updatedAt: n.updatedAt,
           deletedAt: n.deletedAt,
         });
-        if (personal) await this.ensureProvider(n.id, { pending: true });
+        await this.ensureProvider(n.id, { pending: true });
       }
       since = res.nextVersion;
       if (!res.hasMore) break;
@@ -251,12 +269,24 @@ export class SyncHost {
     this.discoveryVersions.set(workspaceId, since);
   }
 
-  /** 共享给我：GET /v1/shared-with-me 游标翻页；便笺留在共享者的工作区里（workspace_id 取自条目） */
+  /**
+   * 共享给我：GET /v1/shared-with-me 游标翻页；便笺留在共享者的工作区里（workspace_id 取自条目）。
+   * 水位 = 见过的 share_id：服务端按 s.id 倒序返回，翻到已见过的条目就停（之后的都处理过了），
+   * 所以重连时通常只拉第一页、不再逐条 note_get。整轮成功后才记水位，中途失败下次重扫。
+   */
   private async discoverSharedWithMe(): Promise<void> {
     let cursor: string | undefined;
-    for (let page = 0; page < 20; page += 1) {
+    const seenNow: string[] = [];
+    let reachedSeen = false;
+    for (let page = 0; page < 20 && !reachedSeen; page += 1) {
       const res = await fetchSharedWithMe(cursor ? { cursor, limit: 200 } : { limit: 200 });
       for (const item of res.items) {
+        if (this.sharedSeen.has(item.shareId)) {
+          reachedSeen = true;
+          break;
+        }
+        seenNow.push(item.shareId);
+        this.denied.delete(item.noteId);
         await this.ensureLocalRow(item.noteId, item.workspaceId, {
           color: item.color,
           zMode: item.zMode,
@@ -264,10 +294,12 @@ export class SyncHost {
           updatedAt: item.updatedAt,
           deletedAt: null,
         });
+        await this.ensureProvider(item.noteId, { pending: true });
       }
       if (!res.nextCursor) break;
       cursor = res.nextCursor;
     }
+    for (const id of seenNow) this.sharedSeen.add(id);
   }
 
   /** 远端有、本地没有 → 建本地行（只带 meta；本地已有则什么都不做，绝不覆盖） */
@@ -302,6 +334,7 @@ export class SyncHost {
   }
 
   private async onRevoked(noteId: string): Promise<void> {
+    this.denied.add(noteId);
     this.dropProvider(noteId);
     const rec = await noteGet(noteId).catch(() => null);
     const owned = rec?.workspaceId === null || rec?.workspaceId === this.auth?.personalWorkspaceId;
@@ -319,6 +352,7 @@ export class SyncHost {
       return;
     }
     if (reason === "gone" && noteId) {
+      this.denied.add(noteId);
       this.dropProvider(noteId);
       void syncStateSetError({ noteId, errCode: "gone" });
       this.status.setNote(noteId, "error", "gone");
@@ -364,10 +398,34 @@ export class SyncHost {
       existing.lastActivity = Date.now();
       return;
     }
+    // 服务端拒绝过（forbidden / gone）：pending_sync 里仍有它，但重订只会再被拒一次 → 等发现再列出它
+    if (this.denied.has(noteId)) return;
+    const inflight = this.opening.get(noteId);
+    if (inflight) {
+      await inflight;
+      const opened = this.entries.get(noteId);
+      if (opened) {
+        if (flags.hasWindow !== undefined) opened.hasWindow = flags.hasWindow;
+        if (flags.pending) opened.pending = true;
+      }
+      return;
+    }
+    const opening = this.openProvider(noteId, flags).finally(() => this.opening.delete(noteId));
+    this.opening.set(noteId, opening);
+    await opening;
+  }
+
+  /** 真正建 provider：房间按本地行的 workspace_id 拼（团队 / 共享便笺在各自工作区；null → 个人） */
+  private async openProvider(
+    noteId: string,
+    flags: { hasWindow?: boolean; pending?: boolean },
+  ): Promise<void> {
     if (this.entries.size >= MAX_PROVIDERS) this.evictIdle();
     if (this.entries.size >= MAX_PROVIDERS) return;
-    const workspaceId = this.auth?.personalWorkspaceId;
-    if (!workspaceId) return;
+    const personal = this.auth?.personalWorkspaceId;
+    if (!personal) return;
+    const rec = await noteGet(noteId).catch(() => null);
+    const workspaceId = rec?.workspaceId ?? personal;
     const bundle = await noteLoadDoc(noteId).catch(() => null);
     if (!bundle) return;
     const updates: Uint8Array[] = [];
