@@ -1,5 +1,5 @@
 // 自动生成（pnpm -F @bianfa/tokens build），勿手改；来源 packages/tokens/src/tokens.json
-export declare const NOTE_COLORS: readonly [ "graphite", "rose", "coral", "amber", "citron", "fern", "teal", "azure", "violet", "fuchsia" ];
+export declare const NOTE_COLORS: readonly [ "graphite", "rose", "coral", "amber", "citron", "fern", "teal", "azure", "violet", "fuchsia", "slate", "carmine", "vermilion", "ochre", "olive", "pine", "peacock", "indigo", "wisteria", "eggplant" ];
 export type NoteColor = (typeof NOTE_COLORS)[number];
 export type Theme = "light" | "dark";
 export declare const THEMES: readonly ["light", "dark"];
@@ -17,7 +17,10 @@ export interface NoteColorInfo {
   readonly zh: string;
   readonly en: string;
   readonly hue: number;
-  readonly shortcut: number;
+  /** 浓淡档：pale = 浅纸，deep = 浓纸（同一组色相各有一份） */
+  readonly tier: "pale" | "deep";
+  /** 档内序号 0–9（换色快捷键由 tier + slot 推导） */
+  readonly slot: number;
 }
 export type SemanticName = "canvas" | "surface-1" | "surface-2" | "surface-3" | "overlay" | "hover" | "active" | "selected" | "text-1" | "text-2" | "text-3" | "text-disabled" | "text-on-accent" | "border-subtle" | "border" | "border-strong" | "accent" | "accent-hover" | "accent-active" | "accent-subtle" | "accent-border" | "danger" | "danger-hover" | "danger-active" | "danger-subtle" | "danger-border" | "success" | "success-subtle" | "warning" | "warning-subtle" | "info" | "focus" | "scrim" | "tooltip-bg" | "tooltip-text";
 export declare const NOTE_COLOR_INFO: Readonly<Record<NoteColor, NoteColorInfo>>;
