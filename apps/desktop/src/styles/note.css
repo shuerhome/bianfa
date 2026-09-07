@@ -7,27 +7,33 @@ body {
   background: transparent;
 }
 
-.note {
-  container: note / size;
-  height: 100%;
-  width: 100%;
-  /* 单层柔和窗体阴影（不与描边并用）。三档：贴桌面更平 / 常规 / 置顶更高。 */
+/* 单层柔和窗体阴影（不与描边并用）。三档：贴桌面更平 / 常规 / 置顶更高。
+   声明在 :root 上而不是 .note 上 —— 设置页的"外观"预览用的是 .note-window > .note-shell，
+   外面并没有 .note 祖先；挂在 .note 上会让预览里的 var(--note-shadow) 失效（invalid at
+   computed-value time → box-shadow: none），预览就变成一张没有阴影的白纸。 */
+:root {
   --note-shadow-flat: 0 1px 2px -1px rgb(24 24 20 / 0.16), 0 4px 10px -5px rgb(24 24 20 / 0.18);
   --note-shadow-rest: 0 1px 2px -1px rgb(24 24 20 / 0.18), 0 10px 24px -9px rgb(24 24 20 / 0.28);
   --note-shadow-high: 0 2px 5px -2px rgb(24 24 20 / 0.2), 0 20px 44px -13px rgb(24 24 20 / 0.34);
   --note-shadow: var(--note-shadow-rest);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .note {
+  :root:not([data-theme="light"]) {
     --note-shadow-flat: 0 1px 2px rgb(0 0 0 / 0.34), 0 4px 10px -6px rgb(0 0 0 / 0.4);
     --note-shadow-rest: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -10px rgb(0 0 0 / 0.56);
     --note-shadow-high: 0 2px 4px rgb(0 0 0 / 0.44), 0 20px 44px -14px rgb(0 0 0 / 0.68);
   }
 }
-:root[data-theme="dark"] .note {
+:root[data-theme="dark"] {
   --note-shadow-flat: 0 1px 2px rgb(0 0 0 / 0.34), 0 4px 10px -6px rgb(0 0 0 / 0.4);
   --note-shadow-rest: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -10px rgb(0 0 0 / 0.56);
   --note-shadow-high: 0 2px 4px rgb(0 0 0 / 0.44), 0 20px 44px -14px rgb(0 0 0 / 0.68);
+}
+
+.note {
+  container: note / size;
+  height: 100%;
+  width: 100%;
 }
 /* 置顶（zMode 1）抬高、贴桌面（zMode 2）压平 —— 放在 focused 之后，后写者胜 */
 .note[data-focused="true"] {
@@ -70,7 +76,7 @@ body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow: var(--note-shadow);
+  box-shadow: var(--note-shadow, var(--sh-window));
   transition: box-shadow var(--dur-3) var(--ease-out);
 }
 .note-shell--closing {
@@ -267,18 +273,22 @@ body {
 }
 
 /* ── 正文 ── */
-/* 左右 16px、上 12px（顶栏之下）、下 8px */
+/* 光学内缩左右各 16px、上 12px（顶栏之下）、下 8px。
+   scrollbar-gutter: stable 会在 padding box 内再留出一条滚动条槽，所以右边要把这条槽
+   （--note-scrollbar-w，宽度由下面的 ::-webkit-scrollbar 固定）从 padding 里扣掉，
+   否则正文实际是"左 16 / 右 22"，整段文字看着往左偏。 */
 .note-body {
+  --note-scrollbar-w: 6px;
   position: absolute;
   inset: 0;
-  padding: calc(var(--note-titlebar-h) + 12px) 16px 8px;
+  padding: calc(var(--note-titlebar-h) + 12px) calc(16px - var(--note-scrollbar-w)) 8px 16px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
 }
 /* 细滚动条：常态几乎不可见，悬停窗口才显出来 */
 .note-body::-webkit-scrollbar {
-  width: 6px;
+  width: var(--note-scrollbar-w);
 }
 .note-body::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
