@@ -23,52 +23,52 @@ pub const NOTE_COLORS: [&str; 10] = ["graphite", "rose", "coral", "amber", "citr
 pub const DEFAULT_NOTE_COLOR: &str = "graphite";
 
 pub const NOTE_PAPER_LIGHT: [Rgb; 10] = [
-    Rgb { r: 229, g: 227, b: 217 }, // graphite
-    Rgb { r: 248, g: 218, b: 227 }, // rose
-    Rgb { r: 248, g: 219, b: 215 }, // coral
-    Rgb { r: 248, g: 222, b: 195 }, // amber
-    Rgb { r: 235, g: 231, b: 164 }, // citron
-    Rgb { r: 198, g: 240, b: 198 }, // fern
-    Rgb { r: 174, g: 242, b: 235 }, // teal
-    Rgb { r: 203, g: 232, b: 248 }, // azure
-    Rgb { r: 225, g: 224, b: 248 }, // violet
-    Rgb { r: 248, g: 214, b: 246 }, // fuchsia
+    Rgb { r: 246, g: 245, b: 241 }, // graphite
+    Rgb { r: 255, g: 239, b: 244 }, // rose
+    Rgb { r: 255, g: 236, b: 233 }, // coral
+    Rgb { r: 255, g: 238, b: 220 }, // amber
+    Rgb { r: 253, g: 251, b: 206 }, // citron
+    Rgb { r: 222, g: 255, b: 222 }, // fern
+    Rgb { r: 201, g: 255, b: 249 }, // teal
+    Rgb { r: 224, g: 244, b: 255 }, // azure
+    Rgb { r: 240, g: 239, b: 255 }, // violet
+    Rgb { r: 255, g: 234, b: 253 }, // fuchsia
 ];
 pub const NOTE_PAPER_DARK: [Rgb; 10] = [
-    Rgb { r: 44, g: 43, b: 40 }, // graphite
-    Rgb { r: 66, g: 29, b: 43 }, // rose
-    Rgb { r: 69, g: 30, b: 26 }, // coral
-    Rgb { r: 59, g: 38, b: 14 }, // amber
-    Rgb { r: 47, g: 45, b: 17 }, // citron
-    Rgb { r: 27, g: 50, b: 28 }, // fern
-    Rgb { r: 26, g: 48, b: 46 }, // teal
-    Rgb { r: 17, g: 47, b: 62 }, // azure
-    Rgb { r: 42, g: 38, b: 71 }, // violet
-    Rgb { r: 59, g: 32, b: 58 }, // fuchsia
+    Rgb { r: 37, g: 36, b: 33 }, // graphite
+    Rgb { r: 52, g: 32, b: 39 }, // rose
+    Rgb { r: 51, g: 30, b: 27 }, // coral
+    Rgb { r: 47, g: 33, b: 18 }, // amber
+    Rgb { r: 39, g: 37, b: 17 }, // citron
+    Rgb { r: 26, g: 41, b: 26 }, // fern
+    Rgb { r: 13, g: 42, b: 40 }, // teal
+    Rgb { r: 18, g: 39, b: 50 }, // azure
+    Rgb { r: 35, g: 34, b: 52 }, // violet
+    Rgb { r: 45, g: 30, b: 44 }, // fuchsia
 ];
 pub const NOTE_DOT_LIGHT: [Rgb; 10] = [
-    Rgb { r: 119, g: 117, b: 108 }, // graphite
-    Rgb { r: 191, g: 59, b: 116 }, // rose
-    Rgb { r: 198, g: 61, b: 52 }, // coral
-    Rgb { r: 154, g: 104, b: 45 }, // amber
-    Rgb { r: 124, g: 119, b: 51 }, // citron
-    Rgb { r: 69, g: 134, b: 73 }, // fern
-    Rgb { r: 73, g: 128, b: 123 }, // teal
-    Rgb { r: 50, g: 126, b: 161 }, // azure
-    Rgb { r: 115, g: 93, b: 211 }, // violet
-    Rgb { r: 168, g: 70, b: 167 }, // fuchsia
+    Rgb { r: 106, g: 105, b: 100 }, // graphite
+    Rgb { r: 220, g: 81, b: 138 }, // rose
+    Rgb { r: 217, g: 74, b: 63 }, // coral
+    Rgb { r: 195, g: 121, b: 0 }, // amber
+    Rgb { r: 153, g: 144, b: 1 }, // citron
+    Rgb { r: 26, g: 156, b: 49 }, // fern
+    Rgb { r: 0, g: 157, b: 148 }, // teal
+    Rgb { r: 0, g: 148, b: 199 }, // azure
+    Rgb { r: 135, g: 113, b: 238 }, // violet
+    Rgb { r: 185, g: 82, b: 183 }, // fuchsia
 ];
 pub const NOTE_DOT_DARK: [Rgb; 10] = [
-    Rgb { r: 161, g: 159, b: 147 }, // graphite
-    Rgb { r: 228, g: 116, b: 158 }, // rose
-    Rgb { r: 235, g: 119, b: 106 }, // coral
-    Rgb { r: 208, g: 143, b: 64 }, // amber
-    Rgb { r: 169, g: 162, b: 72 }, // citron
-    Rgb { r: 110, g: 177, b: 112 }, // fern
-    Rgb { r: 101, g: 174, b: 167 }, // teal
-    Rgb { r: 71, g: 170, b: 217 }, // azure
-    Rgb { r: 155, g: 144, b: 236 }, // violet
-    Rgb { r: 206, g: 123, b: 204 }, // fuchsia
+    Rgb { r: 157, g: 155, b: 150 }, // graphite
+    Rgb { r: 219, g: 106, b: 149 }, // rose
+    Rgb { r: 238, g: 120, b: 107 }, // coral
+    Rgb { r: 223, g: 143, b: 34 }, // amber
+    Rgb { r: 179, g: 169, b: 26 }, // citron
+    Rgb { r: 87, g: 177, b: 93 }, // fern
+    Rgb { r: 1, g: 189, b: 179 }, // teal
+    Rgb { r: 0, g: 179, b: 240 }, // azure
+    Rgb { r: 157, g: 144, b: 247 }, // violet
+    Rgb { r: 211, g: 126, b: 208 }, // fuchsia
 ];
 
 pub const CANVAS_LIGHT: Rgb = Rgb { r: 252, g: 252, b: 251 };
