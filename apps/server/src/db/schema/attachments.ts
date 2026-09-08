@@ -17,7 +17,10 @@ import { notes } from "./notes.js";
 import { bytea } from "./types.js";
 import { workspaces } from "./workspaces.js";
 
+/** 普通用户的单文件上限（套餐策略）。库里的 CHECK 是更宽的绝对天花板，见 0010 迁移。 */
 export const ATTACHMENT_MAX_BYTES = 10_485_760;
+/** attachments.byte_size 的 CHECK 上限（绝对天花板，不是套餐策略） */
+export const ATTACHMENT_HARD_MAX_BYTES = 209_715_200;
 export const ATTACHMENT_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 
 export const attachments = pgTable(
@@ -45,7 +48,7 @@ export const attachments = pgTable(
   },
   (t) => [
     check("attachments_hash_len_check", sql`octet_length(${t.contentHash}) = 32`),
-    check("attachments_byte_size_check", sql`${t.byteSize} > 0 AND ${t.byteSize} <= 10485760`),
+    check("attachments_byte_size_check", sql`${t.byteSize} > 0 AND ${t.byteSize} <= 209715200`),
     check("attachments_mime_check", sql`${t.mime} IN ('image/png','image/jpeg','image/gif','image/webp')`),
     check("attachments_status_check", sql`${t.status} IN ('pending','committed')`),
     index("attachments_hash_idx")

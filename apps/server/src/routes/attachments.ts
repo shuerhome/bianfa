@@ -11,8 +11,10 @@ import { uuidV7, validate } from "../http/validate.js";
 import { authorizeNote } from "../services/authorize.js";
 import { iso, num, one } from "../services/db-util.js";
 import {
+  ADMIN_ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_BYTES,
   checkStorageQuota,
+  isUnlimitedWorkspace,
   planForWorkspace,
   storageUsedBytes,
 } from "../services/quota.js";
@@ -34,7 +36,9 @@ const presignSchema = z
     workspace_id: uuidV7,
     /** BLAKE3-256 hex（64 字符） */
     hash: z.string().regex(/^[0-9a-fA-F]{64}$/),
-    size: z.number().int().min(1).max(ATTACHMENT_MAX_BYTES),
+    // 这里放到管理员那一档：普通用户的 10 MB 在下面按工作区判定后再卡，
+    // 因为「是不是管理员的工作区」要查库，而 zod 校验跑在事务之前。
+    size: z.number().int().min(1).max(ADMIN_ATTACHMENT_MAX_BYTES),
     mime: z.enum(MIMES),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
@@ -80,20 +84,31 @@ export function attachmentRoutes(deps: RouteDeps): Hono<RouteEnv> {
         if (!alias || alias.workspace_id !== ws.id) throw errors.conflict("attachment_id_taken");
         return { exists: true as const, attachmentId: alias.id };
       }
-      const plan = await planForWorkspace(tx, ws);
-      const used = await storageUsedBytes(
-        tx,
-        ws.kind === "personal"
-          ? { kind: "personal", ownerUserId: ws.owner_user_id as string }
-          : { kind: "team", orgId: ws.org_id as string },
-      );
-      const quota = checkStorageQuota(used, body.size, plan);
-      if (!quota.ok)
+      // 总管理员及其团队不受套餐限制（存储配额与单文件上限都放开到管理员档）
+      const unlimited = await isUnlimitedWorkspace(tx, ws);
+      const perFileMax = unlimited ? ADMIN_ATTACHMENT_MAX_BYTES : ATTACHMENT_MAX_BYTES;
+      if (body.size > perFileMax)
         throw errors.conflict("quota_exceeded", {
-          used: quota.used,
-          limit: quota.limit,
+          used: 0,
+          limit: perFileMax,
           incoming: body.size,
         });
+      const plan = await planForWorkspace(tx, ws);
+      if (!unlimited) {
+        const used = await storageUsedBytes(
+          tx,
+          ws.kind === "personal"
+            ? { kind: "personal", ownerUserId: ws.owner_user_id as string }
+            : { kind: "team", orgId: ws.org_id as string },
+        );
+        const quota = checkStorageQuota(used, body.size, plan);
+        if (!quota.ok)
+          throw errors.conflict("quota_exceeded", {
+            used: quota.used,
+            limit: quota.limit,
+            incoming: body.size,
+          });
+      }
       const key = attachmentStorageKey(ws.id, hashHex);
       const row = await one<{ id: string; status: string; workspace_id: string }>(
         tx,

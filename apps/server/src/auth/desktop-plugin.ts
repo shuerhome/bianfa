@@ -22,6 +22,7 @@ import { oauthRefreshToken, user } from "../db/schema/index.js";
 import type { MailProvider } from "../mail/index.js";
 import { getRateLimitBackend } from "../security/rate-limit.js";
 import { isUuidLike } from "../security/tokens.js";
+import { isPlatformAdminUser } from "../services/quota.js";
 import { auditStandalone, notifyAuthzRevoked } from "./db-helpers.js";
 import type { AuthEnv } from "./env.js";
 import { ApiFailure } from "./http.js";
@@ -314,7 +315,9 @@ export function bianfaDesktopPlugin(deps: DesktopPluginDeps): BetterAuthPlugin {
             }
 
             const plan = await userPlan(db, newRow.userId);
-            if (plan === "free") {
+            // 总管理员不受设备数限制（自托管的所有者不该被自己搭的收费墙挡在门外）
+            const unlimited = await isPlatformAdminUser(db, newRow.userId);
+            if (plan === "free" && !unlimited) {
               const active = await countActiveDevices(db, newRow.userId, deviceId);
               if (active >= FREE_PLAN_DEVICE_LIMIT) {
                 // 撤销刚签发的一组 token（删 refresh 行级联 access）

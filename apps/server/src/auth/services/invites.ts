@@ -8,6 +8,7 @@ import { uuidv7 } from "../../db/ids.js";
 import { invitation, member, organization, team, teamMember, user } from "../../db/schema/index.js";
 import { getRateLimitBackend } from "../../security/rate-limit.js";
 import { randomToken, sha256Base64url } from "../../security/tokens.js";
+import { orgHasPlatformAdmin } from "../../services/quota.js";
 import { ApiFailure } from "../http.js";
 import { invalidateMemberCache, type OrgContext } from "../org-guard.js";
 import { type Actor, actorEntry, type ServiceDeps, sendMailSafely } from "./context.js";
@@ -24,6 +25,9 @@ function inviteLink(deps: ServiceDeps, token: string): string {
 }
 
 async function assertSeatAvailable(tx: Tx, orgId: string): Promise<void> {
+  // 总管理员在里面的组织不受席位限制。新建组织的 seats_paid 默认是 1（= 一个人都邀请不进来），
+  // 对自托管的所有者来说这道墙毫无意义。
+  if (await orgHasPlatformAdmin(tx, orgId)) return;
   const org = await tx
     .select({ seatsPaid: organization.seatsPaid, plan: organization.plan })
     .from(organization)
