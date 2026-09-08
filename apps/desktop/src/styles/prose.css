@@ -62,6 +62,19 @@
 .bf-prose ::selection {
   background: var(--note-sel, var(--c-selected));
 }
+/* 加粗 / 斜体必须显式给字重，不能靠浏览器默认。
+   base.css 里有一条 `* { font-synthesis-weight: none }`（当初为了修「导入的便笺整段发粗」
+   而加的：合成粗体是那个现象的第二来源）。它禁止浏览器合成假粗，而 <strong> 原本在整个
+   项目里没有任何显式字重规则、完全依赖 UA 默认的 `font-weight: bolder`——于是只要 WebView
+   解析到的字体没有真正的粗体字面，加粗标记就会「加上了但看起来一模一样」。
+   这里给一个明确的 700，并且只在正文的 strong/b 上把合成放回来：字体真有粗体就用真的，
+   没有就允许合成，总之要看得见。作用域只有 .bf-prose 里的 strong/b，
+   不会把「整段发粗」那个老问题带回来（那个的成因是包裹层继承字重，与这里无关）。 */
+.bf-prose strong,
+.bf-prose b {
+  font-weight: 700;
+  font-synthesis-weight: auto;
+}
 .bf-prose mark {
   background: var(--note-mark, var(--c-accent-subtle));
   color: inherit;
