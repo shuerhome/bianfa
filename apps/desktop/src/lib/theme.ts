@@ -1,7 +1,7 @@
 // 主题 / 便笺色 / 缩放 / 动效档位应用到 <html>（specs/06 §8、§2 缩放、§5 reduced-motion）。
 import type { NoteColor } from "@bianfa/shared";
 import { isNoteColor } from "@bianfa/shared";
-import type { ThemeSetting, UiScale } from "../ipc/types.js";
+import type { ContentDensity, ThemeSetting, UiScale } from "../ipc/types.js";
 
 const SWITCH_ATTR = "data-theme-switching";
 let switchTimer: number | null = null;
@@ -34,6 +34,18 @@ export function applyNoteColor(el: HTMLElement, color: string): NoteColor {
 
 export function applyUiScale(scale: UiScale, root: HTMLElement = document.documentElement): void {
   root.style.setProperty("--ui-scale", String(scale / 100));
+}
+
+/**
+ * 正文紧凑度：只在根元素上打一个 data-density，具体的行距/段距由 prose.css 里的
+ * --prose-lh / --prose-gap 决定。放在 documentElement 上是为了让便笺窗口、列表预览、
+ * 设置页的预览块自动一致——它们都在各自的 document 里，但都走同一套 .bf-prose。
+ */
+export function applyContentDensity(
+  density: ContentDensity,
+  root: HTMLElement = document.documentElement,
+): void {
+  root.setAttribute("data-density", density);
 }
 
 export type MotionSetting = "system" | "full" | "reduce";

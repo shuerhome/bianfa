@@ -261,6 +261,9 @@ pub struct Settings {
     pub desktop_pin_readonly: bool,
     pub color_patterns: bool,
     pub reduce_transparency: bool,
+    /// 正文的紧凑度：`compact` / `cozy` / `relaxed`。默认 compact —— 便笺是拿来扫一眼的，
+    /// 原版 Windows 便笺也是密排；行距和段距太松，一屏看不下几行。
+    pub content_density: String,
     pub api_base_url: String,
     pub sync_ws_url: String,
     /// Notice ids the user acknowledged (`notice_ack`). Not part of the public contract.
@@ -272,6 +275,11 @@ pub struct Settings {
 }
 
 pub const DEFAULT_API_BASE_URL: &str = "https://api.bianfa.app";
+
+/// 正文紧凑度的合法取值。顺序即「从紧到松」。
+pub const CONTENT_DENSITIES: [&str; 3] = ["compact", "cozy", "relaxed"];
+/// 默认取最紧的一档：对齐 Windows 便笺的密排观感。
+pub const DEFAULT_CONTENT_DENSITY: &str = "compact";
 
 /// 曾经的硬编码同步地址。它假定部署会单独开一个 `ws.` 子域，而实际部署把 WebSocket 挂在
 /// API 同一个主机的 `/ws/v1` 上（Caddy 的 `handle /ws/*` 不按主机名区分）。两边一旦对不上，
@@ -310,6 +318,7 @@ impl Default for Settings {
             desktop_pin_readonly: cfg!(target_os = "macos"),
             color_patterns: false,
             reduce_transparency: false,
+            content_density: DEFAULT_CONTENT_DENSITY.into(),
             api_base_url: DEFAULT_API_BASE_URL.into(),
             sync_ws_url: default_sync_ws_url(DEFAULT_API_BASE_URL),
             acked_notice_ids: Vec::new(),
@@ -371,6 +380,9 @@ impl Settings {
         if !(self.sync_ws_url.starts_with("wss://") || self.sync_ws_url.starts_with("ws://")) {
             return Err("syncWsUrl must be ws(s)".into());
         }
+        if !CONTENT_DENSITIES.contains(&self.content_density.as_str()) {
+            return Err(format!("contentDensity: {}", self.content_density));
+        }
         Ok(())
     }
 
@@ -383,6 +395,11 @@ impl Settings {
     pub fn normalize(&mut self) {
         if self.sync_ws_url == LEGACY_SYNC_WS_URL || self.sync_ws_url.is_empty() {
             self.sync_ws_url = default_sync_ws_url(&self.api_base_url);
+        }
+        // 老安装的 settings.json 里没有这个字段，serde 会填空串；写坏了也一样兜回默认。
+        // 不校验的话，一个非法值会让 CSS 落不到任何一档，正文变成浏览器默认排版。
+        if !CONTENT_DENSITIES.contains(&self.content_density.as_str()) {
+            self.content_density = DEFAULT_CONTENT_DENSITY.into();
         }
     }
 }
@@ -516,6 +533,47 @@ mod tests {
             default_sync_ws_url("nonsense"),
             "wss://api.bianfa.app/ws/v1"
         );
+    }
+
+    #[test]
+    fn normalize_repairs_a_bogus_density() {
+        // 结构体上有 #[serde(default)]，所以老安装缺这个字段时 serde 会落到 Settings::default()，
+        // 不会解析失败 —— 这条测的是另一种情况：settings.json 被手改坏了。
+        // normalize 必须在 validate 之前把它修回来（load() 就是这个顺序），
+        // 否则一个拼错的字符串会让整份设置被判定无效、全部退回默认。
+        let mut s = Settings {
+            content_density: String::new(),
+            ..Settings::default()
+        };
+        s.normalize();
+        assert_eq!(s.content_density, DEFAULT_CONTENT_DENSITY);
+        // 手改坏了也要兜回来，不能让 CSS 落不到任何一档
+        s.content_density = "very-loose".into();
+        s.normalize();
+        assert_eq!(s.content_density, DEFAULT_CONTENT_DENSITY);
+        // 合法值原样保留
+        s.content_density = "relaxed".into();
+        s.normalize();
+        assert_eq!(s.content_density, "relaxed");
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn default_density_is_the_tight_one() {
+        // 便笺是拿来扫一眼的：默认必须是最紧的一档，松的两档是用户主动选的
+        assert_eq!(Settings::default().content_density, CONTENT_DENSITIES[0]);
+        assert_eq!(DEFAULT_CONTENT_DENSITY, "compact");
+    }
+
+    #[test]
+    fn a_bogus_density_is_rejected_at_the_patch_boundary() {
+        // load() 那条路有 normalize 兜着，但 settings_set 的补丁只过 validate ——
+        // 界面传来一个没见过的值必须当场报错，而不是悄悄存进盘里
+        let s = Settings {
+            content_density: "ultra-tight".into(),
+            ..Settings::default()
+        };
+        assert!(s.validate().is_err());
     }
 
     #[test]

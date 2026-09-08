@@ -26,6 +26,12 @@ pub const SYNC: &str = "sync";
 
 pub const NOTE_DEFAULT: (f64, f64) = (220.0, 220.0);
 pub const NOTE_MIN: (f64, f64) = (180.0, 140.0);
+/// 便笺能被拉到多大就到此为止。
+///
+/// 没有上限时正文会被拉成一行几百个字，读起来要来回甩头——便笺是「扫一眼」的东西，
+/// 不是文档窗口。760 逻辑像素在正文字号下大约 60–70 个汉字一行，接近排版上舒适的
+/// 行长上限；高度给得很宽松（清单类便笺确实会很长），真正需要收住的只有宽度。
+pub const NOTE_MAX: (f64, f64) = (760.0, 2000.0);
 pub const NOTE_TITLEBAR_H: f64 = 28.0;
 pub const MAIN_DEFAULT: (f64, f64) = (1120.0, 760.0);
 pub const MAIN_MIN: (f64, f64) = (640.0, 480.0);
@@ -236,6 +242,7 @@ fn build_note_window(
         .title("便笺 · bianfa")
         .inner_size(NOTE_DEFAULT.0 * s, NOTE_DEFAULT.1 * s)
         .min_inner_size(NOTE_MIN.0 * s, NOTE_MIN.1 * s)
+        .max_inner_size(NOTE_MAX.0 * s, NOTE_MAX.1 * s)
         .decorations(false)
         .maximizable(false)
         .minimizable(false)

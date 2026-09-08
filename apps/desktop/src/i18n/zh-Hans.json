@@ -421,7 +421,13 @@
     "securityCodeWrongPassword": "当前密码不正确。",
     "securityCodeNoPassword": "这个账号没有密码（第三方登录），暂时不能设置安全码。",
     "securityCodeSave": "保存",
-    "securityCodeChanged": "安全码已更新。"
+    "securityCodeChanged": "安全码已更新。",
+    "density": "正文紧凑度",
+    "density_compact": "紧凑",
+    "density_cozy": "适中",
+    "density_relaxed": "宽松",
+    "densityHint": "便笺正文的行距与段落间距。「紧凑」接近 Windows 便笺的密排。",
+    "previewBody2": "第二行看得出行距和段距的松紧。"
   },
   "export": {
     "title": "导出",

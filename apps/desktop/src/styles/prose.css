@@ -1,8 +1,26 @@
 /* .bf-prose：唯一排版类（specs/06 §2）；.note-body 只管几何。唯一允许元素选择器的地方。 */
+
+/* 正文紧凑度：两个变量而已 —— 行距和段距。根元素上的 data-density 来自设置
+   （lib/theme.ts 的 applyContentDensity）。默认写在 :root 上而不是只写在
+   [data-density="compact"] 里：设置还没加载完、或者哪个入口忘了调 apply 的那一瞬间，
+   正文也得是一份完整可读的排版，不能退化成浏览器默认。 */
+:root {
+  --prose-lh: 1.45;
+  --prose-gap: 2px;
+}
+:root[data-density="cozy"] {
+  --prose-lh: var(--lh-cjk);
+  --prose-gap: 6px;
+}
+:root[data-density="relaxed"] {
+  --prose-lh: var(--lh-body);
+  --prose-gap: 10px;
+}
+
 .bf-prose {
   font-family: var(--f-sans);
   font-size: var(--fs-md);
-  line-height: var(--lh-cjk);
+  line-height: var(--prose-lh);
   color: var(--note-ink, var(--c-text-1));
   /* 正文永远是常规字重：包裹层（StaticBody 的 div / .note-editor-host）绝不许继承到 600，
      且字体回退时不要合成假粗（合成粗体是"整段发粗"的第二来源）。 */
@@ -41,8 +59,9 @@
 .bf-prose h1,
 .bf-prose h2,
 .bf-prose h3 {
-  margin: 8px 0 2px;
-  line-height: var(--lh-cjk);
+  /* 标题上方的留白跟着段距走，否则调紧了正文、标题还是浮在一片空地上 */
+  margin: calc(var(--prose-gap) + 2px) 0 2px;
+  line-height: var(--prose-lh);
   font-weight: var(--fw-strong);
 }
 .bf-prose h1 {
@@ -67,7 +86,7 @@
 .bf-prose ol + p,
 .bf-prose p + ul,
 .bf-prose p + ol {
-  margin-top: 6px;
+  margin-top: var(--prose-gap);
 }
 .bf-prose blockquote {
   margin: 4px 0;

@@ -1,8 +1,13 @@
 import { Switch } from "@bianfa/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ThemeSetting, UiScale } from "../../../ipc/types.js";
-import { applyMotion, type MotionSetting } from "../../../lib/theme.js";
+import {
+  CONTENT_DENSITIES,
+  type ContentDensity,
+  type ThemeSetting,
+  type UiScale,
+} from "../../../ipc/types.js";
+import { applyContentDensity, applyMotion, type MotionSetting } from "../../../lib/theme.js";
 import { Segmented } from "../Segmented.js";
 import { Ack, useSettings } from "../use-settings.js";
 
@@ -48,6 +53,24 @@ export function AppearanceSection() {
         </div>
       </div>
       <div className="settings-row settings-row--stack">
+        <span className="settings-label">{t("settings.density")}</span>
+        <div className="settings-inline">
+          <Segmented<ContentDensity>
+            label={t("settings.density")}
+            value={settings.contentDensity}
+            options={CONTENT_DENSITIES.map((v) => ({ value: v, label: t(`settings.density_${v}`) }))}
+            onChange={(v) => {
+              // 先落到本窗口，让下面那块预览立刻跟着变（不等 IPC 往返）；
+              // 其它窗口靠 settings_set 提交后 emit 的 db:changed(settings) 各自重新应用（见 lib/bootstrap.ts）
+              applyContentDensity(v);
+              update({ contentDensity: v });
+            }}
+          />
+          <Ack on={ackKey === "contentDensity"} />
+        </div>
+        <p className="settings-hint">{t("settings.densityHint")}</p>
+      </div>
+      <div className="settings-row settings-row--stack">
         <span className="settings-label">{t("settings.motion")}</span>
         <Segmented<MotionSetting>
           label={t("settings.motion")}
@@ -85,7 +108,9 @@ export function AppearanceSection() {
             </div>
             <div className="note-body bf-prose settings-preview__body">
               <p className="note-title">{t("settings.previewTitle")}</p>
+              {/* 两段正文而不是一段：紧凑度改的就是段间距，只有一条间距的话几乎看不出来 */}
               <p>{t("settings.previewBody")}</p>
+              <p>{t("settings.previewBody2")}</p>
             </div>
           </div>
         </div>

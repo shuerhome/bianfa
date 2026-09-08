@@ -421,7 +421,13 @@
     "securityCodeWrongPassword": "The current password is incorrect.",
     "securityCodeNoPassword": "This account has no password (social sign-in), so a security code can't be set yet.",
     "securityCodeSave": "Save",
-    "securityCodeChanged": "Security code updated."
+    "securityCodeChanged": "Security code updated.",
+    "density": "Text density",
+    "density_compact": "Compact",
+    "density_cozy": "Cozy",
+    "density_relaxed": "Relaxed",
+    "densityHint": "Line and paragraph spacing in note bodies. Compact matches the tight look of Windows Sticky Notes.",
+    "previewBody2": "A second line, so the spacing is visible."
   },
   "export": {
     "title": "Export",

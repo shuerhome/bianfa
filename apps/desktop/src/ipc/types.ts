@@ -75,6 +75,10 @@ export type ThemeSetting = "system" | "light" | "dark";
 export type UiScale = 90 | 100 | 115 | 130;
 export type LanguageSetting = "zh-Hans" | "en" | "system";
 
+/** 正文紧凑度（行距 + 段距）。顺序即「从紧到松」，默认 compact。 */
+export const CONTENT_DENSITIES = ["compact", "cozy", "relaxed"] as const;
+export type ContentDensity = (typeof CONTENT_DENSITIES)[number];
+
 export interface Settings {
   theme: ThemeSetting;
   uiScale: UiScale;
@@ -85,6 +89,7 @@ export interface Settings {
   desktopPinReadonly: boolean;
   colorPatterns: boolean;
   reduceTransparency: boolean;
+  contentDensity: ContentDensity;
   apiBaseUrl: string;
   syncWsUrl: string;
 }
