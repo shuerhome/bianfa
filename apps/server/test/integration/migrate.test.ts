@@ -64,8 +64,13 @@ describe.skipIf(!hasDb)("migrations", () => {
         }),
       ]),
     );
-    const u = await f.admin.query('SELECT count(*)::int AS n FROM "user"');
-    expect(u.rows[0]?.n).toBe(0);
+    // restore-checks.sql 里有一句 `SELECT count(*) FROM "user"`，所以这张表必须存在且可查。
+    // 断言的是「查得动」，**不是**「有几行」—— 原来这里要求恰好 0 行，靠的是「排在前面那个
+    // 测试文件恰好把库清空了」。任何新增的集成测试文件插进执行序列都会让它变红
+    // （实测：单独跑 8 条全过，全量跑就挂），而这跟它要守的 schema 契约毫无关系。
+    // 一条会因为无关改动而变红的断言，只会训练人忽略红色。
+    const u = await f.admin.query<{ n: number }>('SELECT count(*)::int AS n FROM "user"');
+    expect(typeof u.rows[0]?.n).toBe("number");
   });
 
   it("infra/vps/restore-checks.sql 原样可执行，且恰好输出 users|notes|writes_24h|last_write_age_hours 一行", async () => {
