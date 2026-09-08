@@ -38,8 +38,11 @@ describe.skipIf(!hasDb)("/v1 的同源会话通道（网页端 / PWA）", () => 
     await f?.admin.end();
   });
 
-  const web = (method: string, path: string, opts: Record<string, unknown> = {}) =>
-    req(h.app, method, path, { cookieAs: me.userId, webHeader: true, ...opts });
+  const web = <T = Record<string, unknown>>(
+    method: string,
+    path: string,
+    opts: Record<string, unknown> = {},
+  ) => req<T>(h.app, method, path, { cookieAs: me.userId, webHeader: true, ...opts });
 
   it("带会话 cookie + X-Bianfa-Web 能过闸门并读到真数据", async () => {
     const r = await web<{ user?: { id?: string } }>("GET", "/v1/me");
