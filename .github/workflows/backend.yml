@@ -70,8 +70,13 @@ name: backend
 
 on:
   pull_request:
+  # 不过滤分支：这个仓库没有 main，默认分支就是当前的开发分支，
+  # 而原来写死的 `branches: [main]` 意味着**这个 workflow 从来没有跑过一次**——
+  # lint / typecheck / 单测 / 集成测试（含全部同步协议用例）在 CI 上一次都没执行。
+  # 注意下面的 build-images 与 deploy 仍然锁在 refs/heads/main 上：那两个 job 要
+  # ghcr 推送权限和 Cloudflare Access 的 SSH 凭据，而部署一直是在 VPS 上用
+  # `deploy.sh --build` 手动做的。这次只把**检查**打开，不动部署路径。
   push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       deploy_tag:
