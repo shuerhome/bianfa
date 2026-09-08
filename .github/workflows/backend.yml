@@ -279,14 +279,27 @@ jobs:
           PG_CID: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
+          # 两个库必须作为**两个列表项**传，不能塞进一对单引号里。
+          # shared_preload_libraries 是 GUC_LIST_QUOTE：`= 'a,b'` 会被当成「一个名字里带逗号的库」，
+          # ALTER SYSTEM 于是给它套上双引号写成 '"a,b"'，重启时 PG 去找一个叫 a,b 的文件并 FATAL：
+          #   could not access file "pg_stat_statements,pg_bigm": No such file or directory
+          # 实测两种写法落到 postgresql.auto.conf 的结果：
+          #   = 'pg_stat_statements,pg_bigm'  →  '"pg_stat_statements,pg_bigm"'   ← 坏的
+          #   = pg_stat_statements, pg_bigm   →  'pg_stat_statements, pg_bigm'    ← 对的
           docker exec "$PG_CID" psql -U bianfa -d bianfa -v ON_ERROR_STOP=1 \
-            -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements,pg_bigm'"
+            -c "ALTER SYSTEM SET shared_preload_libraries = pg_stat_statements, pg_bigm"
           docker restart "$PG_CID" >/dev/null
           for _ in $(seq 1 40); do
             if docker exec "$PG_CID" pg_isready -U bianfa -d bianfa >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec "$PG_CID" pg_isready -U bianfa -d bianfa
+          # PG 没起来时，pg_isready 只会说「no response」——真正的原因（比如上面那条 FATAL）在容器日志里。
+          # 不在这里把它打出来的话，这一步就是空转 80 秒然后给一句毫无信息量的失败。
+          if ! docker exec "$PG_CID" pg_isready -U bianfa -d bianfa; then
+            echo "::error::PG 重启后没能起来（多半是 shared_preload_libraries 写坏了），容器日志："
+            docker logs --tail 40 "$PG_CID" || true
+            exit 1
+          fi
           # 第 9 章 8.5：pgvector + pg_bigm 都在镜像里，且 pg_bigm 已预加载（否则 PG 起不来 / GUC 缺失）
           n="$(docker exec "$PG_CID" psql -U bianfa -d bianfa -At -v ON_ERROR_STOP=1 \
                -c "SELECT count(*) FROM pg_available_extensions WHERE name IN ('vector','pg_bigm','pg_stat_statements')")"
