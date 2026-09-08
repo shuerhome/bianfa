@@ -8,10 +8,10 @@
 //     B1 路由：deps.auth.v1Routes（/me、/orgs/**、/invites/**、/me/devices/**、/me/delete）
 // 每个 JSON 响应带 server_time（Unix ms）与 X-Request-Id；错误统一 { error: <code> }（规格 04 §5.3）。
 import { sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { audit } from "./audit/index.js";
-import { requireBearer } from "./auth/index.js";
+import { requireBearerOrWebSession } from "./auth/web-session.js";
 import { r2ConfigFromEnv } from "./http/env.js";
 import { AppError, mapError } from "./http/errors.js";
 import {
@@ -136,12 +136,21 @@ export function createApp(deps: AppDeps): Hono<RouteEnv> {
   v1.use("*", bodyLimit({ maxSize: LIMITS.jsonBodyMax }));
 
   // 已认证：600/min/user（规格 04 §1.7）
-  const verify = requireBearer(deps.auth.verifyBearer);
+  //
+  // Bearer（桌面端）**或**同源会话 cookie（浏览器里的网页端 / PWA）。后者不是可选的漂亮话：
+  // /v1/notes、/v1/workspaces、/v1/sync/token 全在这个路由里，网页端要能看便笺、能同步，
+  // 就必须在**这里**认它——B1 子应用里那份 requireBearerOrWebSession 只覆盖它自己那批路由。
+  // 中间件自己会在 c.var.auth 已存在时短路，所以两处挂载不会重复解会话。
   const authed = new Hono<RouteEnv>();
-  authed.use("*", async (c, next) => {
-    if (c.var.auth) return next();
-    return verify(c as unknown as Parameters<typeof verify>[0], next);
-  });
+  authed.use(
+    "*",
+    requireBearerOrWebSession({
+      db: d.db,
+      verify: deps.auth.verifyBearer,
+      ...(deps.auth.resolveSession ? { resolveSession: deps.auth.resolveSession } : {}),
+      appOrigins: deps.env.APP_ORIGINS,
+    }) as unknown as MiddlewareHandler<RouteEnv>,
+  );
   authed.use("*", async (c, next) => {
     const rl = await d.rateLimiter.hit("v1_user", c.var.auth.userId, 600, 60);
     if (!rl.ok) {

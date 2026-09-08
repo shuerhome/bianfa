@@ -56,6 +56,11 @@ export interface AuthRuntime {
    * /me（用户部分）、/orgs/**、/invites/**、/me/devices/**、/me/delete。装配层 `app.route('/v1', v1Routes)`。
    */
   v1Routes: Hono<{ Variables: AuthVariables }>;
+  /**
+   * 同源会话解析（Better Auth 的 cookie → 用户）。装配层用它给 /v1 的其余路由接上网页端通道
+   * （app.ts 的 authed → requireBearerOrWebSession）。不注入 = 网页端通道整条关掉，只剩 Bearer。
+   */
+  resolveSession?: ServiceDeps["resolveSession"];
   /** 进程退出时释放（Redis 等） */
   close: () => Promise<void>;
 }
@@ -211,6 +216,12 @@ export async function createAuthWithInternals(deps: CreateAuthDeps): Promise<Aut
 
 /** 接缝入口：签名固定（B2 只用这个） */
 export async function createAuth(deps: CreateAuthDeps): Promise<AuthRuntime> {
-  const { handler, verifyBearer, v1Routes, close } = await createAuthWithInternals(deps);
-  return { handler, verifyBearer, v1Routes, close };
+  const { handler, verifyBearer, v1Routes, services, close } = await createAuthWithInternals(deps);
+  return {
+    handler,
+    verifyBearer,
+    v1Routes,
+    ...(services.resolveSession ? { resolveSession: services.resolveSession } : {}),
+    close,
+  };
 }

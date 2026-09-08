@@ -38,6 +38,12 @@ export function requireBearerOrWebSession(
   deps: WebSessionDeps,
 ): MiddlewareHandler<{ Variables: AuthVariables }> {
   return async (c, next) => {
+    // 这个中间件在两处挂载（B1 的 /v1 子应用、B2 的 authed 路由），Hono 会把两处都跑一遍。
+    // 已经认过就直接放行：否则一次 cookie 请求要解两遍会话、查两遍账号状态。
+    if (c.get("auth")) {
+      await next();
+      return;
+    }
     const header = c.req.header("authorization") ?? "";
     const m = /^Bearer\s+([A-Za-z0-9._~+/=-]+)$/i.exec(header.trim());
     if (m) {

@@ -2,6 +2,7 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { ApiFailure } from "../auth/http.js";
 
 export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 426 | 429 | 500 | 503;
 
@@ -60,6 +61,14 @@ export function mapError(err: unknown): {
     if (err.status === 401) headers["WWW-Authenticate"] = 'Bearer error="invalid_token"';
     if (err.status === 429 && typeof err.extra.retry_after === "number")
       headers["Retry-After"] = String(err.extra.retry_after);
+    return { status: err.status, body: { error: err.code, ...err.extra }, headers };
+  }
+  // auth 层（B1）的业务错误。它原本只在 auth/routes.ts 自己的 onError 里映射，
+  // 但同源会话中间件现在也挂在 B2 的 /v1 管线上（app.ts 的 authed），不认它就会把
+  // bad_origin / account_frozen 变成 500。
+  if (err instanceof ApiFailure) {
+    const headers: Record<string, string> = {};
+    if (err.status === 401) headers["WWW-Authenticate"] = 'Bearer error="invalid_token"';
     return { status: err.status, body: { error: err.code, ...err.extra }, headers };
   }
   if (err instanceof HTTPException) {

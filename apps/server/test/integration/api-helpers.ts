@@ -32,6 +32,13 @@ export const fakeAuth: AuthRuntime = {
     };
   },
   v1Routes: new Hono<{ Variables: AuthVariables }>(),
+  // 网页端 / PWA 的同源会话通道：cookie `session=<userId>` 就当成那个用户登录着。
+  // 真实实现是 Better Auth 的 getSession（apps/server/src/auth/index.ts），这里只要一个等价的接缝。
+  resolveSession: async (headers: Headers) => {
+    const m = /(?:^|;\s*)session=([^;]+)/.exec(headers.get("cookie") ?? "");
+    if (!m?.[1]) return null;
+    return { userId: m[1], email: `${m[1]}@test.invalid`, emailVerified: true };
+  },
   close: async () => {},
 };
 

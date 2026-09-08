@@ -55,10 +55,18 @@ export function corsMiddleware(allowedOrigins: readonly string[]): MiddlewareHan
 /**
  * /v1/* 只认 Bearer（规格 04 §6、§7.11 ⑮）：带 Cookie 但无 Authorization → 401；
  * 完全没有 Authorization 的非匿名路径也直接 401（便宜的存在性检查；真正的校验在各路由的 requireBearer）。
+ *
+ * 例外一：X-Bianfa-Web —— 浏览器里的网页端 / PWA 拿不到 Bearer（那是 oauth-provider 签给桌面端的
+ * 不透明令牌），它走 requireBearerOrWebSession 的同源会话通道。这里只放过「有没有凭据」这一步，
+ * **不做任何授权判定**：自定义头、非 GET 的 Origin 校验、账号可用性三层全在 web-session.ts 里，
+ * 而且 /v1 的每条路由后面都还挂着 requireBearer 或 requireBearerOrWebSession。
+ * 故意不把这些路径加进 isAnonymousV1Path —— 那个名字的意思是「不需要凭据」，
+ * 而 /v1/notes、/v1/sync/token 永远不该是那种东西。
  */
 export function bearerOnly(anonymousPaths: (path: string) => boolean): MiddlewareHandler {
   return async (c, next) => {
     if (anonymousPaths(c.req.path)) return next();
+    if (c.req.header("x-bianfa-web") === "1") return next();
     const auth = c.req.header("authorization");
     if (!auth || !/^Bearer\s+\S+$/i.test(auth.trim())) {
       c.header("WWW-Authenticate", 'Bearer error="invalid_token"');

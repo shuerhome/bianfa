@@ -218,6 +218,12 @@ services:
       DATABASE_URL_DIRECT: postgres://${PG_APP_USER:-bianfa_app}:${PG_APP_PASSWORD:?PG_APP_PASSWORD 未设置}@postgres:5432/${POSTGRES_DB:-bianfa}
       # extension-redis 跨实例房间广播
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}@redis:6379/0
+      # 浏览器（网页端 / PWA）连 wss 时会带 Origin，这个变量是那道白名单（逗号分隔，精确匹配）。
+      # 留空 = 不检查（默认；见 apps/server/src/sync/env.ts 与 sync/auth.ts:52-57）。桌面端由 Rust 发起、
+      # 不带 Origin，任何取值都放行，所以打开它只影响浏览器。
+      # 打开之前务必确认取值与网页实际所在的 origin 一致：不一致时握手被 403 拒，而浏览器只能看到
+      # onclose 1006 且没有 reason——和"网络不通"完全无法区分。
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-}
       SENTRY_DSN: ${SENTRY_DSN_SYNC:-}
       SENTRY_ENVIRONMENT: production
     deploy:
