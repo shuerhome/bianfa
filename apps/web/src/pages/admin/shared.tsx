@@ -1,12 +1,12 @@
 // 管理台内部共用的小零件：入口网关、异步取数、时间/动作文案。
 // 只被 pages/admin/* 使用，不对外导出到别的页面。
 import { Button } from "@bianfa/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchPlatformAdmins } from "../../admin-api.js";
-import type { Result } from "../../api.js";
 import { StateView } from "../../components/StateView.js";
 import { type ApiFailure, describeFailure } from "../../lib/errors.js";
+import { useQuery } from "../../lib/query.js";
 import { navigate } from "../../router.js";
 
 // ─────────────────────────────────────────────────────────── 网关
@@ -116,40 +116,12 @@ export function GateBlocked({ gate, onRetry }: { gate: GateState; onRetry: () =>
 
 // ─────────────────────────────────────────────────────────── 取数
 
-export interface QueryState<T> {
-  data: T | null;
-  error: ApiFailure | null;
-  loading: boolean;
-}
-
 /**
- * 一次 GET 的加载 / 错误 / 数据三态。`key` 变了就重新取（把参数拼进 key 即可），
- * `reload()` 用于操作成功后刷新当前视图。
+ * 一次 GET 的加载 / 错误 / 数据三态。实现在 lib/query.ts（与便笺列表共用），
+ * 这里只保留管理台惯用的名字，免得 pages/admin/* 一片改名。
  */
-export function useAdminQuery<T>(
-  key: string,
-  load: () => Promise<Result<T>>,
-): QueryState<T> & { reload: () => void } {
-  const [state, setState] = useState<QueryState<T>>({ data: null, error: null, loading: true });
-  const [nonce, setNonce] = useState(0);
-  // load 每次渲染都是新函数，放进依赖会无限循环；用 ref 取最新的一份，真正的依赖是 key
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: key 是调用方拼出来的查询指纹、nonce 是手动刷新的开关，两者都不出现在 effect 体内，但正是重新取数的条件
-  useEffect(() => {
-    let alive = true;
-    setState((prev) => ({ data: prev.data, error: null, loading: true }));
-    void loadRef.current().then((res) => {
-      if (!alive) return;
-      if (res.ok) setState({ data: res.data, error: null, loading: false });
-      else setState({ data: null, error: res.error, loading: false });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [key, nonce]);
-  return { ...state, reload: () => setNonce((n) => n + 1) };
-}
+export const useAdminQuery = useQuery;
+export type { QueryState } from "../../lib/query.js";
 
 /** 子视图里的取数失败：不整页顶掉，给一行错误 + 重试 */
 export function QueryError({ failure, onRetry }: { failure: ApiFailure; onRetry: () => void }) {

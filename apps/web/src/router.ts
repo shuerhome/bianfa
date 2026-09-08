@@ -13,6 +13,7 @@ export type Route =
   | { name: "device" }
   | { name: "invite"; token: string }
   | { name: "account" }
+  | { name: "notes" }
   | { name: "admin" }
   | { name: "not-found" };
 
@@ -39,6 +40,9 @@ export function matchRoute(pathname: string): Route {
       return { name: "device" };
     case "/account":
       return { name: "account" };
+    // 便笺列表（网页 / PWA）；当前工作区走 ?ws=<id>，同样只占一个服务端路径
+    case "/notes":
+      return { name: "notes" };
     // 总管理员管理台。故意不做 /admin/users/:id 这样的子路径：全部视图共用 /admin + 查询串，
     // 服务端只要放行一个路径就够（见 pages/admin/route.ts）。
     case "/admin":

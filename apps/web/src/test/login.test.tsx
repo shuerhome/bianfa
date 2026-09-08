@@ -120,7 +120,7 @@ describe("/login", () => {
     await waitFor(() => expect(mocks.leaveTo).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/x"));
     expect(mocks.signInSocial).toHaveBeenCalledWith({
       provider: "google",
-      callbackURL: "/account",
+      callbackURL: "/notes",
       errorCallbackURL: "/login?error=social",
       disableRedirect: true,
     });

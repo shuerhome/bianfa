@@ -586,3 +586,96 @@ a.bf-btn {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ── 便笺列表（/notes，手机与桌面同一套） ── */
+.notes-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-7);
+}
+.notes-bar__ws {
+  flex: 0 1 auto;
+}
+.notes-bar__search {
+  flex: 1 1 200px;
+  min-width: 0;
+  height: var(--h-ctl-md);
+}
+.notes-bar__account {
+  flex: 0 0 auto;
+}
+.notes-count {
+  margin: var(--sp-5) 0 0;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-5);
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+/* 卡片颜色由 data-color 提供的 --note-* 决定（packages/tokens 的 L3 层），这里不写任何字面色值 */
+.notes-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 120px;
+  padding: var(--sp-5);
+  border: var(--bw-hair) solid var(--note-line, var(--c-border-subtle));
+  border-radius: var(--r-md);
+  background: var(--note-paper, var(--c-surface-2));
+  color: var(--note-ink, var(--c-text-1));
+  box-shadow: var(--sh-1);
+}
+.notes-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-title);
+}
+.notes-card__titletext {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-card__body {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-cjk);
+  color: var(--note-ink2, var(--c-text-2));
+  /* 超出三行截断：正文只是预览，完整内容留给编辑视图 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.notes-card__locked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-style: italic;
+}
+.notes-card__meta {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2, var(--c-text-3));
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 480px) {
+  .notes-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--sp-4);
+  }
+}

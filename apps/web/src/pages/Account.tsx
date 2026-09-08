@@ -64,8 +64,11 @@ export function Account() {
       </dl>
       <p className="web-hint">{t("account.securityCodeHint")}</p>
       <div className="web-actions">
+        <Button variant="primary" size="lg" className="web-btn-block" onClick={() => navigate("/notes")}>
+          {t("account.notes")}
+        </Button>
         {downloadUrl ? (
-          <a className="bf-btn bf-btn--primary bf-btn--lg web-btn-block" href={downloadUrl}>
+          <a className="bf-btn bf-btn--secondary bf-btn--lg web-btn-block" href={downloadUrl}>
             {t("account.download")}
           </a>
         ) : (

@@ -204,7 +204,26 @@
     "download": "Download the desktop app",
     "desktopHint": "Manage devices and teams from Settings in the desktop app.",
     "signOut": "Sign out",
-    "securityCodeHint": "Your security code is only used to reset your password. Change it in the desktop app under Settings → Account."
+    "securityCodeHint": "Your security code is only used to reset your password. Change it in the desktop app under Settings → Account.",
+    "notes": "My notes"
+  },
+  "notes": {
+    "title": "My notes",
+    "workspace": "Workspace",
+    "personal": "Personal",
+    "account": "Account",
+    "searchPlaceholder": "Search title or text",
+    "count": "{{total}} notes",
+    "countFiltered": "{{shown}} of {{total}}",
+    "untitled": "Untitled",
+    "blank": "(blank)",
+    "pinned": "Pinned",
+    "encrypted": "End-to-end encrypted — not viewable on the web",
+    "empty": "No notes in this workspace yet",
+    "emptyHint": "Notes you create in the desktop app show up here.",
+    "noMatch": "No notes match “{{keyword}}”",
+    "noWorkspace": "No workspace available yet",
+    "noWorkspaceHint": "Your personal workspace is normally created at sign-up. If this stays empty, sign out and sign in again."
   },
   "admin": {
     "title": "Platform admin",

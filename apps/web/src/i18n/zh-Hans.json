@@ -204,7 +204,26 @@
     "download": "下载桌面端",
     "desktopHint": "设备与团队管理请在桌面端的「设置」里操作。",
     "signOut": "退出登录",
-    "securityCodeHint": "安全码只在忘记密码时使用；在桌面端 设置 → 账号 里可以修改安全码。"
+    "securityCodeHint": "安全码只在忘记密码时使用；在桌面端 设置 → 账号 里可以修改安全码。",
+    "notes": "我的便笺"
+  },
+  "notes": {
+    "title": "我的便笺",
+    "workspace": "工作区",
+    "personal": "个人",
+    "account": "账号",
+    "searchPlaceholder": "搜索标题或正文",
+    "count": "共 {{total}} 张",
+    "countFiltered": "{{shown}} / {{total}} 张",
+    "untitled": "无标题",
+    "blank": "（空白）",
+    "pinned": "已置顶",
+    "encrypted": "端到端加密，网页端暂不能查看",
+    "empty": "这个工作区还没有便笺",
+    "emptyHint": "在桌面端新建的便笺会同步到这里。",
+    "noMatch": "没有匹配「{{keyword}}」的便笺",
+    "noWorkspace": "还没有可用的工作区",
+    "noWorkspaceHint": "个人工作区通常在注册时就自动建好了。如果这里一直是空的，请退出后重新登录一次。"
   },
   "admin": {
     "title": "平台管理台",

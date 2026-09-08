@@ -1,5 +1,5 @@
 // /login：邮箱密码登录（邮箱不需要验证）；Google / Apple 按钮按 /web-config.json；桌面端 OAuth 流程（URL 带 sig）登录成功后
-// 服务端直接返回 { redirect: true, url: http://127.0.0.1:<port>/cb?code=… }，页面整页跳过去；否则回 next / /account。
+// 服务端直接返回 { redirect: true, url: http://127.0.0.1:<port>/cb?code=… }，页面整页跳过去；否则回 next / /notes。
 // 「忘记密码」把 search 原样带去 /forgot-password（安全码重置后能接着回桌面端流程）。
 import { Button } from "@bianfa/ui";
 import { type FormEvent, useEffect, useState } from "react";
@@ -22,7 +22,7 @@ type Step = "credentials" | "totp";
 export function Login({ search }: { search: string }) {
   const { t } = useTranslation();
   const params = queryOf(search);
-  const next = safeNext(params.get("next")) ?? "/account";
+  const next = safeNext(params.get("next")) ?? "/notes";
   const oauth = readOAuthContext(search);
   const { user, pending } = useSession();
   const [config, setConfig] = useState<WebConfig | null>(null);

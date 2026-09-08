@@ -12,6 +12,7 @@ import { Device } from "./pages/Device.js";
 import { ForgotPassword } from "./pages/ForgotPassword.js";
 import { Invite } from "./pages/Invite.js";
 import { Login } from "./pages/Login.js";
+import { Notes } from "./pages/Notes.js";
 import { ResetPassword } from "./pages/ResetPassword.js";
 import { Signup } from "./pages/Signup.js";
 import { VerifyEmail } from "./pages/VerifyEmail.js";
@@ -22,7 +23,7 @@ function Home() {
   const { user, pending } = useSession();
   useEffect(() => {
     if (pending) return;
-    navigate(user ? "/account" : "/login", { replace: true });
+    navigate(user ? "/notes" : "/login", { replace: true });
   }, [pending, user]);
   return (
     <Card title="bianfa">
@@ -82,6 +83,9 @@ export function App() {
       break;
     case "account":
       page = <Account />;
+      break;
+    case "notes":
+      page = <Notes search={location.search} />;
       break;
     case "admin":
       page = <Admin search={location.search} />;

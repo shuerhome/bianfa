@@ -39,6 +39,8 @@ export const WEB_PAGE_PATHS = [
   "/consent",
   "/device",
   "/account",
+  // 便笺列表（网页 / PWA）：全部视图收在 /notes 一个路径 + 查询串
+  "/notes",
 ] as const;
 
 const INVITE_RE = /^\/invite\/[A-Za-z0-9_-]{1,128}$/;
