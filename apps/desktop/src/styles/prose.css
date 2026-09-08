@@ -7,6 +7,7 @@
 :root {
   --prose-lh: 1.45;
   --prose-gap: 2px;
+  --prose-fs: var(--fs-sm);
 }
 :root[data-density="cozy"] {
   --prose-lh: var(--lh-cjk);
@@ -17,9 +18,25 @@
   --prose-gap: 10px;
 }
 
+/* 正文字号：和紧凑度是两个独立的轴 —— 有人要小字大行距（看得舒服），
+   也有人要大字小行距（视力）。挤在一个档位里就没法各取所需了。
+   跟着根字号走（rem），所以界面缩放仍然整体生效。 */
+:root[data-fontsize="xs"] {
+  --prose-fs: var(--fs-xs);
+}
+:root[data-fontsize="sm"] {
+  --prose-fs: var(--fs-sm);
+}
+:root[data-fontsize="md"] {
+  --prose-fs: var(--fs-md);
+}
+:root[data-fontsize="lg"] {
+  --prose-fs: var(--fs-lg);
+}
+
 .bf-prose {
   font-family: var(--f-sans);
-  font-size: var(--fs-md);
+  font-size: var(--prose-fs);
   line-height: var(--prose-lh);
   color: var(--note-ink, var(--c-text-1));
   /* 正文永远是常规字重：包裹层（StaticBody 的 div / .note-editor-host）绝不许继承到 600，
@@ -71,7 +88,8 @@
   font-size: var(--fs-lg);
 }
 .bf-prose h3 {
-  font-size: var(--fs-md);
+  /* 三级标题和正文同号（靠字重区分），所以它也要跟着正文字号走 */
+  font-size: var(--prose-fs);
 }
 .bf-prose ul,
 .bf-prose ol {
@@ -210,7 +228,8 @@
 }
 .note-placeholder {
   color: var(--note-ink2);
-  font-size: var(--fs-md);
+  /* 占位符必须和它将要变成的正文同号，否则一打字整块跳一下 */
+  font-size: var(--prose-fs);
   font-weight: var(--fw-normal);
 }
 .note-editor {

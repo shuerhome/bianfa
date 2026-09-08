@@ -4,10 +4,17 @@ import { useTranslation } from "react-i18next";
 import {
   CONTENT_DENSITIES,
   type ContentDensity,
+  NOTE_FONT_SIZES,
+  type NoteFontSize,
   type ThemeSetting,
   type UiScale,
 } from "../../../ipc/types.js";
-import { applyContentDensity, applyMotion, type MotionSetting } from "../../../lib/theme.js";
+import {
+  applyContentDensity,
+  applyMotion,
+  applyNoteFontSize,
+  type MotionSetting,
+} from "../../../lib/theme.js";
 import { Segmented } from "../Segmented.js";
 import { Ack, useSettings } from "../use-settings.js";
 
@@ -69,6 +76,25 @@ export function AppearanceSection() {
           <Ack on={ackKey === "contentDensity"} />
         </div>
         <p className="settings-hint">{t("settings.densityHint")}</p>
+      </div>
+      <div className="settings-row settings-row--stack">
+        <span className="settings-label">{t("settings.noteFontSize")}</span>
+        <div className="settings-inline">
+          <Segmented<NoteFontSize>
+            label={t("settings.noteFontSize")}
+            value={settings.noteFontSize}
+            options={NOTE_FONT_SIZES.map((v) => ({
+              value: v,
+              label: t(`settings.noteFontSize_${v}`),
+            }))}
+            onChange={(v) => {
+              applyNoteFontSize(v);
+              update({ noteFontSize: v });
+            }}
+          />
+          <Ack on={ackKey === "noteFontSize"} />
+        </div>
+        <p className="settings-hint">{t("settings.noteFontSizeHint")}</p>
       </div>
       <div className="settings-row settings-row--stack">
         <span className="settings-label">{t("settings.motion")}</span>

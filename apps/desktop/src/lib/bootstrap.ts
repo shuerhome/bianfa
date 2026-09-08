@@ -8,6 +8,7 @@ import { setOs } from "./platform.js";
 import {
   applyColorPatterns,
   applyContentDensity,
+  applyNoteFontSize,
   applyReduceTransparency,
   applyThemeSetting,
   applyUiScale,
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   colorPatterns: false,
   reduceTransparency: false,
   contentDensity: "compact",
+  noteFontSize: "sm",
   apiBaseUrl: "",
   syncWsUrl: "",
 };
@@ -39,6 +41,7 @@ export function applySettingsToDocument(settings: Settings): void {
   applyColorPatterns(settings.colorPatterns);
   applyReduceTransparency(settings.reduceTransparency);
   applyContentDensity(settings.contentDensity);
+  applyNoteFontSize(settings.noteFontSize);
 }
 
 export async function boot(): Promise<BootResult> {

@@ -770,9 +770,13 @@ export class SyncHost {
     // 腾出位置之后重新选目标。正常情况下不靠这一步：每张同步完成都会回写 acked_seq，
     // Rust 那边随之 emit db:changed(sync_state)，onDbChanged 就会重新选一轮。
     // 这里是兜底 —— 回写失败（IPC 出错被 catch 掉）时那条链就断了，而排在上限之外的
-    // 几百张便笺没有任何别的东西会再来叫醒它们。批量导入时这意味着「剩下的永远不上传」，
-    // 代价只是十秒一次的空转，兜住它是划算的。
-    if (this.entries.size < MAX_PROVIDERS) {
+    // 几百张便笺没有任何别的东西会再来叫醒它们。
+    //
+    // **必须以「上一轮真的有便笺被挤掉」为前提**：否则这就是一个每 10 秒把整个本地库和
+    // 待同步队列各扫一遍的轮询，而且永远停不下来（通道数几乎总是小于上限）。
+    // 线上 708 张便笺、待同步 0 的稳定状态下，它每 10 秒空扫一次 708 行 —— 纯浪费。
+    // skippedThisPass 在每轮 refreshTargets 开头清零，所以积压排干后这里自然就安静了。
+    if (this.skippedThisPass > 0 && this.entries.size < MAX_PROVIDERS) {
       void this.refreshTargets().catch((e: unknown) => {
         clientLog("error", "sync", `重选同步目标失败：${e instanceof Error ? e.message : String(e)}`);
       });

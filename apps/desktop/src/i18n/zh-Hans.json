@@ -427,7 +427,13 @@
     "density_cozy": "适中",
     "density_relaxed": "宽松",
     "densityHint": "便笺正文的行距与段落间距。「紧凑」接近 Windows 便笺的密排。",
-    "previewBody2": "第二行看得出行距和段距的松紧。"
+    "previewBody2": "第二行看得出行距和段距的松紧。",
+    "noteFontSize": "正文字号",
+    "noteFontSize_xs": "更小",
+    "noteFontSize_sm": "小",
+    "noteFontSize_md": "标准",
+    "noteFontSize_lg": "大",
+    "noteFontSizeHint": "只影响便笺正文，不影响界面其它部分（那个在「界面缩放」）。"
   },
   "export": {
     "title": "导出",

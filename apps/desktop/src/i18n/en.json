@@ -427,7 +427,13 @@
     "density_cozy": "Cozy",
     "density_relaxed": "Relaxed",
     "densityHint": "Line and paragraph spacing in note bodies. Compact matches the tight look of Windows Sticky Notes.",
-    "previewBody2": "A second line, so the spacing is visible."
+    "previewBody2": "A second line, so the spacing is visible.",
+    "noteFontSize": "Note text size",
+    "noteFontSize_xs": "Smaller",
+    "noteFontSize_sm": "Small",
+    "noteFontSize_md": "Default",
+    "noteFontSize_lg": "Large",
+    "noteFontSizeHint": "Affects note bodies only; the rest of the interface follows Interface scale."
   },
   "export": {
     "title": "Export",

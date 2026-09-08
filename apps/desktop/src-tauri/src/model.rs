@@ -264,6 +264,8 @@ pub struct Settings {
     /// 正文的紧凑度：`compact` / `cozy` / `relaxed`。默认 compact —— 便笺是拿来扫一眼的，
     /// 原版 Windows 便笺也是密排；行距和段距太松，一屏看不下几行。
     pub content_density: String,
+    /// 正文字号：`xs` / `sm` / `md` / `lg`。和紧凑度是两个独立的轴。
+    pub note_font_size: String,
     pub api_base_url: String,
     pub sync_ws_url: String,
     /// Notice ids the user acknowledged (`notice_ack`). Not part of the public contract.
@@ -280,6 +282,11 @@ pub const DEFAULT_API_BASE_URL: &str = "https://api.bianfa.app";
 pub const CONTENT_DENSITIES: [&str; 3] = ["compact", "cozy", "relaxed"];
 /// 默认取最紧的一档：对齐 Windows 便笺的密排观感。
 pub const DEFAULT_CONTENT_DENSITY: &str = "compact";
+
+/// 正文字号的合法取值。顺序即「从小到大」，对应 --fs-xs/sm/md/lg（12/13/14/15 px @100%）。
+pub const NOTE_FONT_SIZES: [&str; 4] = ["xs", "sm", "md", "lg"];
+/// 默认 sm（13px）：md(14px) 实测偏大，便笺是密排扫读的东西。
+pub const DEFAULT_NOTE_FONT_SIZE: &str = "sm";
 
 /// 曾经的硬编码同步地址。它假定部署会单独开一个 `ws.` 子域，而实际部署把 WebSocket 挂在
 /// API 同一个主机的 `/ws/v1` 上（Caddy 的 `handle /ws/*` 不按主机名区分）。两边一旦对不上，
@@ -319,6 +326,7 @@ impl Default for Settings {
             color_patterns: false,
             reduce_transparency: false,
             content_density: DEFAULT_CONTENT_DENSITY.into(),
+            note_font_size: DEFAULT_NOTE_FONT_SIZE.into(),
             api_base_url: DEFAULT_API_BASE_URL.into(),
             sync_ws_url: default_sync_ws_url(DEFAULT_API_BASE_URL),
             acked_notice_ids: Vec::new(),
@@ -383,6 +391,9 @@ impl Settings {
         if !CONTENT_DENSITIES.contains(&self.content_density.as_str()) {
             return Err(format!("contentDensity: {}", self.content_density));
         }
+        if !NOTE_FONT_SIZES.contains(&self.note_font_size.as_str()) {
+            return Err(format!("noteFontSize: {}", self.note_font_size));
+        }
         Ok(())
     }
 
@@ -400,6 +411,9 @@ impl Settings {
         // 不校验的话，一个非法值会让 CSS 落不到任何一档，正文变成浏览器默认排版。
         if !CONTENT_DENSITIES.contains(&self.content_density.as_str()) {
             self.content_density = DEFAULT_CONTENT_DENSITY.into();
+        }
+        if !NOTE_FONT_SIZES.contains(&self.note_font_size.as_str()) {
+            self.note_font_size = DEFAULT_NOTE_FONT_SIZE.into();
         }
     }
 }
@@ -555,6 +569,18 @@ mod tests {
         s.content_density = "relaxed".into();
         s.normalize();
         assert_eq!(s.content_density, "relaxed");
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn normalize_and_validate_cover_the_font_size_too() {
+        let mut s = Settings {
+            note_font_size: "huge".into(),
+            ..Settings::default()
+        };
+        assert!(s.validate().is_err());
+        s.normalize();
+        assert_eq!(s.note_font_size, DEFAULT_NOTE_FONT_SIZE);
         assert!(s.validate().is_ok());
     }
 

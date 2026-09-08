@@ -79,6 +79,10 @@ export type LanguageSetting = "zh-Hans" | "en" | "system";
 export const CONTENT_DENSITIES = ["compact", "cozy", "relaxed"] as const;
 export type ContentDensity = (typeof CONTENT_DENSITIES)[number];
 
+/** 便笺正文字号。顺序即「从小到大」，默认 sm。和紧凑度是两个独立的轴。 */
+export const NOTE_FONT_SIZES = ["xs", "sm", "md", "lg"] as const;
+export type NoteFontSize = (typeof NOTE_FONT_SIZES)[number];
+
 export interface Settings {
   theme: ThemeSetting;
   uiScale: UiScale;
@@ -90,6 +94,7 @@ export interface Settings {
   colorPatterns: boolean;
   reduceTransparency: boolean;
   contentDensity: ContentDensity;
+  noteFontSize: NoteFontSize;
   apiBaseUrl: string;
   syncWsUrl: string;
 }

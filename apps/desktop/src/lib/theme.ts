@@ -1,7 +1,7 @@
 // 主题 / 便笺色 / 缩放 / 动效档位应用到 <html>（specs/06 §8、§2 缩放、§5 reduced-motion）。
 import type { NoteColor } from "@bianfa/shared";
 import { isNoteColor } from "@bianfa/shared";
-import type { ContentDensity, ThemeSetting, UiScale } from "../ipc/types.js";
+import type { ContentDensity, NoteFontSize, ThemeSetting, UiScale } from "../ipc/types.js";
 
 const SWITCH_ATTR = "data-theme-switching";
 let switchTimer: number | null = null;
@@ -46,6 +46,11 @@ export function applyContentDensity(
   root: HTMLElement = document.documentElement,
 ): void {
   root.setAttribute("data-density", density);
+}
+
+/** 便笺正文字号：同样只打一个属性，具体值由 prose.css 的 --prose-fs 决定 */
+export function applyNoteFontSize(size: NoteFontSize, root: HTMLElement = document.documentElement): void {
+  root.setAttribute("data-fontsize", size);
 }
 
 export type MotionSetting = "system" | "full" | "reduce";
