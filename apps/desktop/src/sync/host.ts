@@ -123,6 +123,22 @@ export class SyncHost {
   private started = false;
   /** 本轮 refreshTargets 里因通道占满被跳过的便笺数（只为汇总日志，不参与判定） */
   private skippedThisPass = 0;
+  /**
+   * db:changed 触发的重新选目标要去抖：每张便笺同步完成都会回写 acked_seq，Rust 随之
+   * emit 一次 db:changed(sync_state)，于是 64 张一起完成 = 同一秒里跑 64 轮完整的重新选目标，
+   * 每轮都要把整个本地库和整个待同步队列扫一遍。便笺上千之后这是实打实的浪费（线上日志里
+   * 同一行刷了三十多遍就是这么来的）。200ms 去抖 + 1s 封顶：既合并掉这种雪崩，
+   * 又不会让「打开一张便笺」这种单次事件感觉迟钝。
+   */
+  private refreshSoon = debounce(
+    () => {
+      void this.refreshTargets().catch((e: unknown) => {
+        clientLog("error", "sync", `重选同步目标失败：${e instanceof Error ? e.message : String(e)}`);
+      });
+    },
+    200,
+    1000,
+  );
   /** 附件上传串行队列（同一时刻只跑一个 presign/PUT/commit） */
   private uploadChain: Promise<void> = Promise.resolve();
   private uploadQueued = new Set<string>();
@@ -148,6 +164,7 @@ export class SyncHost {
     this.unlisten = [];
     for (const t of this.timers) window.clearInterval(t);
     this.timers = [];
+    this.refreshSoon.cancel();
     for (const id of Array.from(this.entries.keys())) this.dropProvider(id);
     this.inbox?.destroy();
     this.inbox = null;
@@ -661,7 +678,7 @@ export class SyncHost {
 
   private onDbChanged(p: DbChangedPayload): void {
     if (!this.auth?.loggedIn) return;
-    if (p.tables.includes("note_window_state") || p.tables.includes("sync_state")) void this.refreshTargets();
+    if (p.tables.includes("note_window_state") || p.tables.includes("sync_state")) this.refreshSoon();
     if (p.tables.includes("attachments")) {
       // attachment_import：ids 是附件 id，不是便笺 id
       for (const id of p.ids) this.enqueueUpload(id);
