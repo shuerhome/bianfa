@@ -1,0 +1,19 @@
+{
+  "name": "bianfa 便笺",
+  "short_name": "bianfa",
+  "description": "跨设备同步的桌面便笺",
+  "id": "/",
+  "start_url": "/notes",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FCFCFB",
+  "theme_color": "#4C5FD5",
+  "lang": "zh-Hans",
+  "dir": "ltr",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

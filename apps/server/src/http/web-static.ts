@@ -46,6 +46,26 @@ export const WEB_PAGE_PATHS = [
 const INVITE_RE = /^\/invite\/[A-Za-z0-9_-]{1,128}$/;
 const ASSETS_PREFIX = "/assets/";
 
+/**
+ * 根目录下必须原样放行的几个文件（apps/web/public/ 里的东西，Vite 会原样拷到 dist 根）。
+ * 白名单而不是"根目录随便读"：这个中间件挂在 /v1、/api/auth、/ws 之前，
+ * 放开成通配等于把产物目录整个暴露出去。
+ *
+ * 这些文件的名字里没有内容哈希（manifest 和图标的路径是写死在 index.html 与 manifest 里的），
+ * 所以缓存只能是"可缓存但要回源确认"，不能用 assets 那套 immutable。
+ */
+const ROOT_FILES = new Set([
+  "/manifest.webmanifest",
+  "/apple-touch-icon.png",
+  "/icon-32.png",
+  "/icon-192.png",
+  "/icon-512.png",
+]);
+
+export function isWebRootFile(path: string): boolean {
+  return ROOT_FILES.has(path);
+}
+
 export function isWebPagePath(path: string): boolean {
   const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
   if ((WEB_PAGE_PATHS as readonly string[]).includes(p)) return true;
@@ -113,10 +133,13 @@ export function webStatic(opts: WebStaticOptions = {}): MiddlewareHandler {
     });
   const stampPage = (h: Headers) =>
     applyWebSecurityHeaders(h, { production, csp: WEB_PAGE_CSP, cacheControl: "no-store" });
+  const stampRoot = (h: Headers) =>
+    applyWebSecurityHeaders(h, { production, csp: null, cacheControl: "public, max-age=3600" });
   return async (c, next) => {
     if (c.req.method !== "GET" && c.req.method !== "HEAD") return next();
     const path = c.req.path;
     if (path.startsWith(ASSETS_PREFIX)) return serveAndStamp(assets, c, next, stampAsset);
+    if (isWebRootFile(path)) return serveAndStamp(assets, c, next, stampRoot);
     if (isWebPagePath(path)) return serveAndStamp(index, c, next, stampPage);
     return next();
   };

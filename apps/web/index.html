@@ -7,10 +7,24 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="robots" content="noindex, nofollow" />
     <title>bianfa</title>
+
+    <!-- PWA：iOS 上「添加到主屏幕」就是靠这几行 + manifest。
+         apple-mobile-web-app-capable 已经被标准的 mobile-web-app-capable 取代，
+         但 Safari 至今只认前者，所以两个都要写。
+         apple-touch-icon 必须是不透明的 PNG：iOS 自己会切圆角，SVG 不认，透明角会被填黑。 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#4C5FD5" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="bianfa" />
+    <!-- default 会让状态栏跟着页面主题走；black-translucent 会把内容顶到刘海底下 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234C5FD5'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='11' cy='10' r='2.6'/%3E%3Ccircle cx='21' cy='10' r='2.6'/%3E%3Ccircle cx='11' cy='22' r='2.6'/%3E%3Ccircle cx='21' cy='22' r='2.6'/%3E%3C/g%3E%3C/svg%3E"
     />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
     <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>

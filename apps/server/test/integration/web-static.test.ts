@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { isWebPagePath, WEB_PAGE_CSP } from "../../src/http/web-static.js";
+import { isWebPagePath, isWebRootFile, WEB_PAGE_CSP } from "../../src/http/web-static.js";
 import { buildTestApp, type TestApp } from "./api-helpers.js";
 import { hasDb } from "./helpers.js";
 
@@ -23,6 +23,8 @@ describe.runIf(hasDb)("web static", () => {
     mkdirSync(join(dir, "assets"));
     writeFileSync(join(dir, "index.html"), INDEX_HTML);
     writeFileSync(join(dir, "assets", "x.js"), "console.log('x')");
+    writeFileSync(join(dir, "manifest.webmanifest"), '{"name":"bianfa"}');
+    writeFileSync(join(dir, "apple-touch-icon.png"), "png");
     process.env.WEB_DIST_DIR = dir;
     t = buildTestApp();
     // 没有产物的 app：中间件空操作
@@ -50,6 +52,21 @@ describe.runIf(hasDb)("web static", () => {
       "/assets/x.js",
     ])
       expect(isWebPagePath(p), p).toBe(false);
+  });
+
+  it("PWA 的根文件（manifest / 图标）能取到，且只放行白名单里的那几个", async () => {
+    // 少了这一段，iOS 上「添加到主屏幕」拿不到 manifest 与图标，装出来是个没名字的网页快捷方式
+    const manifest = await t.app.request("/manifest.webmanifest");
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(await manifest.text()).toBe('{"name":"bianfa"}');
+    expect((await t.app.request("/apple-touch-icon.png")).status).toBe(200);
+
+    // 白名单之外的根文件一律不放行：这个中间件挂在 /v1 与 /api/auth 之前，
+    // 放开成通配等于把产物目录整个暴露出去
+    expect(isWebRootFile("/manifest.webmanifest")).toBe(true);
+    for (const p of ["/index.html", "/.env", "/package.json", "/assets", "/icon-999.png"])
+      expect(isWebRootFile(p), p).toBe(false);
   });
 
   it("SPA 路由回 index.html：no-store + 页面 CSP + 安全头", async () => {
