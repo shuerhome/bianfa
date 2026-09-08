@@ -302,6 +302,16 @@ export class SyncHost {
       for (const n of res.notes) {
         // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
         if (n.purgedAt !== null) continue;
+        // 服务端有行、却一个字节的 CRDT 都没有 —— 这还不是一张便笺。
+        // sync 的 onLoadDocument 是在客户端 attach 到房间的那一刻就把 notes 行建出来的，
+        // 早于任何正文到达；那个客户端要是没能把正文发上来（比如它那一版同步是坏的），
+        // 就会永久留下一行空的。给它建本地行的后果是连锁的：本地多一张永远空白的便笺，
+        // 它又因为 head_seq > acked_seq 被当成「本地有新内容」传回服务端，把这行空的坐实成
+        // 一张真便笺，同时占住一个同步通道。等它真的有正文了再收编（那时 headSeq > 0）。
+        if (n.headSeq === 0) {
+          clientLog("info", "sync", `跳过服务端的空便笺行 ${n.id}：还没有任何正文`);
+          continue;
+        }
         this.denied.delete(n.id);
         await this.ensureLocalRow(n.id, workspaceId, {
           color: n.color,

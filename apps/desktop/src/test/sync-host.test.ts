@@ -103,7 +103,7 @@ const AUTH: AuthStatus = {
 };
 
 const ISO = "2026-01-01T00:00:00.000Z";
-const remoteNote = (id: string, workspaceId: string, version: number) => ({
+const remoteNote = (id: string, workspaceId: string, version: number, headSeq = 1) => ({
   id,
   workspace_id: workspaceId,
   created_by: "u1",
@@ -113,9 +113,9 @@ const remoteNote = (id: string, workspaceId: string, version: number) => ({
   z_mode: 0,
   pinned: false,
   schema_version: 1,
-  head_seq: 1,
-  projected_seq: 1,
-  crdt_bytes: 10,
+  head_seq: headSeq,
+  projected_seq: headSeq,
+  crdt_bytes: headSeq === 0 ? 0 : 10,
   version,
   encryption: "none",
   created_at: ISO,
@@ -164,6 +164,8 @@ const syncErrors: Array<{ noteId: string; errCode: string | null }> = [];
 const apiCalls: Array<{ method: string; path: string }> = [];
 /** 服务端侧可变状态：团队便笺的 lsn（改大 = 服务端有人编辑过，下次发现会再列出） */
 const server = { teamVersion: 7 };
+/** 个人工作区里额外的一行（用例按需塞入，例如「没有任何正文的空行」） */
+let blankNote: ReturnType<typeof remoteNote> | null = null;
 
 function installDb() {
   mockCommand("settings_get", () => ({}));
@@ -241,7 +243,9 @@ function installApi() {
       const since = Number(url.searchParams.get("since_version") ?? 0);
       const all =
         wsId === PERSONAL
-          ? [remoteNote(P1, PERSONAL, 5)]
+          ? blankNote
+            ? [remoteNote(P1, PERSONAL, 5), blankNote]
+            : [remoteNote(P1, PERSONAL, 5)]
           : wsId === TEAM
             ? [remoteNote(T1, TEAM, server.teamVersion)]
             : [];
@@ -296,6 +300,7 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     apiCalls.length = 0;
     hoisted.providers.length = 0;
     server.teamVersion = 7;
+    blankNote = null;
     installDb();
     installApi();
   });
@@ -356,6 +361,22 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     inboxOf(PERSONAL).onStateless?.({ payload: JSON.stringify({ t: "bump", workspace_id: TEAM }) });
     await vi.waitFor(() => expect(providersNamed(documentName(TEAM, T1))).toHaveLength(2));
     expect(created).toHaveLength(3);
+  });
+
+  it("服务端上没有任何正文的空行不收编：不建本地便笺、不建通道", async () => {
+    // sync 的 onLoadDocument 在客户端 attach 到房间那一刻就 INSERT 了 notes 行，早于任何正文到达。
+    // 那个客户端要是没把正文发上来，服务端就永久留下一行空的，而 GET /v1/notes 照样会列出它。
+    // 收编它的后果是连锁的：本地多一张永远空白的便笺 → 它又被当成「本地有新内容」传回服务端
+    // （head_seq 1 > acked_seq 0）→ 把这行空的坐实成真便笺，还占着一个同步通道不放。
+    // 线上就是这么攒出 25 张空白便笺、吃掉 64 个通道里的 25 个的。
+    const BLANK = "019a0000-0000-7000-8000-00000000c009";
+    blankNote = remoteNote(BLANK, PERSONAL, 6, 0);
+    await startHost();
+
+    expect(created.map((c) => c.noteId)).not.toContain(BLANK);
+    expect(hoisted.providers.map((p) => p.name)).not.toContain(documentName(PERSONAL, BLANK));
+    // 同一轮里正常的便笺照收不误 —— 守卫只挡「一个字节都没有」的那种
+    expect(created.map((c) => c.noteId)).toContain(P1);
   });
 
   it("每个 provider 都必须 attach 到共享 socket 上（不 attach 就整个同步静默失效）", async () => {
