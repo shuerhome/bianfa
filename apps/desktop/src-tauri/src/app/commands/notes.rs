@@ -178,7 +178,7 @@ pub fn note_compact(state: State<'_, AppState>, note_id: String) -> IpcResult<se
 #[tauri::command]
 pub fn note_discard_if_empty(app: AppHandle, note_id: String) -> IpcResult<serde_json::Value> {
     let state = app.state::<AppState>();
-    let discarded = state.with_tx(|tx| notes::discard_if_empty(tx, &note_id))?;
+    let (discarded, empty) = state.with_tx(|tx| notes::discard_if_empty(tx, &note_id))?;
     if discarded {
         let rev = state.with_tx(|tx| Ok(crate::db::bump_rev(tx)?))?;
         events::emit(
@@ -196,7 +196,9 @@ pub fn note_discard_if_empty(app: AppHandle, note_id: String) -> IpcResult<serde
             },
         );
     }
-    Ok(serde_json::json!({ "discarded": discarded }))
+    // empty 也要回给前端：已经同步出去的空便笺删不了（物理删除没有墓碑），
+    // 得由前端写 meta.deletedAt 让删除同步出去。
+    Ok(serde_json::json!({ "discarded": discarded, "empty": empty }))
 }
 
 #[tauri::command]

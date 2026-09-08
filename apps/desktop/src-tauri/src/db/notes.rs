@@ -407,7 +407,19 @@ pub fn delete_physical(conn: &Connection, id: &str) -> IpcResult<()> {
 }
 
 /// `synced=0 && content_text.trim()=='' && no attachments` → physical delete.
-pub fn discard_if_empty(conn: &Connection, id: &str) -> IpcResult<bool> {
+/// 关闭便笺时的「空便笺丢弃」判定。
+///
+/// 返回 `(discarded, empty)`：
+///   * `empty`     —— 正文为空且没有附件。**与同步状态无关**。
+///   * `discarded` —— 已经就地物理删除了。只有「从来没同步出去过」的空便笺才走这条路，
+///                    因为物理删除不产生墓碑，服务端那份不会消失。
+///
+/// 为什么要分开：原来两者是一个条件（`synced == 0 && acked == 0 && 正文为空`），
+/// 隐含假定「没同步过 = 可以直接删」。同步一旦真的开始工作，新建的空便笺几秒内就会被
+/// ack，于是这个条件永远不成立，空便笺再也不会被丢弃——列表里就攒出一堆「无标题」。
+/// 已经同步出去的那些必须由调用方写 CRDT 墓碑（meta.deletedAt）来删，那才能同步出去；
+/// 在这里物理删除只会让发现路径把它们再拉回来。
+pub fn discard_if_empty(conn: &Connection, id: &str) -> IpcResult<(bool, bool)> {
     let row: Option<(i64, String)> = conn
         .query_row(
             "SELECT synced, content_text FROM notes WHERE id = ?1",
@@ -416,7 +428,7 @@ pub fn discard_if_empty(conn: &Connection, id: &str) -> IpcResult<bool> {
         )
         .optional()?;
     let Some((synced, text)) = row else {
-        return Ok(false);
+        return Ok((false, false));
     };
     let acked: i64 = conn
         .query_row(
@@ -431,11 +443,12 @@ pub fn discard_if_empty(conn: &Connection, id: &str) -> IpcResult<bool> {
         [id],
         |r| r.get(0),
     )?;
-    if synced == 0 && acked == 0 && text.trim().is_empty() && attachments == 0 {
+    let empty = text.trim().is_empty() && attachments == 0;
+    if empty && synced == 0 && acked == 0 {
         delete_physical(conn, id)?;
-        return Ok(true);
+        return Ok((true, true));
     }
-    Ok(false)
+    Ok((false, empty))
 }
 
 pub fn set_synced(conn: &Connection, id: &str, head_seq: i64) -> IpcResult<()> {
@@ -672,9 +685,25 @@ pub(crate) mod tests {
         let db = Db::open_in_memory(TEST_KEY).unwrap();
         let c = db.conn();
         let u = empty_update_v2();
+        // 没同步过的空便笺：就地物理删除（没有墓碑要留，服务端也没有它）
         create(c, "e", &u, &proj("   ", None), None, None, None, "local").unwrap();
-        assert!(discard_if_empty(c, "e").unwrap());
+        assert_eq!(discard_if_empty(c, "e").unwrap(), (true, true));
         assert!(!exists(c, "e").unwrap());
+
+        // 已经同步出去的空便笺：判定为空，但**不能**物理删——物理删除不产生墓碑，
+        // 服务端那份还在，发现路径下一轮就把它拉回来。删除必须由调用方写 meta.deletedAt。
+        // 这条是回归用例：修好 acked_seq 回写之后，新建的空便笺几秒内就会被 ack，
+        // 而原来的判定把「同步过」当成「不许删」，于是空便笺再也丢不掉，
+        // 列表里攒出一堆「无标题」。
+        create(c, "es", &u, &proj("   ", None), None, None, None, "local").unwrap();
+        set_synced(c, "es", 1).unwrap();
+        assert_eq!(discard_if_empty(c, "es").unwrap(), (false, true));
+        assert!(exists(c, "es").unwrap());
+
+        // 有正文的便笺：既不空也不删
+        create(c, "ne", &u, &proj("有字", None), None, None, None, "local").unwrap();
+        assert_eq!(discard_if_empty(c, "ne").unwrap(), (false, false));
+        assert!(exists(c, "ne").unwrap());
         create(c, "t1", &u, &proj("x", Some(1)), None, None, None, "local").unwrap();
         create(c, "t2", &u, &proj("y", Some(1)), None, None, None, "local").unwrap();
         set_synced(c, "t2", 1).unwrap();

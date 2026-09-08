@@ -287,11 +287,21 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
     shell?.classList.add("note-shell--closing");
     try {
       await session?.snapshot();
-      await noteDiscardIfEmpty(noteId).catch(() => undefined);
+      const r = await noteDiscardIfEmpty(noteId).catch(() => null);
+      // 已经同步出去的空便笺，Rust 侧不能物理删（物理删除不产生墓碑，服务端那份还在，
+      // 发现路径下一轮又会把它拉回来）。这里改写 CRDT 墓碑，让删除跟着同步走。
+      //
+      // fresh 这个前提不能省：它表示「这个窗口就是为新建便笺打开的」。没有它的话，
+      // 一张从服务端发现、正文还在下载路上的便笺，被打开又关掉就会被当成空便笺删掉——
+      // 那是真的丢数据。只丢弃「用户刚新建、一个字没写」的，才是安全的。
+      if (r && !r.discarded && r.empty && fresh) {
+        session?.updateMeta({ deletedAt: Date.now() });
+        await session?.snapshot();
+      }
     } finally {
       window.setTimeout(() => void noteWindowClose(noteId).catch(() => getCurrentWindow().close()), 140);
     }
-  }, [noteId, session]);
+  }, [noteId, session, fresh]);
 
   const deleteToTrash = useCallback(() => {
     if (!session) return;

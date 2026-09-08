@@ -88,7 +88,7 @@ export const noteWriteSnapshot = (args: {
 export const noteCompact = (noteId: string) => call<{ uptoSeq: number }>("note_compact", { noteId });
 
 export const noteDiscardIfEmpty = (noteId: string) =>
-  call<{ discarded: boolean }>("note_discard_if_empty", { noteId });
+  call<{ discarded: boolean; empty: boolean }>("note_discard_if_empty", { noteId });
 
 export const noteSetSynced = (noteId: string, headSeq: number) =>
   call<void>("note_set_synced", { noteId, headSeq });
