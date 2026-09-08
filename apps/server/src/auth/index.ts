@@ -58,7 +58,11 @@ export interface AuthRuntime {
   v1Routes: Hono<{ Variables: AuthVariables }>;
   /**
    * 同源会话解析（Better Auth 的 cookie → 用户）。装配层用它给 /v1 的其余路由接上网页端通道
-   * （app.ts 的 authed → requireBearerOrWebSession）。不注入 = 网页端通道整条关掉，只剩 Bearer。
+   * （app.ts 的 authed → requireBearerOrWebSession）。
+   *
+   * 注意这不是一个部署开关：createAuth 永远会注入它，两处挂载读的也是同一个来源
+   * （services.resolveSession）。真要整条关掉网页端，得从 ServiceDeps 那一层不给，
+   * 而不是在这里做手脚——写在这里是免得下一个人以为改 app.ts 就能关掉。
    */
   resolveSession?: ServiceDeps["resolveSession"];
   /** 进程退出时释放（Redis 等） */

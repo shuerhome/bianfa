@@ -96,6 +96,23 @@ describe.skipIf(!hasDb)("网页端同源会话通道（/v1，真实 createApp �
     expect(res.status).toBe(403);
   });
 
+  it("cookie 通道的应答不许进磁盘缓存（里面是用户自己的便笺标题与摘要）", async () => {
+    // 退出登录清的是 cookie 不是浏览器缓存。不加这两个头，下一个用这台机器的人
+    // 在硬盘上还读得到别人的便笺标题。管理台那条 cookie 通道本来就是这么做的。
+    const res = await web("GET", `/v1/notes?workspace_id=${me.workspaceId}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("vary") ?? "").toMatch(/Cookie/i);
+  });
+
+  it("Bearer 那一支的缓存头不受影响（桌面端不经过浏览器缓存）", async () => {
+    const res = await t.app.request(`/v1/notes?workspace_id=${me.workspaceId}`, {
+      headers: { authorization: `Bearer test.${me.userId}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+
   it("Bearer 那一支不受影响：桌面端仍然照旧", async () => {
     const res = await t.app.request("/v1/workspaces", {
       headers: { authorization: `Bearer test.${me.userId}` },

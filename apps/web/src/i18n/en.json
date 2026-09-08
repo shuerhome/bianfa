@@ -243,7 +243,10 @@
         "stalled": "Several attempts failed, so we stopped retrying. Reload to try again.",
         "offline": "Can't reach the sync service. Check your connection and try again."
       }
-    }
+    },
+    "chunkFailed": "The editor failed to load",
+    "reload": "Reload",
+    "pasteTooLarge": "That paste is too large"
   },
   "format": {
     "bold": "Bold",

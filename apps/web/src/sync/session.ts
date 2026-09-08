@@ -53,6 +53,17 @@ export type SyncFailure =
 export interface SyncState {
   /** 握手完成过一次（此后即使掉线，本地编辑仍然有效，重连后会补上） */
   synced: boolean;
+  /**
+   * 服务端至少完整回过一次正文。**在此之前不能让用户打字**：
+   * 那时本地是一份空文档，敲进去的字随后会和服务端来的正文合并到一个说不清的位置。
+   * 是闩锁不是瞬时值——同步过一次之后掉线，仍然可以继续编辑，重连时 Yjs 会合并。
+   */
+  everSynced: boolean;
+  /**
+   * 服务端已经回答过"这条连接能不能写"（onAuthenticated 的 scope）。
+   * 没有这个标志就分不清"还没答复"和"答复是只读"，而这两种情况下能不能打字是相反的。
+   */
+  scopeKnown: boolean;
   /** 有本地改动还没被服务端确认 */
   saving: boolean;
   /** 服务端给的是读写连接还是只读（viewer，或便笺的 schema 比本端新） */
@@ -154,22 +165,30 @@ export function openNoteSession(opts: OpenNoteOptions): NoteSession {
     captureTimeout: 500,
   });
 
+  const wsSocket = factory.socket(url);
+  // 第二张便笺开在一条已经连着的 socket 上时，"status" 事件不会再来一次，
+  // 只靠回调的话这个会话会一直停在「连接中」。所以初始值直接读 socket 当前的状态。
+  let connected = (wsSocket as { status?: string }).status === "connected";
+
   const listeners = new Set<() => void>();
   let state: SyncState = {
     synced: false,
+    everSynced: false,
+    scopeKnown: false,
     saving: false,
     editable: false,
-    connected: false,
+    connected,
     failure: null,
   };
   let strikes = 0;
-  let connected = false;
   let destroyed = false;
 
   function emit(patch: Partial<SyncState>): void {
     const next = { ...state, ...patch };
     if (
       next.synced === state.synced &&
+      next.everSynced === state.everSynced &&
+      next.scopeKnown === state.scopeKnown &&
       next.saving === state.saving &&
       next.editable === state.editable &&
       next.connected === state.connected &&
@@ -181,7 +200,7 @@ export function openNoteSession(opts: OpenNoteOptions): NoteSession {
   }
 
   const provider = factory.provider({
-    websocketProvider: factory.socket(url),
+    websocketProvider: wsSocket,
     name: documentName(opts.workspaceId, opts.noteId),
     document: doc,
     // ① 函数，不是字符串
@@ -190,7 +209,7 @@ export function openNoteSession(opts: OpenNoteOptions): NoteSession {
       strikes = 0;
       // 只读的原因有两种：权限只到 viewer，或者这张便笺的 schema 比本端新
       // （服务端 msv < note.schemaVersion → readOnly）。两种都不该让用户白打字。
-      emit({ editable: scope !== "readonly", failure: null });
+      emit({ editable: scope !== "readonly", scopeKnown: true, failure: null });
     },
     onAuthenticationFailed: ({ reason }: { reason: string }) => onAuthFailed(reason),
     onSynced: () => recompute(),
@@ -222,6 +241,7 @@ export function openNoteSession(opts: OpenNoteOptions): NoteSession {
     const synced = Boolean(provider.isSynced);
     emit({
       synced,
+      everSynced: state.everSynced || synced,
       // ④ 只读连接的 unsyncedChanges 永远不归零（服务端回的是 SyncStatus(false)），
       //    所以"正在保存"这件事只对可写连接成立，否则会挂着一个永远转不完的圈。
       saving: synced && state.editable && Boolean(provider.hasUnsyncedChanges),

@@ -261,6 +261,42 @@ describe("openNoteSession", () => {
     expect(s.doc.getMap("meta").get("updatedAt")).toBe(first);
   });
 
+  it("everSynced 是闩锁：同步过一次之后掉线，仍然算「正文已经拿到」", () => {
+    const s = open();
+    const p = created[0];
+    if (!p) throw new Error("no provider");
+    expect(s.getState().everSynced).toBe(false);
+    p.serverHandshake();
+    expect(s.getState().everSynced).toBe(true);
+    p.isSynced = false;
+    p.fire("onStatus", { status: "disconnected" });
+    expect(s.getState().synced).toBe(false);
+    expect(s.getState().everSynced).toBe(true);
+  });
+
+  it("scopeKnown 分得清「还没答复」和「答复是只读」", () => {
+    const s = open();
+    expect(s.getState().scopeKnown).toBe(false);
+    expect(s.getState().editable).toBe(false);
+    created[0]?.serverHandshake("readonly");
+    expect(s.getState().scopeKnown).toBe(true);
+    expect(s.getState().editable).toBe(false);
+  });
+
+  it("开在一条已经连着的 socket 上时，一上来就是 connected（不会一直显示连接中）", () => {
+    const connectedSocket = { status: "connected" } as unknown as HocuspocusProviderWebsocket;
+    const s = openNoteSession({
+      workspaceId: "ws",
+      noteId: "n",
+      user: { id: "u1", name: "林" },
+      color: "amber",
+      url: "wss://api.test/ws/v1",
+      factory: { ...factory, socket: () => connectedSocket },
+    });
+    expect(s.getState().connected).toBe(true);
+    s.destroy();
+  });
+
   it("Y.Doc 的 guid 就是 noteId、gc 打开（与 shared 的 openNoteDoc 一致）", () => {
     const s = open();
     expect(s.doc.guid).toBe("0199B0F2-2222-7000-8000-000000000002");

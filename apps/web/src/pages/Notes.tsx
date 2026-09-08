@@ -6,6 +6,7 @@
 import { Button, Icon, Select } from "@bianfa/ui";
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { Card } from "../components/Shell.js";
 import { StateView } from "../components/StateView.js";
 import { describeFailure } from "../lib/errors.js";
@@ -159,14 +160,28 @@ function NoteGrid({
         />
       );
     return (
-      <Suspense fallback={<StateView kind="loading" title={t("common.loading")} />}>
-        <NoteView
-          note={open}
-          userId={user.id}
-          userName={user.name || user.email}
-          backTo={notesUrl(workspaceId)}
-        />
-      </Suspense>
+      <ErrorBoundary
+        fallback={(retry) => (
+          <StateView
+            kind="error"
+            title={t("notes.chunkFailed")}
+            actions={
+              <Button variant="primary" size="lg" onClick={retry}>
+                {t("notes.reload")}
+              </Button>
+            }
+          />
+        )}
+      >
+        <Suspense fallback={<StateView kind="loading" title={t("common.loading")} />}>
+          <NoteView
+            note={open}
+            userId={user.id}
+            userName={user.name || user.email}
+            backTo={notesUrl(workspaceId)}
+          />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 

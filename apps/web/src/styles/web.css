@@ -767,3 +767,20 @@ a.bf-btn {
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
+
+/* 正文里的图片存的是 bianfa://att/<id>（桌面端的自定义协议），浏览器解析不了。
+   网页端还没接取附件 URL 的通道，所以给一个明确的占位——不给的话浏览器画一个碎图标，
+   而碎图标在小尺寸下几乎看不见，用户会以为图片丢了。 */
+.bf-prose img[src^="bianfa://"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  min-height: 72px;
+  padding: var(--sp-4);
+  border: var(--bw-hair) dashed var(--note-line, var(--c-border));
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+  font-size: var(--fs-2xs);
+}

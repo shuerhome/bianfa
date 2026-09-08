@@ -75,6 +75,12 @@ export function requireBearerOrWebSession(
     // getSession 只回用户基本资料、不看账号状态。不补这一条的话，被冻结或已注销的账号
     // 只要浏览器里那份会话没过期，就还能照常读写便笺。
     if (!(await accountUsable(deps.db, session.userId))) throw new ApiFailure(403, "account_frozen");
+    // 这条通道的应答里是用户自己的便笺标题与摘要，而且是浏览器发的请求——不加这两个头，
+    // 响应会进浏览器的磁盘缓存，退出登录清的是 cookie 不是缓存，下一个用这台机器的人
+    // 在硬盘上仍然读得到。管理台那条 cookie 通道（admin-guard.ts）本来就是这么做的。
+    // 只在 cookie 这一支加：桌面端的 Bearer 请求不经过浏览器缓存，不用动它的头。
+    c.header("Cache-Control", "no-store");
+    c.header("Vary", "Cookie", { append: true });
     c.set("auth", {
       userId: session.userId,
       sessionId: null,

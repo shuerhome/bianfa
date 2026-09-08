@@ -50,6 +50,17 @@ describe("网页端编辑器 schema", () => {
     doc.destroy();
   });
 
+  it("粘贴上限必须在：一次超大粘贴会撑爆同步帧，服务端直接关连接", () => {
+    const doc = new Y.Doc();
+    const names = createWebNoteExtensions({
+      doc,
+      undoManager: new Y.UndoManager(doc.getXmlFragment("body")),
+      placeholder: "",
+    }).map((e) => e.name);
+    expect(names).toContain("bfPasteLimit");
+    doc.destroy();
+  });
+
   it("协同模式下 StarterKit 的撤销重做必须关掉（否则和 Y.UndoManager 打架）", () => {
     const base = createEditorExtensions({ collaboration: true }).find((e) => e.name === "starterKit");
     expect((base?.options as { undoRedo?: unknown } | undefined)?.undoRedo).toBe(false);
