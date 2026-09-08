@@ -14,13 +14,22 @@
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.3",
+    "@bianfa/shared": "workspace:*",
     "@bianfa/tokens": "workspace:*",
     "@bianfa/ui": "workspace:*",
+    "@hocuspocus/provider": "4.6.0",
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-collaboration": "3.31.3",
+    "@tiptap/extensions": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/y-tiptap": "3.0.9",
     "better-auth": "1.7.3",
     "i18next": "26.4.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-i18next": "17.0.13"
+    "react-i18next": "17.0.13",
+    "yjs": "13.6.32"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",

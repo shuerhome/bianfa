@@ -223,7 +223,35 @@
     "emptyHint": "在桌面端新建的便笺会同步到这里。",
     "noMatch": "没有匹配「{{keyword}}」的便笺",
     "noWorkspace": "还没有可用的工作区",
-    "noWorkspaceHint": "个人工作区通常在注册时就自动建好了。如果这里一直是空的，请退出后重新登录一次。"
+    "noWorkspaceHint": "个人工作区通常在注册时就自动建好了。如果这里一直是空的，请退出后重新登录一次。",
+    "placeholder": "写点什么…",
+    "toolbar": "格式",
+    "notFound": "找不到这张便笺",
+    "backToList": "返回列表",
+    "sync": {
+      "connecting": "连接中…",
+      "saving": "保存中…",
+      "live": "已同步",
+      "offline": "未连接",
+      "readonly": "你对这张便笺只有查看权限，改动不会保存。",
+      "signIn": "重新登录",
+      "failure": {
+        "forbidden": "你没有这张便笺的编辑权限（或权限刚被收回）",
+        "gone": "这张便笺已被删除",
+        "unauthorized": "登录状态已失效，请重新登录",
+        "too_many_connections": "同一个账号打开的连接太多了，关掉几个标签页再试",
+        "stalled": "连了几次都没成功，已经停下来了。刷新页面可以重试。",
+        "offline": "连不上同步服务。检查一下网络，或稍后再试。"
+      }
+    }
+  },
+  "format": {
+    "bold": "加粗",
+    "italic": "斜体",
+    "underline": "下划线",
+    "strike": "删除线",
+    "bulletList": "项目符号",
+    "taskList": "待办清单"
   },
   "admin": {
     "title": "平台管理台",

@@ -11,6 +11,14 @@ const mocks = vi.hoisted(() => ({
   session: { user: { id: "u1", email: "lin@example.com", name: "Lin", emailVerified: true } } as unknown,
 }));
 
+// 编辑器整块换掉：这个文件测的是列表与路由，真去挂 TipTap + WebSocket 只会让它变慢变脆。
+// 编辑器本身的行为在 sync-session / editor-schema 两个文件里测。
+vi.mock("../pages/NoteView.js", () => ({
+  NoteView: ({ note, backTo }: { note: { id: string }; backTo: string }) => (
+    <div data-testid="note-view" data-note={note.id} data-back={backTo} />
+  ),
+}));
+
 vi.mock("../auth-client.js", () => ({
   authClient: {
     useSession: () => ({ data: mocks.session, isPending: false, refetch: async () => {} }),
@@ -227,6 +235,26 @@ describe("/notes 列表页", () => {
     });
     render(<Notes search="" />);
     await waitFor(() => expect(screen.getByText("还没有可用的工作区")).toBeTruthy());
+  });
+
+  it("点卡片打开便笺：URL 记成 ?ws=&note=，渲染编辑器", async () => {
+    mockApi(routeAll);
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    fireEvent.click(screen.getByText("购物清单"));
+    await waitFor(() => expect(window.location.search).toBe("?ws=w1&note=n1"));
+  });
+
+  it("?note= 指向的便笺不在这个工作区（被删 / 换了账号）→ 说清楚，而不是一张空编辑器", async () => {
+    mockApi(routeAll);
+    render(<Notes search="?ws=w1&note=nope" />);
+    await waitFor(() => expect(screen.getByText("找不到这张便笺")).toBeTruthy());
+  });
+
+  it("E2EE 的便笺不给打开：网页端拿不到密钥，开出来只会是一张空文档", async () => {
+    mockApi(routeAll);
+    render(<Notes search="?ws=w1&note=n2" />);
+    await waitFor(() => expect(screen.getByText("端到端加密，网页端暂不能查看")).toBeTruthy());
   });
 
   it("会话对 /v1 无效（401）时展示错误而不是空列表", async () => {

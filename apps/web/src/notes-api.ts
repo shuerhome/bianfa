@@ -19,7 +19,11 @@ interface V1ErrorBody {
   error?: unknown;
 }
 
-async function v1Fetch<T>(
+/**
+ * `/v1` 的一次请求（同源会话通道）。导出给 sync/token.ts 用——同步凭据走的是同一条通道，
+ * 换一套取数方式就等于多一处会漂移的鉴权代码。
+ */
+export async function v1Fetch<T>(
   path: string,
   init: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<Result<T>> {

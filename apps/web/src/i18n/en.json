@@ -223,7 +223,35 @@
     "emptyHint": "Notes you create in the desktop app show up here.",
     "noMatch": "No notes match “{{keyword}}”",
     "noWorkspace": "No workspace available yet",
-    "noWorkspaceHint": "Your personal workspace is normally created at sign-up. If this stays empty, sign out and sign in again."
+    "noWorkspaceHint": "Your personal workspace is normally created at sign-up. If this stays empty, sign out and sign in again.",
+    "placeholder": "Write something…",
+    "toolbar": "Formatting",
+    "notFound": "That note isn't here",
+    "backToList": "Back to the list",
+    "sync": {
+      "connecting": "Connecting…",
+      "saving": "Saving…",
+      "live": "Synced",
+      "offline": "Not connected",
+      "readonly": "You can view this note but not edit it — changes won't be saved.",
+      "signIn": "Sign in again",
+      "failure": {
+        "forbidden": "You don't have edit access to this note (or it was just revoked)",
+        "gone": "This note has been deleted",
+        "unauthorized": "Your session expired — please sign in again",
+        "too_many_connections": "Too many open connections for this account. Close a few tabs and retry.",
+        "stalled": "Several attempts failed, so we stopped retrying. Reload to try again.",
+        "offline": "Can't reach the sync service. Check your connection and try again."
+      }
+    }
+  },
+  "format": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "strike": "Strikethrough",
+    "bulletList": "Bulleted list",
+    "taskList": "Task list"
   },
   "admin": {
     "title": "Platform admin",

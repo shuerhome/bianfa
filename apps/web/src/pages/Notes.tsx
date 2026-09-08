@@ -4,7 +4,7 @@
 // index.html，一个路径 + 查询串就不用为每个工作区再开一条服务端路由，刷新与后退也不会 404。
 // 搜索词故意**不**进 URL：它是即打即用的过滤，每敲一个字就 replaceState 只是噪音。
 import { Button, Icon, Select } from "@bianfa/ui";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card } from "../components/Shell.js";
 import { StateView } from "../components/StateView.js";
@@ -14,8 +14,17 @@ import { useRequireSession } from "../lib/session.js";
 import { fetchNotes, fetchWorkspaces, type WebNote } from "../notes-api.js";
 import { navigate, queryOf } from "../router.js";
 
-export function notesUrl(workspaceId?: string | null): string {
-  return workspaceId ? `/notes?ws=${encodeURIComponent(workspaceId)}` : "/notes";
+// 编辑器（TipTap + Yjs + Hocuspocus）是整个网页端最大的一块，压缩后也有 180 KB 上下。
+// 静态 import 的话 /login 这种页面也得先把它下载完——手机上第一次打开就是那么多流量。
+// 只有真的打开某张便笺时才去取。
+const NoteView = lazy(() => import("./NoteView.js").then((m) => ({ default: m.NoteView })));
+
+export function notesUrl(workspaceId?: string | null, noteId?: string | null): string {
+  const q = new URLSearchParams();
+  if (workspaceId) q.set("ws", workspaceId);
+  if (noteId) q.set("note", noteId);
+  const s = q.toString();
+  return s ? `/notes?${s}` : "/notes";
 }
 
 export function Notes({ search }: { search: string }) {
@@ -23,7 +32,9 @@ export function Notes({ search }: { search: string }) {
   const { user, pending } = useRequireSession("/notes");
   const [keyword, setKeyword] = useState("");
   const ws = useQuery("workspaces", () => fetchWorkspaces());
-  const wantedWs = queryOf(search).get("ws");
+  const q = queryOf(search);
+  const wantedWs = q.get("ws");
+  const wantedNote = q.get("note");
 
   if (pending || !user || (!ws.data && !ws.error)) {
     return (
@@ -86,12 +97,22 @@ export function Notes({ search }: { search: string }) {
           {t("notes.account")}
         </Button>
       </div>
-      <NoteGrid workspaceId={current.id} keyword={keyword} />
+      <NoteGrid workspaceId={current.id} keyword={keyword} openNoteId={wantedNote} user={user} />
     </Card>
   );
 }
 
-function NoteGrid({ workspaceId, keyword }: { workspaceId: string; keyword: string }) {
+function NoteGrid({
+  workspaceId,
+  keyword,
+  openNoteId,
+  user,
+}: {
+  workspaceId: string;
+  keyword: string;
+  openNoteId: string | null;
+  user: { id: string; name: string; email: string };
+}) {
   const { t } = useTranslation();
   const { data, error, reload } = useQuery(`notes|${workspaceId}`, () => fetchNotes(workspaceId));
 
@@ -108,6 +129,47 @@ function NoteGrid({ workspaceId, keyword }: { workspaceId: string; keyword: stri
       />
     );
   if (!data) return <StateView kind="loading" title={t("common.loading")} />;
+
+  // 打开某张便笺：整块换成编辑器，列表的筛选栏也一并让位（返回按钮在编辑器里）
+  if (openNoteId) {
+    const open = data.notes.find((n) => n.id === openNoteId);
+    // 便笺不在这个工作区（换了账号、链接过期、刚被删）→ 说清楚，而不是渲染一张空编辑器
+    if (!open)
+      return (
+        <StateView
+          kind="error"
+          title={t("notes.notFound")}
+          actions={
+            <Button variant="primary" size="lg" onClick={() => navigate(notesUrl(workspaceId))}>
+              {t("notes.backToList")}
+            </Button>
+          }
+        />
+      );
+    if (open.encryption === "e2ee")
+      return (
+        <StateView
+          kind="info"
+          title={t("notes.encrypted")}
+          actions={
+            <Button variant="primary" size="lg" onClick={() => navigate(notesUrl(workspaceId))}>
+              {t("notes.backToList")}
+            </Button>
+          }
+        />
+      );
+    return (
+      <Suspense fallback={<StateView kind="loading" title={t("common.loading")} />}>
+        <NoteView
+          note={open}
+          userId={user.id}
+          userName={user.name || user.email}
+          backTo={notesUrl(workspaceId)}
+        />
+      </Suspense>
+    );
+  }
+
   if (data.notes.length === 0)
     return <StateView kind="info" title={t("notes.empty")} detail={t("notes.emptyHint")} />;
 
@@ -128,34 +190,36 @@ function NoteGrid({ workspaceId, keyword }: { workspaceId: string; keyword: stri
       </p>
       <ul className="notes-grid">
         {shown.map((n) => (
-          <NoteCard key={n.id} note={n} />
+          <NoteCard key={n.id} note={n} onOpen={() => navigate(notesUrl(workspaceId, n.id))} />
         ))}
       </ul>
     </>
   );
 }
 
-function NoteCard({ note }: { note: WebNote }) {
+function NoteCard({ note, onOpen }: { note: WebNote; onOpen: () => void }) {
   const { t } = useTranslation();
   // e2ee 的正文服务端存的是密文，title_cache / excerpt 一定是空的 —— 说清楚是「加密」而不是「空白」
   const encrypted = note.encryption === "e2ee";
   return (
     <li className="notes-card" data-color={note.color}>
-      <p className="notes-card__title">
-        {note.pinned ? <Icon name="pin" size={13} label={t("notes.pinned")} /> : null}
-        <span className="notes-card__titletext">{note.title.trim() || t("notes.untitled")}</span>
-      </p>
-      <p className="notes-card__body">
-        {encrypted ? (
-          <span className="notes-card__locked">
-            <Icon name="lock" size={13} />
-            {t("notes.encrypted")}
-          </span>
-        ) : (
-          note.excerpt.trim() || t("notes.blank")
-        )}
-      </p>
-      <p className="notes-card__meta">{formatDay(note.updated_at ?? note.created_at)}</p>
+      <button type="button" className="notes-card__open" onClick={onOpen}>
+        <p className="notes-card__title">
+          {note.pinned ? <Icon name="pin" size={13} label={t("notes.pinned")} /> : null}
+          <span className="notes-card__titletext">{note.title.trim() || t("notes.untitled")}</span>
+        </p>
+        <p className="notes-card__body">
+          {encrypted ? (
+            <span className="notes-card__locked">
+              <Icon name="lock" size={13} />
+              {t("notes.encrypted")}
+            </span>
+          ) : (
+            note.excerpt.trim() || t("notes.blank")
+          )}
+        </p>
+        <p className="notes-card__meta">{formatDay(note.updated_at ?? note.created_at)}</p>
+      </button>
     </li>
   );
 }

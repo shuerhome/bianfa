@@ -3,6 +3,9 @@
 @import "@bianfa/tokens/tokens.css";
 @import "@bianfa/ui/theme.css";
 @import "@bianfa/ui/ui.css";
+/* 正文排版：与桌面端同一份（packages/ui/src/styles/prose.css）。两边共用一份是硬要求——
+   .bf-prose 决定的是便笺正文长什么样，抄一份出来就会各自漂移。 */
+@import "@bianfa/ui/prose.css";
 
 :root {
   font-size: 16px;
@@ -678,4 +681,89 @@ a.bf-btn {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: var(--sp-4);
   }
+}
+
+/* ── 便笺编辑（/notes?note=<id>） ── */
+.web-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+  padding: var(--sp-5);
+  border: var(--bw-hair) solid var(--note-line, var(--c-border-subtle));
+  border-radius: var(--r-lg);
+  background: var(--note-paper, var(--c-surface-1));
+  color: var(--note-ink, var(--c-text-1));
+}
+.web-note__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.web-note__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-strong);
+}
+.web-note__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2, var(--c-text-3));
+  white-space: nowrap;
+}
+.web-note__sync[data-kind="error"] {
+  color: var(--c-danger);
+}
+.web-note__spinner {
+  width: 11px;
+  height: 11px;
+}
+.web-note__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
+  border-bottom: var(--bw-hair) solid var(--note-line, var(--c-border-subtle));
+}
+.web-note__editor {
+  min-height: 40vh;
+}
+/* 正文本体的排版全部来自 .bf-prose；这里只管几何，和桌面端 .note-body 的分工一致 */
+.web-note__body {
+  min-height: 40vh;
+  outline: none;
+}
+.web-note__hint {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  color: var(--note-ink2, var(--c-text-3));
+}
+/* 卡片整体可点开；按钮本身不带任何外观，外观全在 .notes-card 上 */
+.notes-card__open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notes-card:has(.notes-card__open:hover) {
+  box-shadow: var(--sh-2);
+}
+.notes-card__open:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }

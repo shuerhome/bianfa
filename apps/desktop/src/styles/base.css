@@ -3,7 +3,7 @@
 @import "@bianfa/tokens/tokens.css";
 @import "@bianfa/ui/theme.css";
 @import "@bianfa/ui/ui.css";
-@import "./prose.css";
+@import "@bianfa/ui/prose.css";
 @import "../platform/static-tail.css";
 
 @font-face {

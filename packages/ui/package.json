@@ -10,6 +10,7 @@
       "import": "./dist/index.js"
     },
     "./theme.css": "./src/styles/theme.css",
+    "./prose.css": "./src/styles/prose.css",
     "./ui.css": "./src/styles/ui.css"
   },
   "files": [
