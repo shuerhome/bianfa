@@ -215,6 +215,49 @@ fn rect_at_cursor(app: &AppHandle, w: u32, h: u32) -> Option<Rect> {
     })
 }
 
+/// 按正文估算一张便笺打开时的初始尺寸（逻辑像素，未乘界面缩放）。
+///
+/// 只在**这张便笺还没有被用户调整过大小**时用；存过 geometry 的一律照用户的来。
+///
+/// 固定的 220×220 对多数便笺都太小——原版 Windows 便笺也是按内容给初始尺寸的。
+/// 这里用「加权字符数」近似排版长度：CJK 一个字约占一个字号宽，ASCII 约半个。
+/// 估算不需要精确，够让常见便笺一眼看全就行；用户改过之后就再也不走这条路。
+fn content_size(text: &str) -> (f64, f64) {
+    let units: f64 = text
+        .chars()
+        .filter(|c| *c != '\n' && *c != '\r')
+        .map(|c| if c.is_ascii() { 0.5 } else { 1.0 })
+        .sum();
+    let hard_breaks = text.lines().count().saturating_sub(1) as f64;
+
+    // 宽度分档而不是连续变化：连续变化会让每张便笺宽度都不一样，摆在桌面上很乱。
+    // 显式标注类型：不标的话 `((w - 32.0) / 13.0).max(8.0)` 会在类型推断完成之前
+    // 就要解析 max 方法，rustc 报 "can't call method on ambiguous numeric type"。
+    let w: f64 = if units <= 60.0 {
+        260.0
+    } else if units <= 300.0 {
+        320.0
+    } else if units <= 1200.0 {
+        400.0
+    } else {
+        480.0
+    };
+
+    // 每行能放多少个「单位」：可用宽度 ÷ 字号。字号取默认档 13px（--fs-sm），
+    // 左右内边距合计约 32px。
+    let per_line = ((w - 32.0) / 13.0).max(8.0);
+    let wrapped = (units / per_line).ceil();
+    // 行高 = 13px × 1.45（紧凑档），再加顶栏与上下内边距
+    let h = NOTE_TITLEBAR_H + 20.0 + (wrapped + hard_breaks + 1.0) * 19.0;
+
+    (
+        w.clamp(NOTE_MIN.0, NOTE_MAX.0),
+        // 下限取默认高度（空便笺仍然是 220），上限 560：再高就不像便笺了，
+        // 而且要考虑小屏幕放不下。用户想更大可以自己拉。
+        h.clamp(NOTE_DEFAULT.1, 560.0),
+    )
+}
+
 fn cascade_rect(app: &AppHandle, w: u32, h: u32) -> Rect {
     let n = with_registry(app, |r| r.open_count()) as i32;
     let (x, y) = centered_on_primary(app, w, h);
@@ -347,8 +390,18 @@ pub fn open_note(app: &AppHandle, note_id: &str, opts: OpenOpts) -> IpcResult<St
     // Geometry.
     let scale = win.scale_factor().unwrap_or(1.0);
     let s = ui_scale(app);
-    let default_w = (NOTE_DEFAULT.0 * s * scale) as u32;
-    let default_h = (NOTE_DEFAULT.1 * s * scale) as u32;
+    // 没有存过尺寸的便笺按正文估算，而不是一律 220×220（那对多数便笺都太小）。
+    // 新建的便笺没有正文，estimate 会落回默认高度。
+    let (est_w, est_h) = if opts.fresh {
+        (NOTE_DEFAULT.0, NOTE_DEFAULT.1)
+    } else {
+        state
+            .with_db(|c| notes::get(c, note_id))
+            .map(|n| content_size(&n.content_text))
+            .unwrap_or((NOTE_DEFAULT.0, NOTE_DEFAULT.1))
+    };
+    let default_w = (est_w * s * scale) as u32;
+    let default_h = (est_h * s * scale) as u32;
     let rect = match saved.as_ref() {
         Some(st) if st.x.is_some() && st.y.is_some() && st.w.is_some() && st.h.is_some() => {
             sanitize_rect(
@@ -944,5 +997,45 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 便笺打开时的初始尺寸按正文估算（只在没存过尺寸时用；存过的一律照用户调过的来）。
+    #[test]
+    fn content_size_grows_with_content() {
+        let (ew, eh) = content_size("");
+        // 空便笺（新建）不该比默认更小
+        assert!(ew >= NOTE_MIN.0 && eh >= NOTE_DEFAULT.1);
+
+        let short = content_size("买牛奶");
+        let medium = content_size(&"中".repeat(300));
+        let long = content_size(&"中".repeat(1500));
+
+        // 宽度分档递增，不是连续变化（连续变化会让桌面上每张便笺都不一样宽）
+        assert!(short.0 <= medium.0 && medium.0 <= long.0);
+        assert!(short.1 <= medium.1 && medium.1 <= long.1);
+        // 正文越多越高，但要有上限——再高就不像便笺，小屏幕也放不下
+        assert!(long.1 <= 560.0);
+    }
+
+    #[test]
+    fn content_size_stays_within_window_limits() {
+        for text in ["", "x", &"中".repeat(50_000)] {
+            let (w, h) = content_size(text);
+            assert!(w >= NOTE_MIN.0 && w <= NOTE_MAX.0, "宽 {w} 越界");
+            assert!(h >= NOTE_MIN.1 && h <= NOTE_MAX.1, "高 {h} 越界");
+        }
+    }
+
+    #[test]
+    fn hard_line_breaks_count_toward_height() {
+        // 同样的字数，分行多的应该更高（待办清单那种）
+        let one_line = content_size(&"中".repeat(40));
+        let many_lines = content_size(&"中中中中\n".repeat(10));
+        assert!(many_lines.1 >= one_line.1);
     }
 }
