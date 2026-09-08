@@ -131,6 +131,8 @@ export async function req<T = Record<string, unknown>>(
     cookieAs?: string;
     /** 默认带 X-Bianfa-Admin: 1；显式设 false 用来测缺这个头会不会被拒 */
     adminHeader?: boolean;
+    /** /v1 的同源会话通道要的是 X-Bianfa-Web（与管理台那条刻意用不同的头） */
+    webHeader?: boolean;
     /** 非 GET 请求的 Origin；默认取 APP_ORIGIN 的第一个 */
     origin?: string | null;
   } = {},
@@ -139,7 +141,8 @@ export async function req<T = Record<string, unknown>>(
   if (opts.as) headers.authorization = `Bearer test.${opts.as}`;
   if (opts.cookieAs) {
     headers.cookie = `session=${opts.cookieAs}`;
-    if (opts.adminHeader !== false) headers["x-bianfa-admin"] = "1";
+    if (opts.webHeader === true) headers["x-bianfa-web"] = "1";
+    else if (opts.adminHeader !== false) headers["x-bianfa-admin"] = "1";
     const origin = opts.origin === undefined ? TEST_APP_ORIGIN : opts.origin;
     if (origin) headers.origin = origin;
   }

@@ -22,7 +22,7 @@ import {
   uuidSchema,
   validationHook,
 } from "./http.js";
-import { type AuthVariables, type BearerVerifier, requireBearer } from "./index.js";
+import type { AuthVariables, BearerVerifier } from "./index.js";
 import { type OrgVariables, requireOrgRole } from "./org-guard.js";
 import { securityCodeSchema } from "./security-code.js";
 import {
@@ -62,6 +62,7 @@ import {
   removeTeamMember,
   updateTeam,
 } from "./services/teams.js";
+import { requireBearerOrWebSession } from "./web-session.js";
 
 export type V1Env = { Variables: AuthVariables & OrgVariables };
 
@@ -262,8 +263,18 @@ export function buildV1Routes(deps: ServiceDeps, verify: BearerVerifier): Hono<{
 
   app.route("/admin", adminApp);
 
-  // ---------------------------------------------------------------- 以下全部 Bearer + 600/min/user
-  app.use("*", requireBearer(verify));
+  // ---------------------------------------------------------------- 以下全部 Bearer / 同源会话 + 600/min/user
+  // 浏览器里的网页端（含 PWA）拿不到 Bearer——那是 oauth-provider 给桌面端签的令牌。
+  // 这里接受同源的 Better Auth 会话 cookie，三层 CSRF 防御见 requireBearerOrWebSession 的注释。
+  app.use(
+    "*",
+    requireBearerOrWebSession({
+      db: deps.db,
+      verify,
+      resolveSession: deps.resolveSession,
+      appOrigins: deps.env.appOrigins,
+    }),
+  );
   app.use(
     "*",
     rateLimit({
