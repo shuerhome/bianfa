@@ -1,5 +1,5 @@
 // 导入向导（specs/06 §4.9、05 §7.4、02 §7）：import_scan → import_preview → JS 构造 Y.Doc → import_commit。
-import { encodeStateV2, plumNoteToNoteDoc, plumTimeToMs } from "@bianfa/shared";
+import { encodeStateV2, plumNoteToNoteDoc, plumTimeToMs, uuidv7 } from "@bianfa/shared";
 import { Button, Dialog } from "@bianfa/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,7 +12,6 @@ import type {
   ImportSource,
 } from "../../ipc/types.js";
 import { toB64 } from "../../lib/base64.js";
-import { uuidv7 } from "../../lib/uuid.js";
 
 type Step =
   | { kind: "sources"; sources: ImportSource[]; loading: boolean }

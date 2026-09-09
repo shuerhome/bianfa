@@ -246,7 +246,8 @@
     },
     "chunkFailed": "The editor failed to load",
     "reload": "Reload",
-    "pasteTooLarge": "That paste is too large"
+    "pasteTooLarge": "That paste is too large",
+    "new": "New note"
   },
   "format": {
     "bold": "Bold",

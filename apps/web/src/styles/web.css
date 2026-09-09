@@ -606,8 +606,15 @@ a.bf-btn {
   min-width: 0;
   height: var(--h-ctl-md);
 }
-.notes-bar__account {
+.notes-bar__account,
+.notes-bar__new {
   flex: 0 0 auto;
+}
+.notes-bar__error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--fs-2xs);
+  color: var(--c-danger);
 }
 .notes-count {
   margin: var(--sp-5) 0 0;

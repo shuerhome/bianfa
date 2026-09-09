@@ -1,14 +1,13 @@
 // 团队 / 共享便笺的打开与新建：本地行不存在时按 sync host 的发现套路先建行（只带 meta，正文等 provider 同步），再开窗。
 //   新建团队便笺：先 POST /v1/notes 在目标工作区落服务端行，再 note_create（workspaceId）+ note_window_open。
 //   note_new 只能开个人便笺（Rust 只分配 id 开窗，note.html 不带 workspace），所以这里走 note_create 路径。
-import { createNoteDoc, encodeStateV2 } from "@bianfa/shared";
+import { createNoteDoc, encodeStateV2, uuidv7 } from "@bianfa/shared";
 import { createRemoteNote } from "../../../api/notes.js";
 import { buildProjection } from "../../../editor/projection.js";
 import { noteCreate, noteGet, noteWindowOpen } from "../../../ipc/commands.js";
 import { isIpcError } from "../../../ipc/errors.js";
 import type { NoteColor, ZMode } from "../../../ipc/types.js";
 import { toB64 } from "../../../lib/base64.js";
-import { uuidv7 } from "../../../lib/uuid.js";
 
 export interface RemoteNoteRef {
   id: string;

@@ -15,7 +15,17 @@
 //      startSync() 一开始就把 unsyncedChanges 置成 1，synced 触发时它基本必然还是 1。
 //   ⑤ 拆的顺序是 editor → provider → doc → socket。provider.destroy() 会往 socket 发一条
 //      Close 帧，先关 socket 那条帧就发进了虚空。
-import { BODY_FIELD, getBody, getMetaMap, type NoteColor, Origins, SCHEMA_VERSION } from "@bianfa/shared";
+import {
+  BODY_FIELD,
+  DEFAULT_NOTE_COLOR,
+  getBody,
+  getMetaMap,
+  isNoteColor,
+  type NoteColor,
+  Origins,
+  SCHEMA_VERSION,
+  ZMode,
+} from "@bianfa/shared";
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
 import * as Y from "yjs";
@@ -236,9 +246,38 @@ export function openNoteSession(opts: OpenNoteOptions): NoteSession {
   // provider 的 "synced" 只代表握手完成；"是否已上传"要看 unsyncedChanges
   provider.on("unsyncedChanges", () => recompute());
 
+  /**
+   * 新建的便笺：服务端只有一行空记录，Y.Doc 里什么都没有。第一次同步完成后如果 meta 还是空的，
+   * 就按 shared 的约定补齐——不补的话服务端的投影拿不到 createdAt / schemaVersion，
+   * updatedAt 也只能退回"投影那一刻"，这张便笺在列表里的排序就是错的。
+   *
+   * 判据是「meta 一个键都没有」，而不是从 URL 上带一个 ?new=1 的标志位：
+   * 刷新页面、或者过一阵子从别的入口再打开同一张便笺，都不会把它已有的颜色和创建时间
+   * 重置回默认值。标志位做不到这一点——刷新一次就重置了。
+   */
+  function seedIfEmpty(): void {
+    if (getMetaMap(doc).size > 0) return;
+    const now = Date.now();
+    doc.transact(() => {
+      const map = getMetaMap(doc);
+      map.set("color", isNoteColor(opts.color) ? opts.color : DEFAULT_NOTE_COLOR);
+      map.set("zMode", ZMode.normal);
+      map.set("createdAt", now);
+      map.set("updatedAt", now);
+      map.set("deletedAt", null);
+      map.set("schemaVersion", SCHEMA_VERSION);
+      // 正文类型也要在首个 update 里声明，否则别的端会先看到一个只有 meta 的文档
+      // （与 shared 的 createNoteDoc 同一处理）
+      doc.getXmlFragment(BODY_FIELD);
+    }, Origins.local);
+  }
+
   function recompute(): void {
     if (destroyed) return;
     const synced = Boolean(provider.isSynced);
+    // 首次同步完成的那一下，且服务端说这条连接可写时才补 meta：
+    // 只读连接写了也会被服务端丢掉，白留一堆本地 CRDT 操作。
+    if (synced && !state.everSynced && state.editable) seedIfEmpty();
     emit({
       synced,
       everSynced: state.everSynced || synced,

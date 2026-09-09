@@ -1,12 +1,11 @@
 // note.html?id=<uuid>&fresh=1&color=citron
-import { isNoteColor, type NoteColor } from "@bianfa/shared";
+import { isNoteColor, isUuid, type NoteColor } from "@bianfa/shared";
 import { ToastProvider } from "@bianfa/ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { boot } from "../../lib/bootstrap.js";
 import { createQueryClient } from "../../lib/query.js";
-import { isUuid } from "../../lib/uuid.js";
 import "../../styles/note.css";
 import { NoteApp } from "./NoteApp.js";
 

@@ -8,6 +8,7 @@
 //   ④ "正在保存"要看 isSynced && hasUnsyncedChanges，只看 synced 事件永远是 true。
 //   ⑤ 只读连接的 unsyncedChanges 永远不归零（服务端回 SyncStatus(false)），
 //      所以只读时不能显示"保存中"，否则是一个永远转不完的圈。
+import { SCHEMA_VERSION } from "@bianfa/shared";
 import type { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { documentName, openNoteSession, type SessionFactory, syncUrlFromLocation } from "../sync/session.js";
@@ -295,6 +296,44 @@ describe("openNoteSession", () => {
     });
     expect(s.getState().connected).toBe(true);
     s.destroy();
+  });
+
+  it("新建的便笺：首次同步后把 meta 补齐（不补的话服务端投影拿不到 createdAt / schemaVersion）", () => {
+    const s = open();
+    const p = created[0];
+    if (!p) throw new Error("no provider");
+    expect(s.doc.getMap("meta").size).toBe(0);
+    p.serverHandshake("read-write");
+    const meta = s.doc.getMap("meta");
+    expect(meta.get("color")).toBe("amber");
+    expect(meta.get("schemaVersion")).toBe(SCHEMA_VERSION);
+    expect(meta.get("zMode")).toBe(0);
+    expect(typeof meta.get("createdAt")).toBe("number");
+    expect(meta.get("deletedAt")).toBeNull();
+    // 正文类型也要声明，否则别的端会先看到一个只有 meta 的文档
+    expect(s.doc.share.has("body")).toBe(true);
+  });
+
+  it("已有便笺的 meta 绝不能被覆盖（刷新页面不该把颜色和创建时间重置成默认值）", () => {
+    const s = open();
+    const p = created[0];
+    if (!p) throw new Error("no provider");
+    // 模拟服务端把已有内容同步下来
+    s.doc.transact(() => {
+      const m = s.doc.getMap("meta");
+      m.set("color", "teal");
+      m.set("createdAt", 111);
+      m.set("schemaVersion", 1);
+    });
+    p.serverHandshake("read-write");
+    expect(s.doc.getMap("meta").get("color")).toBe("teal");
+    expect(s.doc.getMap("meta").get("createdAt")).toBe(111);
+  });
+
+  it("只读连接不补 meta（写了服务端也会丢掉，白留一堆本地操作）", () => {
+    const s = open();
+    created[0]?.serverHandshake("readonly");
+    expect(s.doc.getMap("meta").size).toBe(0);
   });
 
   it("Y.Doc 的 guid 就是 noteId、gc 打开（与 shared 的 openNoteDoc 一致）", () => {

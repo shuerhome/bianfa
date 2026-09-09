@@ -10,9 +10,9 @@ import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { Card } from "../components/Shell.js";
 import { StateView } from "../components/StateView.js";
 import { describeFailure } from "../lib/errors.js";
-import { useQuery } from "../lib/query.js";
+import { type QueryState, useQuery } from "../lib/query.js";
 import { useRequireSession } from "../lib/session.js";
-import { fetchNotes, fetchWorkspaces, type WebNote } from "../notes-api.js";
+import { createNote, fetchNotes, fetchWorkspaces, type NoteList, type WebNote } from "../notes-api.js";
 import { navigate, queryOf } from "../router.js";
 
 // 编辑器（TipTap + Yjs + Hocuspocus）是整个网页端最大的一块，压缩后也有 180 KB 上下。
@@ -37,6 +37,23 @@ export function Notes({ search }: { search: string }) {
   const wantedWs = q.get("ws");
   const wantedNote = q.get("note");
 
+  // 查询串里的 ws 不在可见列表里（换了账号、被移出团队）→ 退回第一个，别把整页顶成错误
+  const workspaces = ws.data ?? [];
+  const current = workspaces.find((w) => w.id === wantedWs) ?? workspaces[0] ?? null;
+  const currentId = current?.id ?? "";
+
+  // 便笺列表的查询放在这一层，而不是 NoteGrid 里：新建按钮要在建行成功后
+  // 把它 reload 一次，否则跳进编辑器时缓存里没有那张新便笺，用户看到的是"找不到"。
+  // hook 不能放在下面那些提前 return 之后，所以这里用 currentId 为空时返回空列表兜底。
+  const notes = useQuery(`notes|${currentId}`, () =>
+    currentId
+      ? fetchNotes(currentId)
+      : Promise.resolve({
+          ok: true as const,
+          data: { perm: "viewer" as const, notes: [], version: 0, truncated: false },
+        }),
+  );
+
   if (pending || !user || (!ws.data && !ws.error)) {
     return (
       <Card title={t("notes.title")}>
@@ -59,9 +76,6 @@ export function Notes({ search }: { search: string }) {
       </Card>
     );
   }
-  const workspaces = ws.data ?? [];
-  // 查询串里的 ws 不在可见列表里（换了账号、被移出团队）→ 退回第一个，别把整页顶成错误
-  const current = workspaces.find((w) => w.id === wantedWs) ?? workspaces[0];
   if (!current) {
     return (
       <Card title={t("notes.title")}>
@@ -94,12 +108,81 @@ export function Notes({ search }: { search: string }) {
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
+        <NewNoteButton
+          workspaceId={current.id}
+          canWrite={current.effective_perm !== "viewer"}
+          onCreated={notes.reload}
+        />
         <Button className="notes-bar__account" icon="user" size="md" onClick={() => navigate("/account")}>
           {t("notes.account")}
         </Button>
       </div>
-      <NoteGrid workspaceId={current.id} keyword={keyword} openNoteId={wantedNote} user={user} />
+      <NoteGrid
+        workspaceId={current.id}
+        keyword={keyword}
+        openNoteId={wantedNote}
+        user={user}
+        notes={notes}
+      />
     </Card>
+  );
+}
+
+/**
+ * 新建便笺 = 先 POST /v1/notes 建行，再跳到编辑器（那边连同步、补 meta）。
+ *
+ * 顺序不能反：先开同步的话，sync-ws 的 authorize 查不到这张便笺，直接回 forbidden，
+ * 而浏览器只看得到一句"没有权限"。
+ */
+function NewNoteButton({
+  workspaceId,
+  canWrite,
+  onCreated,
+}: {
+  workspaceId: string;
+  canWrite: boolean;
+  onCreated: () => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  if (!canWrite) return null;
+
+  async function create() {
+    setBusy(true);
+    setFailed(null);
+    const res = await createNote(workspaceId);
+    if (!res.ok) {
+      setFailed(describeFailure(res.error));
+      setBusy(false);
+      return;
+    }
+    // 先让列表重新取一次：跳过去之后编辑器要从列表里拿这张便笺的元信息（颜色、标题），
+    // 缓存里没有的话会渲染成"找不到这张便笺"。
+    onCreated();
+    // 不清 busy：马上就要整块换成编辑器了，清了反而会闪一下
+    navigate(notesUrl(workspaceId, res.data.id));
+  }
+
+  return (
+    <>
+      <Button
+        className="notes-bar__new"
+        variant="primary"
+        icon="plus"
+        size="md"
+        busy={busy}
+        onClick={() => void create()}
+      >
+        {t("notes.new")}
+      </Button>
+      {failed ? (
+        <p className="notes-bar__error" role="alert">
+          {failed}
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -108,14 +191,16 @@ function NoteGrid({
   keyword,
   openNoteId,
   user,
+  notes,
 }: {
   workspaceId: string;
   keyword: string;
   openNoteId: string | null;
   user: { id: string; name: string; email: string };
+  notes: QueryState<NoteList> & { reload: () => void };
 }) {
   const { t } = useTranslation();
-  const { data, error, reload } = useQuery(`notes|${workspaceId}`, () => fetchNotes(workspaceId));
+  const { data, error, reload } = notes;
 
   if (error)
     return (
@@ -186,7 +271,16 @@ function NoteGrid({
   }
 
   if (data.notes.length === 0)
-    return <StateView kind="info" title={t("notes.empty")} detail={t("notes.emptyHint")} />;
+    return (
+      <StateView
+        kind="info"
+        title={t("notes.empty")}
+        detail={t("notes.emptyHint")}
+        actions={
+          <NewNoteButton workspaceId={workspaceId} canWrite={data.perm !== "viewer"} onCreated={reload} />
+        }
+      />
+    );
 
   const needle = keyword.trim().toLocaleLowerCase();
   const shown = needle

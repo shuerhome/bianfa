@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchNotes } from "../notes-api.js";
 import { Notes } from "../pages/Notes.js";
+import { useLocation } from "../router.js";
 
 const mocks = vi.hoisted(() => ({
   session: { user: { id: "u1", email: "lin@example.com", name: "Lin", emailVerified: true } } as unknown,
@@ -74,6 +75,16 @@ function note(id: string, extra: Record<string, unknown> = {}) {
 function headerOf(entry: Seen | undefined, name: string): string | undefined {
   const h = entry?.init?.headers as Record<string, string> | undefined;
   return h?.[name];
+}
+
+/**
+ * 和 App.tsx 一样：从 useLocation() 读 search 再传给 Notes。
+ * 直接 <Notes search="..." /> 的话 search 是写死的 prop，navigate 之后不会重新传下来——
+ * 凡是要跨一次导航的用例都必须用这个外壳，否则测的是一个真实里不存在的组件。
+ */
+function NotesLive() {
+  const loc = useLocation();
+  return <Notes search={loc.search} />;
 }
 
 beforeEach(() => {
@@ -255,6 +266,75 @@ describe("/notes 列表页", () => {
     mockApi(routeAll);
     render(<Notes search="?ws=w1&note=n2" />);
     await waitFor(() => expect(screen.getByText("端到端加密，网页端暂不能查看")).toBeTruthy());
+  });
+
+  it("新建：POST /v1/notes 带客户端生成的 UUIDv7，成功后跳到编辑器", async () => {
+    // 假服务端要有状态：建行之后再拉列表，那张新便笺必须在里面。
+    // 固定返回同一份列表的话，测的就不是真实行为了——真实服务端一定会带上它。
+    let newId: string | null = null;
+    mockApi((url) => {
+      if (url === "/v1/notes") {
+        const last = seen[seen.length - 1];
+        newId = (JSON.parse(String(last?.init?.body)) as { id: string }).id;
+        return { status: 201, body: { note: note(newId) } };
+      }
+      if (url.startsWith("/v1/notes?workspace_id=w1") && newId) {
+        return {
+          status: 200,
+          body: {
+            workspace_id: "w1",
+            effective_perm: "manager",
+            notes: [note("n1", { title: "购物清单" }), note(newId, { title: "" })],
+            next_version: 6,
+            has_more: false,
+          },
+        };
+      }
+      return routeAll(url);
+    });
+    render(<NotesLive />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /新建/ }));
+
+    await waitFor(() => expect(seen.some((s) => s.url === "/v1/notes")).toBe(true));
+    const post = seen.find((s) => s.url === "/v1/notes");
+    expect(post?.init?.method).toBe("POST");
+    const body = JSON.parse(String(post?.init?.body)) as { id: string; workspace_id: string };
+    expect(body.workspace_id).toBe("w1");
+    // 服务端的入参校验是 z.uuidv7()：版本位必须是 7，v4 会被 400 掉
+    expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    // 建行成功后跳到编辑器，URL 带上新便笺的 id
+    await waitFor(() => expect(window.location.search).toBe(`?ws=w1&note=${body.id}`));
+    // 而且真的要把编辑器渲染出来。列表是缓存的、里面没有这张新便笺——
+    // 不重新取一次的话，用户点完"新建"看到的是"找不到这张便笺"。
+    await waitFor(() => expect(screen.getByTestId("note-view")).toBeTruthy());
+    expect(screen.getByTestId("note-view").getAttribute("data-note")).toBe(body.id);
+  });
+
+  it("新建失败（比如超配额）要说出来，不能默默什么都没发生", async () => {
+    mockApi((url) => {
+      if (url === "/v1/notes") return { status: 403, body: { error: "quota_exceeded" } };
+      return routeAll(url);
+    });
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /新建/ }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(window.location.search).toBe("");
+  });
+
+  it("只读工作区不显示新建按钮（点了也只会被服务端 403）", async () => {
+    mockApi((url) => {
+      if (url === "/v1/workspaces")
+        return {
+          status: 200,
+          body: { workspaces: [{ id: "w1", kind: "personal", name: "个人", effective_perm: "viewer" }] },
+        };
+      return routeAll(url);
+    });
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /新建/ })).toBeNull();
   });
 
   it("会话对 /v1 无效（401）时展示错误而不是空列表", async () => {

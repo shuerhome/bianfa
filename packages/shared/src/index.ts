@@ -129,3 +129,7 @@ export {
 } from "./projector.js";
 export { isInRollout, murmur3_32, ROLLOUT_KEY_INFIX, rolloutBucket } from "./rollout.js";
 export { escapeLikePattern, toBigramQuery, toBigramShingles } from "./search/bigram.js";
+
+// 客户端生成便笺 id（规格 02 §6.1）。桌面端与网页端必须用同一份：
+// 服务端的 uuidV7 校验是 z.uuidv7()，crypto.randomUUID() 生成的 v4 会被 400 掉。
+export { isUuid, uuidv7 } from "./uuid.js";

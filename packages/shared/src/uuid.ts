@@ -1,4 +1,14 @@
 // UUIDv7（客户端生成便笺 id，规格 02 §6.1）：48 位 ms 时间戳 + 版本 7 + 74 位随机。
+//
+// 桌面端与网页端共用这一份。服务端另有一份（apps/server/src/db/ids.ts）——那边要 node:crypto
+// 和同毫秒内的单调计数器，这边跑在浏览器里，两者的取舍不同，所以没有合并。
+// 但格式必须一致：服务端的入参校验是 z.uuidv7()，crypto.randomUUID() 生成的 v4 会被 400 掉。
+//
+// 本包是无头包（apps/server 与 sync-ws 也 import 它），tsconfig 的 lib 只有 ES2023，没有 DOM。
+// getRandomValues 在浏览器和 Node ≥ 19 上都是同一个标准全局，这里只声明用到的那一个方法，
+// 不为它把整个 DOM 拉进来。
+declare const crypto: { getRandomValues<T extends Uint8Array>(array: T): T };
+
 export function uuidv7(now: number = Date.now()): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);

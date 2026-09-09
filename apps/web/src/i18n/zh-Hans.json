@@ -246,7 +246,8 @@
     },
     "chunkFailed": "编辑器没能加载出来",
     "reload": "刷新重试",
-    "pasteTooLarge": "这段内容太长了，粘贴不进来"
+    "pasteTooLarge": "这段内容太长了，粘贴不进来",
+    "new": "新建"
   },
   "format": {
     "bold": "加粗",

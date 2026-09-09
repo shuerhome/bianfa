@@ -7,6 +7,7 @@
 // 前端绝不自造 Bearer 令牌：那等于在浏览器里复刻一份桌面端凭据，一次 XSS 就全失守。
 //
 // 字段名一律与服务端 DTO 逐字对应（snake_case），不做驼峰改写，避免两边漂移时看不出来。
+import { uuidv7 } from "@bianfa/shared";
 import type { Result } from "./api.js";
 import { toFailure } from "./lib/errors.js";
 
@@ -138,6 +139,28 @@ export async function fetchNotes(workspaceId: string, signal?: AbortSignal): Pro
   }
   const notes = [...byId.values()].filter((n) => !n.deleted_at && !n.purged_at).sort(compareNotes);
   return { ok: true, data: { perm, notes, version: since, truncated } };
+}
+
+/**
+ * POST /v1/notes：先在服务端建行，再连同步。
+ *
+ * id 由客户端生成（规格 02 §6.1），而且必须是 UUIDv7——服务端的入参校验是 z.uuidv7()，
+ * crypto.randomUUID() 那种 v4 会被 400 掉。用 @bianfa/shared 的 uuidv7，与桌面端同一份实现。
+ *
+ * 顺序不能反：先建行、后开同步。反过来的话 sync-ws 的 authorize 查不到这张便笺，
+ * 直接 forbidden，而浏览器只看到一个"没有权限"。
+ */
+export async function createNote(
+  workspaceId: string,
+  color?: string,
+): Promise<Result<{ id: string; note: WebNote }>> {
+  const id = uuidv7();
+  const res = await v1Fetch<{ note: WebNote }>("/notes", {
+    method: "POST",
+    body: { id, workspace_id: workspaceId, ...(color ? { color } : {}) },
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: { id, note: res.data.note } };
 }
 
 /** 置顶在前；同组按改动时间倒序，没有时间的排在最后（用 created_at 兜底） */
