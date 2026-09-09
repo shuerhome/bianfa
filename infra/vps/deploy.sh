@@ -13,6 +13,8 @@
 #     这样 CI 不需要 scp（deploy 用户是 forced command，只有这一条路进来）
 #   - 部署前后各一条 Telegram（notify.sh）
 #   - docker image prune -af --filter until=168h（第 9 章：不清理镜像，50 GB 盘三个月就满）
+#   - docker builder prune 按容量封顶（BUILD_CACHE_MAX，默认 20 GB）：共存模式下原来完全不清缓存，
+#     加上年龄过滤在频繁部署时永远不命中，实测攒到 154 GB
 #   - flock 防并发；部署记录追加到 /srv/bianfa/log/deploy.log
 # 明确不追求零停机：Compose 对同一服务多副本是同时重建不是滚动（第 9 章 8.5），接受约 5 秒 API 中断，
 # 桌面端 offline-first + 指数退避重试兜底。
@@ -32,6 +34,9 @@ TAG_FILE="${TAG_FILE:-$BIANFA_ROOT/.tag.current}"
 SERVICES="${SERVICES:-api sync-ws worker}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-120}"
 PRUNE_UNTIL="${PRUNE_UNTIL:-168h}"
+# 构建缓存的容量上限（docker builder prune）。这是个纯加速缓存，超了就丢最旧的，
+# 唯一代价是下次构建慢一点。留 20 GB 够覆盖 api+sync 两个镜像的常用层。
+BUILD_CACHE_MAX="${BUILD_CACHE_MAX:-20GB}"
 # .env.prod 里至少要有的键（--env-from 时校验，防止 CI 渲染模板漏了 secret 名）
 ENV_REQUIRED_KEYS="${ENV_REQUIRED_KEYS:-TAG BIANFA_DOMAIN CF_TUNNEL_TOKEN POSTGRES_PASSWORD}"
 
@@ -223,15 +228,29 @@ logline "deploy ok: ${TAG_NEW}（prev=${TAG_PREV:-<none>}）"
 if (( ! NO_PRUNE )); then
   if [[ -e /var/lib/bianfa/coexist ]]; then
     # 共存模式：同机还有别的项目，`image prune -a` 会删掉它们暂时没在跑的镜像（首台机器实测 untag 了一个 ruby 镜像）。
-    # 只删自己的旧镜像（保留当前与上一个 tag），不碰构建缓存。
+    # 只删自己的旧镜像（保留当前与上一个 tag）。
     docker images --format '{{.Repository}}:{{.Tag}}' \
       | grep -E "^${REGISTRY}/bianfa-(api|sync):" \
       | grep -vE ":(${TAG_NEW}|${TAG_PREV:-__none__})$" \
       | xargs -r docker image rm >>"$LOG" 2>&1 || true
   else
     docker image prune -af --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
-    docker builder prune -f --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 || true
   fi
+  # 构建缓存两种模式都要清，而且是按**容量**封顶。
+  #
+  # 原来共存分支里写的是"不碰构建缓存"——顾虑是别删了别的项目的东西，但那个顾虑对缓存不成立：
+  # 清缓存不会动任何人的镜像或容器，最多让别的项目下次构建慢一点。代价是首台机器实测攒到了
+  # 154 GB / 2280 条，把 394 GB 的盘吃到 79%。
+  #
+  # 也不能只按年龄过滤：--filter until=168h 在一周部署好几次时永远不命中（缓存全都比 168h 新），
+  # 于是那句 prune 每次都跑、每次都清 0 字节，缓存单调增长直到撑满。
+  #
+  # 参数名随 Docker 版本变：v28+ 是 --max-used-space，更早是 --keep-storage。都试一遍，
+  # 最后退回年龄过滤（总比完全不清强）。
+  docker builder prune -f --max-used-space "$BUILD_CACHE_MAX" >>"$LOG" 2>&1 \
+    || docker builder prune -f --keep-storage "$BUILD_CACHE_MAX" >>"$LOG" 2>&1 \
+    || docker builder prune -f --filter "until=${PRUNE_UNTIL}" >>"$LOG" 2>&1 \
+    || true
 fi
 
 ELAPSED=$(( $(date +%s) - START ))

@@ -474,7 +474,12 @@ dc logs --tail 100 api                                                          
 ```sh
 df -h / && sudo docker system df -v | head -n 40                     # 镜像/卷/构建缓存各占多少
 sudo du -xsh /var/lib/docker/volumes/*/_data 2>/dev/null | sort -h | tail   # pgdata / caddy_data / spool
-sudo docker image prune -af --filter "until=168h" && sudo docker builder prune -f --filter "until=168h"
+sudo docker image prune -af --filter "until=168h"
+# 构建缓存别用年龄过滤：一周部署几次的话缓存全都比 168h 新，那条命令每次都清 0 字节，
+# 缓存会一直涨（首台机器实测 154 GB / 2280 条，把 394 GB 的盘吃到 79%）。按容量封顶：
+sudo docker builder prune -f --max-used-space 20GB || sudo docker builder prune -f --keep-storage 20GB
+# 已经涨到几十上百 G 了就全清（纯加速缓存，无副作用，下次构建慢几分钟）：
+sudo docker builder prune -af
 sudo journalctl --vacuum-size=300M
 dc exec -T -u postgres postgres psql -X -c "select pg_size_pretty(sum(size)) from pg_ls_waldir()"   # WAL 堆积 = 归档在失败 → 6.4
 ls -la /var/lib/docker/volumes/*pgbackrest_spool*/_data 2>/dev/null                                  # spool 堆积 = 推 R2 失败
