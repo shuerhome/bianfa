@@ -15,6 +15,8 @@ describe("matchRoute", () => {
     expect(matchRoute("/device")).toEqual({ name: "device" });
     expect(matchRoute("/account")).toEqual({ name: "account" });
     expect(matchRoute("/notes")).toEqual({ name: "notes" });
+    expect(matchRoute("/note")).toEqual({ name: "note" });
+    expect(matchRoute("/note/")).toEqual({ name: "note" });
     expect(matchRoute("/notes/")).toEqual({ name: "notes" });
     expect(matchRoute("/admin")).toEqual({ name: "admin" });
     expect(matchRoute("/admin/")).toEqual({ name: "admin" });

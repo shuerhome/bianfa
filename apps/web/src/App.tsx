@@ -1,6 +1,6 @@
 // 路由分发；每页自己决定是否需要会话。/ → /account 或 /login。
 import { Button } from "@bianfa/ui";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, Shell } from "./components/Shell.js";
 import { StateView } from "./components/StateView.js";
@@ -13,10 +13,15 @@ import { ForgotPassword } from "./pages/ForgotPassword.js";
 import { Invite } from "./pages/Invite.js";
 import { Login } from "./pages/Login.js";
 import { Notes } from "./pages/Notes.js";
+
 import { ResetPassword } from "./pages/ResetPassword.js";
 import { Signup } from "./pages/Signup.js";
 import { VerifyEmail } from "./pages/VerifyEmail.js";
 import { matchRoute, navigate, useLocation } from "./router.js";
+
+// 独立便笺窗口整条链路都要懒加载：它 import NoteView，而 NoteView 带着 TipTap。
+// 静态 import 的话 /login、/notes 这些页面又得先把编辑器下载完——这正是上次切出去的那一块。
+const NoteWindow = lazy(() => import("./pages/NoteWindow.js").then((m) => ({ default: m.NoteWindow })));
 
 function Home() {
   const { t } = useTranslation();
@@ -50,6 +55,7 @@ function NotFound() {
 }
 
 export function App() {
+  const { t } = useTranslation();
   const location = useLocation();
   const route = matchRoute(location.pathname);
   let page: React.ReactNode;
@@ -87,6 +93,16 @@ export function App() {
     case "notes":
       page = <Notes search={location.search} />;
       break;
+    // 独立窗口：直接返回，不套 Shell。那个窗口只有一张便笺那么大，
+    // 品牌栏和页脚会把正文挤没。
+    case "note":
+      return (
+        <div className="web-notewin">
+          <Suspense fallback={<StateView kind="loading" title={t("common.loading")} />}>
+            <NoteWindow search={location.search} />
+          </Suspense>
+        </div>
+      );
     case "admin":
       page = <Admin search={location.search} />;
       break;

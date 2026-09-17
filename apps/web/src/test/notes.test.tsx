@@ -337,6 +337,51 @@ describe("/notes 列表页", () => {
     expect(screen.queryByRole("button", { name: /新建/ })).toBeNull();
   });
 
+  it("卡片上的「独立窗口」：带便笺 id 的窗口名 + /note 地址", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (q: string) => ({ matches: q.includes("pointer: fine") }),
+    });
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, focus: () => {} } as unknown as Window);
+    mockApi(routeAll);
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "在独立窗口打开" })[0] as HTMLElement);
+    expect(open).toHaveBeenCalledTimes(1);
+    const [url, name] = open.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/note?ws=w1&note=n1");
+    expect(name).toBe("bianfa-note-n1");
+  });
+
+  it("触摸设备不显示「独立窗口」入口（iOS 没有多窗口）", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: () => ({ matches: false }),
+    });
+    mockApi(routeAll);
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "在独立窗口打开" })).toBeNull();
+  });
+
+  it("弹窗被拦截时说出来，不是静默什么都没发生", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (q: string) => ({ matches: q.includes("pointer: fine") }),
+    });
+    vi.spyOn(window, "open").mockReturnValue(null);
+    mockApi(routeAll);
+    render(<Notes search="" />);
+    await waitFor(() => expect(screen.getByText("购物清单")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "在独立窗口打开" })[0] as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/拦截/));
+  });
+
   it("会话对 /v1 无效（401）时展示错误而不是空列表", async () => {
     mockApi(() => ({ status: 401, body: { error: "unauthorized" } }));
     render(<Notes search="" />);

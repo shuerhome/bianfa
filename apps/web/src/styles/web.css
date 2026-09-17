@@ -791,3 +791,49 @@ a.bf-btn {
   color: var(--c-text-3);
   font-size: var(--fs-2xs);
 }
+
+/* ── 便笺卡片上的「新窗口」按钮 ── */
+.notes-card {
+  position: relative;
+}
+.notes-card__pop {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-out);
+}
+/* 鼠标悬停或键盘聚焦时才露出来：常驻会让卡片显得很吵，而这是个次要动作 */
+.notes-card:hover .notes-card__pop,
+.notes-card__pop:focus-visible {
+  opacity: 1;
+}
+
+/* ── 独立便笺窗口（/note）：整个视口就是一张便笺，没有品牌栏和页脚 ── */
+.web-notewin {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: var(--sp-3);
+  background: var(--c-canvas);
+}
+/* dvh 在移动端会随地址栏收起而变化；写成 @supports 而不是两条 min-height，
+   既表达了"有就用"的意图，也不会被 noDuplicateProperties 当成写重了 */
+@supports (min-height: 100dvh) {
+  .web-notewin {
+    min-height: 100dvh;
+  }
+}
+.web-notewin > * {
+  flex: 1;
+  min-height: 0;
+}
+/* 窗口里那张便笺要撑满，而不是留一圈列表页那样的留白 */
+.web-notewin .web-note {
+  margin-top: 0;
+  height: 100%;
+}
+.web-notewin .web-note__editor,
+.web-notewin .web-note__body {
+  min-height: 0;
+}

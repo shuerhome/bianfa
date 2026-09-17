@@ -41,6 +41,8 @@ export const WEB_PAGE_PATHS = [
   "/account",
   // 便笺列表（网页 / PWA）：全部视图收在 /notes 一个路径 + 查询串
   "/notes",
+  // 单张便笺的独立窗口（window.open）；内容走 ?ws=&note=
+  "/note",
 ] as const;
 
 const INVITE_RE = /^\/invite\/[A-Za-z0-9_-]{1,128}$/;

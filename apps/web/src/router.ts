@@ -14,6 +14,7 @@ export type Route =
   | { name: "invite"; token: string }
   | { name: "account" }
   | { name: "notes" }
+  | { name: "note" }
   | { name: "admin" }
   | { name: "not-found" };
 
@@ -43,6 +44,10 @@ export function matchRoute(pathname: string): Route {
     // 便笺列表（网页 / PWA）；当前工作区走 ?ws=<id>，同样只占一个服务端路径
     case "/notes":
       return { name: "notes" };
+    // 单张便笺的独立窗口（window.open 出来的那种）。和 /notes 分开是因为它没有列表那一圈外壳，
+    // 而且要能被 window.open 的 name 复用——同一张便笺再点一次是聚焦已有窗口，不是再开一个。
+    case "/note":
+      return { name: "note" };
     // 总管理员管理台。故意不做 /admin/users/:id 这样的子路径：全部视图共用 /admin + 查询串，
     // 服务端只要放行一个路径就够（见 pages/admin/route.ts）。
     case "/admin":

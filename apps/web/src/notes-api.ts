@@ -7,7 +7,10 @@
 // 前端绝不自造 Bearer 令牌：那等于在浏览器里复刻一份桌面端凭据，一次 XSS 就全失守。
 //
 // 字段名一律与服务端 DTO 逐字对应（snake_case），不做驼峰改写，避免两边漂移时看不出来。
-import { uuidv7 } from "@bianfa/shared";
+// 从子路径引，不走 barrel：@bianfa/shared 的 index 里有 @tiptap/* 的顶层副作用，
+// tree-shaking 摇不掉，只为一个 uuidv7 就会把整包（编辑器 schema、投影器、markdown）
+// 拖进首屏 chunk——/login 这种页面白下载 90 KB。
+import { uuidv7 } from "@bianfa/shared/uuid";
 import type { Result } from "./api.js";
 import { toFailure } from "./lib/errors.js";
 
@@ -139,6 +142,20 @@ export async function fetchNotes(workspaceId: string, signal?: AbortSignal): Pro
   }
   const notes = [...byId.values()].filter((n) => !n.deleted_at && !n.purged_at).sort(compareNotes);
   return { ok: true, data: { perm, notes, version: since, truncated } };
+}
+
+/**
+ * GET /v1/notes/:id —— 单张便笺的元信息。
+ *
+ * 独立窗口（/note）用它：那个页面不经过列表，拿不到列表缓存里的那一份，
+ * 而编辑器需要 color / title / encryption 才能正确渲染和补 meta。
+ */
+export async function fetchNote(noteId: string, signal?: AbortSignal): Promise<Result<WebNote>> {
+  const res = await v1Fetch<{ note: WebNote }>(`/notes/${encodeURIComponent(noteId)}`, {
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: res.data.note };
 }
 
 /**

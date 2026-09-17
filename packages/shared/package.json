@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./uuid": {
+      "types": "./dist/uuid.d.ts",
+      "import": "./dist/uuid.js"
     }
   },
   "files": [

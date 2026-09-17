@@ -3,13 +3,14 @@
 // 当前工作区放在查询串里（/notes?ws=<id>），理由与管理台一样：服务端只对 WEB_PAGE_PATHS 列出的路径回
 // index.html，一个路径 + 查询串就不用为每个工作区再开一条服务端路由，刷新与后退也不会 404。
 // 搜索词故意**不**进 URL：它是即打即用的过滤，每敲一个字就 replaceState 只是噪音。
-import { Button, Icon, Select } from "@bianfa/ui";
-import { lazy, Suspense, useState } from "react";
+import { Button, Icon, IconButton, Select } from "@bianfa/ui";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "../components/ErrorBoundary.js";
 import { Card } from "../components/Shell.js";
 import { StateView } from "../components/StateView.js";
 import { describeFailure } from "../lib/errors.js";
+import { openNoteWindow, supportsNoteWindows } from "../lib/note-window.js";
 import { type QueryState, useQuery } from "../lib/query.js";
 import { useRequireSession } from "../lib/session.js";
 import { createNote, fetchNotes, fetchWorkspaces, type NoteList, type WebNote } from "../notes-api.js";
@@ -201,6 +202,31 @@ function NoteGrid({
 }) {
   const { t } = useTranslation();
   const { data, error, reload } = notes;
+  // 已经弹出去的窗口：同一张便笺再点一次是聚焦，不是再开一个。
+  // 用 ref 而不是 state：这些 Window 引用只在事件回调里读，放进 state 会白白多一轮渲染。
+  const windows = useRef(new Map<string, Window>());
+  const [windowNote, setWindowNote] = useState<string | null>(null);
+  // 只算一次：这是设备能力，不会在页面存活期间变
+  const [canWindow] = useState(supportsNoteWindows);
+
+  function popOut(n: WebNote): void {
+    // 先清掉用户自己关掉的那些，否则计数会一直虚高
+    for (const [id, w] of windows.current) if (w.closed) windows.current.delete(id);
+    const live = windows.current.size;
+    const already = windows.current.get(n.id);
+    if (!already && live >= SOFT_WINDOW_LIMIT) {
+      setWindowNote("limit");
+      return;
+    }
+    const url = `/note?ws=${encodeURIComponent(n.workspace_id)}&note=${encodeURIComponent(n.id)}`;
+    const { result, win } = openNoteWindow(url, n.id, already);
+    if (result === "blocked") {
+      setWindowNote("blocked");
+      return;
+    }
+    if (win) windows.current.set(n.id, win);
+    setWindowNote(null);
+  }
 
   if (error)
     return (
@@ -292,6 +318,11 @@ function NoteGrid({
 
   return (
     <>
+      {windowNote ? (
+        <p className="notes-bar__error" role="alert">
+          {windowNote === "blocked" ? t("notes.windowBlocked") : t("notes.windowLimit")}
+        </p>
+      ) : null}
       <p className="notes-count" aria-live="polite">
         {needle
           ? t("notes.countFiltered", { shown: shown.length, total: data.notes.length })
@@ -299,14 +330,37 @@ function NoteGrid({
       </p>
       <ul className="notes-grid">
         {shown.map((n) => (
-          <NoteCard key={n.id} note={n} onOpen={() => navigate(notesUrl(workspaceId, n.id))} />
+          <NoteCard
+            key={n.id}
+            note={n}
+            onOpen={() => navigate(notesUrl(workspaceId, n.id))}
+            onOpenWindow={() => popOut(n)}
+            canWindow={canWindow}
+          />
         ))}
       </ul>
     </>
   );
 }
 
-function NoteCard({ note, onOpen }: { note: WebNote; onOpen: () => void }) {
+/**
+ * 同时开太多便笺窗口会把最旧的连接挤掉——服务端对同一账号的 WebSocket 上限是 10
+ * （sync/limits.ts 的 MAX_SOCKETS_PER_USER），超了关的是**最早**那条，
+ * 而你正在跑的桌面端也占着一条。留两条余量，到了就提醒，别让它静默发生。
+ */
+const SOFT_WINDOW_LIMIT = 8;
+
+function NoteCard({
+  note,
+  onOpen,
+  onOpenWindow,
+  canWindow,
+}: {
+  note: WebNote;
+  onOpen: () => void;
+  onOpenWindow: () => void;
+  canWindow: boolean;
+}) {
   const { t } = useTranslation();
   // e2ee 的正文服务端存的是密文，title_cache / excerpt 一定是空的 —— 说清楚是「加密」而不是「空白」
   const encrypted = note.encryption === "e2ee";
@@ -329,6 +383,15 @@ function NoteCard({ note, onOpen }: { note: WebNote; onOpen: () => void }) {
         </p>
         <p className="notes-card__meta">{formatDay(note.updated_at ?? note.created_at)}</p>
       </button>
+      {canWindow ? (
+        <IconButton
+          className="notes-card__pop"
+          icon="external-link"
+          size="sm"
+          label={t("notes.openWindow")}
+          onClick={onOpenWindow}
+        />
+      ) : null}
     </li>
   );
 }

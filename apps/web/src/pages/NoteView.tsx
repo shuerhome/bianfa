@@ -21,8 +21,8 @@ export interface NoteViewProps {
       整个对象进 useMemo 依赖会让同步会话每渲染一次就重建一次。 */
   userId: string;
   userName: string;
-  /** 返回列表（保留当前工作区） */
-  backTo: string;
+  /** 返回列表（保留当前工作区）；独立窗口形态下为 null，那时用浏览器自己的关闭按钮 */
+  backTo: string | null;
 }
 
 export function NoteView({ note, userId, userName, backTo }: NoteViewProps) {
@@ -50,7 +50,9 @@ export function NoteView({ note, userId, userName, backTo }: NoteViewProps) {
     return (
       <div className="web-note" data-color={note.color}>
         <div className="web-note__bar">
-          <IconButton icon="arrow-left" label={t("common.back")} onClick={() => navigate(backTo)} />
+          {backTo ? (
+            <IconButton icon="arrow-left" label={t("common.back")} onClick={() => navigate(backTo)} />
+          ) : null}
           <span className="web-note__title">{note.title.trim() || t("notes.untitled")}</span>
         </div>
         <StateView kind="loading" title={t("notes.sync.connecting")} />
@@ -60,7 +62,15 @@ export function NoteView({ note, userId, userName, backTo }: NoteViewProps) {
   return <NoteEditor note={note} session={session} backTo={backTo} />;
 }
 
-function NoteEditor({ note, session, backTo }: { note: WebNote; session: NoteSession; backTo: string }) {
+function NoteEditor({
+  note,
+  session,
+  backTo,
+}: {
+  note: WebNote;
+  session: NoteSession;
+  backTo: string | null;
+}) {
   const { t } = useTranslation();
   const state = useSyncExternalStore(session.subscribe, session.getState, session.getState);
   const [pasteRejected, setPasteRejected] = useState(false);
@@ -102,7 +112,9 @@ function NoteEditor({ note, session, backTo }: { note: WebNote; session: NoteSes
   return (
     <div className="web-note" data-color={note.color}>
       <div className="web-note__bar">
-        <IconButton icon="arrow-left" label={t("common.back")} onClick={() => navigate(backTo)} />
+        {backTo ? (
+          <IconButton icon="arrow-left" label={t("common.back")} onClick={() => navigate(backTo)} />
+        ) : null}
         <span className="web-note__title">{note.title.trim() || t("notes.untitled")}</span>
         <SyncBadge state={state} />
       </div>
