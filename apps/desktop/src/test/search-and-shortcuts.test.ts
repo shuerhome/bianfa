@@ -39,6 +39,13 @@ describe("shortcut map", () => {
       "deleteNote",
     );
   });
+  it("置顶 Ctrl+P、贴桌面 Ctrl+Shift+P（差一个 Shift，互不串台）", () => {
+    expect(matchShortcut(key("p", { ctrl: true }), false)).toBe("togglePin");
+    expect(matchShortcut(key("p", { ctrl: true, shift: true }), false)).toBe("toggleDock");
+    // mac 上同理：⌘P / ⌘⇧P
+    expect(matchShortcut(key("p", { meta: true }), true)).toBe("togglePin");
+    expect(matchShortcut(key("p", { meta: true, shift: true }), true)).toBe("toggleDock");
+  });
   it("macOS：⌘ 为修饰键，⌘⇧X 删除线，⌘T 不占用", () => {
     expect(matchShortcut(key("9", { meta: true }), true)).toBe("color:fuchsia");
     expect(matchShortcut(key("x", { meta: true, shift: true }), true)).toBe("strike");

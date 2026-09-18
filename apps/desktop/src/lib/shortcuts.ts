@@ -10,6 +10,7 @@ export type ShortcutAction =
   | "closeNote"
   | "deleteNote"
   | "togglePin"
+  | "toggleDock"
   | "uiScaleUp"
   | "uiScaleDown"
   | "uiScaleReset"
@@ -71,6 +72,7 @@ export function matchShortcut(e: ShortcutEvent, mac: boolean = isMac()): Shortcu
       if (key === "l") return "taskList";
       if (key === "z") return "redo";
       if (key === "o") return "openList";
+      if (key === "p") return "toggleDock";
       if (key === "x" && mac) return "strike";
       if (e.key === "Delete" || e.key === "Backspace") return "deleteNote";
       return null;
@@ -136,6 +138,8 @@ export function shortcutLabel(action: ShortcutAction): string {
       return keyCombo({ mod: true, shift: true, key: isMac() ? "⌫" : "Delete" });
     case "togglePin":
       return keyCombo({ mod: true, key: "P" });
+    case "toggleDock":
+      return keyCombo({ mod: true, shift: true, key: "P" });
     case "uiScaleUp":
       return keyCombo({ mod: true, key: "=" });
     case "uiScaleDown":

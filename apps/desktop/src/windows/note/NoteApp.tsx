@@ -273,6 +273,7 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
   );
 
   const togglePin = useCallback(() => setZMode(store.zMode === 1 ? 0 : 1), [setZMode, store.zMode]);
+  const toggleDock = useCallback(() => setZMode(store.zMode === 2 ? 0 : 2), [setZMode, store.zMode]);
 
   const toggleCollapse = useCallback(() => {
     const next = !useNoteStore.getState().collapsed;
@@ -372,6 +373,9 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
         return true;
       case "togglePin":
         togglePin();
+        return true;
+      case "toggleDock":
+        toggleDock();
         return true;
       case "save":
         flushSave();
@@ -599,8 +603,9 @@ export function NoteApp({ noteId, fresh, initialColor }: NoteAppProps) {
         </MenuItem>
         <MenuItem
           icon="monitor"
+          shortcut={shortcutLabel("toggleDock")}
           checked={store.zMode === 2}
-          onSelect={() => setZMode(store.zMode === 2 ? 0 : 2)}
+          onSelect={toggleDock}
         >
           {t("note.dockToDesktop")}
         </MenuItem>
