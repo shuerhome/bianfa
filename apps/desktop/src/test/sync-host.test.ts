@@ -391,6 +391,39 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
       expect(p.attached, `${p.name} 没有 attach 到共享 socket`).toBe(true);
     }
   });
+
+  it("too_many_documents 不是鉴权失败：退掉这张腾位、排队重试，绝不暂停整个同步", async () => {
+    // 回归「批量导入撞上 MAX_DOCUMENTS_PER_SOCKET」这条事故：服务端把超出一条 socket 名额的那张便笺
+    // 按 too_many_documents(4429) 拒掉。旧代码把它和 expired/bad_token 混在一起 —— invalidateSyncToken
+    // 外加计数，连续 3 次就 pause 整个同步。于是一次导入里只要有 3 张撞上限，所有便笺全停、第二台设备
+    // 一条都收不到。正确行为：退掉这张便笺腾出通道、排进下一轮，token 和失败计数都不动，更不能暂停。
+    await startHost();
+    const p1 = providersNamed(documentName(PERSONAL, P1))[0];
+    const t1 = providersNamed(documentName(TEAM, T1))[0];
+    const s1 = providersNamed(documentName(OTHER, S1))[0];
+    if (!p1 || !t1 || !s1) throw new Error("provider 未建立");
+
+    // 三张便笺都撞上限 —— 远超旧代码连续 3 次就暂停的阈值
+    p1.onAuthenticationFailed?.({ reason: "too_many_documents" });
+    t1.onAuthenticationFailed?.({ reason: "too_many_documents" });
+    s1.onAuthenticationFailed?.({ reason: "too_many_documents" });
+    await flush();
+
+    // 通道退掉腾位，但绝不记成错误（它不是终态，和 forbidden / gone 不一样）
+    expect(p1.destroyed).toBe(true);
+    expect(t1.destroyed).toBe(true);
+    expect(s1.destroyed).toBe(true);
+    expect(syncErrors).toHaveLength(0);
+
+    // 没有暂停：一条 sync_state 变更就能让 refreshTargets 把三张便笺重新订上
+    //（真暂停了的话 refreshTargets 开头就 return，这三张永远回不来）。
+    emitTestEvent("db:changed", { rev: 0, origin: "system", tables: ["sync_state"], ids: [P1] });
+    await vi.waitFor(() => {
+      expect(providersNamed(documentName(PERSONAL, P1))).toHaveLength(2);
+      expect(providersNamed(documentName(TEAM, T1))).toHaveLength(2);
+      expect(providersNamed(documentName(OTHER, S1))).toHaveLength(2);
+    });
+  });
 });
 
 // 批量导入（把 Windows 便笺一次搬进来几百张）会让待同步队列远远超过通道上限。
@@ -401,8 +434,12 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
 // 原因是重新选目标（refreshTargets）的每一个入口都要求「本地又发生了变更」——
 // 而导入完的便笺没人会再去编辑，于是腾出来的位置永远没人来填。
 describe("SyncHost 通道上限：待同步远多于上限时必须一批批排干", () => {
-  /** 与 host.ts 的 MAX_PROVIDERS、服务端 sync 的 MAX_DOCUMENTS_PER_SOCKET 是同一个数 */
-  const CAP = 64;
+  /**
+   * 便笺通道上限 = host.ts 的 MAX_PROVIDERS。注意它**不等于**服务端的 MAX_DOCUMENTS_PER_SOCKET(64)：
+   * 收件箱（inbox）是同一条 socket 上另一个文档，占掉一个名额，所以便笺只给到 63。
+   * 早先这里写死成 64、还注释说两者「是同一个数」——那正是线上第 64 张便笺被服务端拒掉的根因。
+   */
+  const CAP = 63;
   const BULK = 100;
   const bulk = Array.from(
     { length: BULK },

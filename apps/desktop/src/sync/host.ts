@@ -51,7 +51,11 @@ import { getSyncToken, invalidateSyncToken } from "./token.js";
 const LOCAL_DB = "local-db";
 const HOST_META = "host-meta";
 const IDLE_DESTROY_MS = 60_000;
-const MAX_PROVIDERS = 64;
+// 一条 socket 上能挂多少个文档，服务端按 MAX_DOCUMENTS_PER_SOCKET 卡死在 64。收件箱（ensureInbox）
+// 是**另一个** provider，和便笺共用同一条 socket，所以它也占一个名额。便笺只给到 63，把最后一格留给收件箱——
+// 否则「正好 64 张便笺 + 收件箱 = 65 个文档」会被服务端拒掉第 65 个，报 too_many_documents(4429)。
+// 批量导入时尤其致命：第 64 张一上来就被拒，而旧代码把这个拒绝当成鉴权失败，3 次之后直接暂停整个同步。
+const MAX_PROVIDERS = 63;
 const PING_MS = 25_000;
 const OFFLINE_POLL_MS = 30_000;
 const AWARENESS_MIN_INTERVAL_MS = 500;
@@ -434,6 +438,20 @@ export class SyncHost {
       this.status.setNote(noteId, "error", "gone");
       return;
     }
+    // 通道占满（too_many_documents / 4429）：这是容量信号，不是坏 token。绝不能落到下面的鉴权失败分支——
+    // 那会 invalidateSyncToken + 计数，3 次之后把整个同步暂停掉（见 MAX_PROVIDERS 注释里的批量导入场景：
+    // 旧代码就是这样把一次大批导入的同步整个卡死的）。MAX_PROVIDERS=63 已给收件箱留了名额、正常不会触发这里；
+    // 留作并发开通道时的兜底：退掉这张便笺腾出名额、排进下一轮（tick 见 skippedThisPass>0 且有空位就重选目标），
+    // token 和 authFailures 都不动。noteId 为空（socket 级，理应是收件箱）时无从退，记一笔但同样不暂停。
+    if (reason === "too_many_documents") {
+      if (noteId) {
+        this.dropProvider(noteId);
+        this.skippedThisPass += 1;
+      } else {
+        clientLog("warn", "sync", "收件箱通道被服务端拒（too_many_documents），不影响其余同步");
+      }
+      return;
+    }
     // expired / bad_token：刷新 token 重连；连续 3 次 → 暂停并要求重新登录
     invalidateSyncToken();
     this.authFailures += 1;
@@ -516,7 +534,8 @@ export class SyncHost {
     // 名额必须把「在途的 open」一起算：下面有两次 await（note_get / note_load_doc），期间
     // 可能同时有好几轮 refreshTargets 在跑（tick 一轮、db:changed 一轮）。只比 entries.size 的话，
     // 所有在途的 open 都会以为还有空位，于是一条 socket 上挂出超过上限的文档 —— 服务端 sync 侧
-    // 按 MAX_DOCUMENTS_PER_SOCKET（同样是 64）拒掉多出来的那些，表现又是「静默地少同步了一批」。
+    // 按 MAX_DOCUMENTS_PER_SOCKET(64) 拒掉多出来的那些，表现又是「静默地少同步了一批」。
+    // MAX_PROVIDERS 比服务端上限少 1（见其定义处）：留出的那格是收件箱的，它也在这条 socket 上。
     // 此刻 this.opening 里只有**别人**：ensureProvider 是先调 openProvider、再登记自己的，
     // 而这几行在第一个 await 之前跑完，所以不会把自己算进去。
     if (this.entries.size + this.opening.size >= MAX_PROVIDERS) this.evictIdle();
