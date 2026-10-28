@@ -23,6 +23,10 @@ pub fn setup(app: &AppHandle) {
 }
 
 pub fn apply(app: &AppHandle, win: &WebviewWindow, z_mode: i64) -> IpcResult<()> {
+    // 任务栏可见性跟着 z-mode 走：普通 / 置顶进任务栏，贴桌面不进（05 §2.2.3：贴桌面排除出任务栏与 Alt+Tab）。
+    // Windows 上 set_skip_taskbar(false) 会清掉 WS_EX_TOOLWINDOW，所以这一行同时承担了「取消贴桌面后恢复
+    // Alt+Tab / 任务栏」——leave_docked 只改 z-order、不动 ex-style。非致命，失败不阻断 z-order 应用。
+    let _ = win.set_skip_taskbar(z_mode == 2);
     match z_mode {
         0 => {
             win.set_always_on_top(false)?;

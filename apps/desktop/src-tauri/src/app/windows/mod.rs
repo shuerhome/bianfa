@@ -289,7 +289,9 @@ fn build_note_window(
         .decorations(false)
         .maximizable(false)
         .minimizable(false)
-        .skip_taskbar(true)
+        // 便笺默认进任务栏：关掉目录后便笺仍有一个可见入口（Win11 下会和主窗口一起归到 bianfa 图标下）。
+        // 贴桌面（z_mode 2）的便笺由 pin::apply 再单独设回 skip_taskbar(true)——那一档按规格不进任务栏。
+        .skip_taskbar(false)
         .visible(false)
         .focused(false)
         .shadow(true)
