@@ -230,9 +230,13 @@
   color: var(--note-ink2, var(--c-text-2));
 }
 
-/* 占位（Tiptap Placeholder：data-placeholder 在空节点上） */
-.bf-prose .is-editor-empty:first-child::before,
-.bf-prose .is-empty.is-editor-empty::before {
+/* 占位（Tiptap Placeholder：data-placeholder 在空节点上）。只在整篇只剩一个空段落时显示。
+   判据用 DOM 的 :only-child，不用 is-editor-empty：Placeholder 3.31 增量更新时拿 editor.isEmpty 判「整篇为空」，
+   那一刻 editor.state 还是改动前的旧状态。打开便笺时旧文档是空的，于是灌进来的正文里每个空行都被打上
+   is-editor-empty；之后只重扫改动过的块，这个过期的类就一直挂着——正文中间的空行显示「写点什么…」。
+   桌面端 .bf-prose 包在 .ProseMirror 外面，网页端 .bf-prose 就在 .ProseMirror 上，两种都写。 */
+.bf-prose .ProseMirror > .is-empty:only-child::before,
+.bf-prose.ProseMirror > .is-empty:only-child::before {
   content: attr(data-placeholder);
   color: var(--note-ink2, var(--c-text-3));
   float: left;
