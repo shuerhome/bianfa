@@ -1,7 +1,7 @@
 // 同步宿主（协调者修订 / specs/03 §2.3）：唯一持有 WebSocket 的隐藏 WebView（label `sync`）。
 //   每个活动便笺：hostDoc + HocuspocusProvider，全部挂同一个 HocuspocusProviderWebsocket。
 //   本地通路：db:changed(local/import/ai) → note_updates_since → 应用（origin 'local-db'，debounce 1 s / maxWait 2 s，
-//             推送前写 meta.bodyEditedAt）→ provider 发送。
+//             正文真有改动才写 meta.bodyEditedAt，见 stampBodyEdited）→ provider 发送。
 //   远端通路：hostDoc updateV2（origin ≠ local-db）→ note_append_update(origin 'remote', projection) → db:changed。
 //   收缩守卫：应用远端事务前后比较 body.toString()；命中 → note_version_save + 便笺级 error 状态。
 //   房间：note:<ws>:<id>，ws = 本地行的 workspace_id（团队 / 共享给我的便笺在各自的工作区；null → 个人）；
@@ -684,7 +684,10 @@ export class SyncHost {
       if (tr.origin === LOCAL_DB || tr.origin === HOST_META) return;
       const before = entry.beforeBody;
       entry.beforeBody = null;
-      if (before === null) return;
+      // 什么都没改的事务不是远端改动。Yjs 第一次物化根类型（doc.get → YXmlFragment._integrate → insert([])）
+      // 会开一个 origin 为 null 的空事务——宿主第一次读正文（buildProjection）就会撞上；把它当远端事务
+      // 跑下面的「编辑胜」，删除后一秒便笺就在本机被自己「恢复」了。
+      if (before === null || tr.changed.size === 0) return;
       const after = getBody(doc).toString();
       if (shrinkGuardTripped(before, after) && entry.beforeState) {
         const state = entry.beforeState;
@@ -820,17 +823,42 @@ export class SyncHost {
       const res = await noteUpdatesSince(noteId, entry.appliedSeq).catch(() => null);
       if (!res) return;
       if (res.updatesB64.length > 0) {
-        entry.doc.transact(() => {
-          for (const u of res.updatesB64) applyUpdateV2(entry.doc, fromB64(u), LOCAL_DB);
+        const doc = entry.doc;
+        const bodyBefore = getBody(doc).toString();
+        const deletedBefore = readMeta(doc).deletedAt;
+        doc.transact(() => {
+          for (const u of res.updatesB64) applyUpdateV2(doc, fromB64(u), LOCAL_DB);
         }, LOCAL_DB);
-        entry.doc.transact(() => {
-          getMetaMap(entry.doc).set("bodyEditedAt", Date.now());
-        }, HOST_META);
+        this.stampBodyEdited(doc, bodyBefore, deletedBefore);
       }
       entry.appliedSeq = Math.max(entry.appliedSeq, res.headSeq);
       this.recomputeNoteState(entry);
     });
     await entry.chain;
+  }
+
+  /**
+   * meta.bodyEditedAt 决定「编辑和删除撞车时谁赢」：bodyEditedAt > deletedAt → 恢复（本文件的 afterTransaction，
+   * 服务端投影 jobs/project.ts 的 resolveDeletedAt 同一规则）。所以只有本地这批改动**真的动了正文**才盖。
+   *
+   * 以前每推一批本地改动都盖 Date.now()。删除本身也是一批本地改动，于是删完一秒 bodyEditedAt 就比 deletedAt 晚，
+   * 下一个远端事务一到就把便笺「恢复」，还弹「另一台设备在删除后编辑了这张便笺」；服务端投影也据此判它没删。
+   *
+   * 这一批是本机的删除：删除就是最后的意图。之前本机盖过的时间戳盖的是推送时刻，可能比点删除还晚
+   * （先改正文、马上删，被去抖拆成两批推送），压回删除时刻之前，否则照样会被恢复。
+   */
+  private stampBodyEdited(doc: Y.Doc, bodyBefore: string, deletedBefore: number | null): void {
+    const meta = getMetaMap(doc);
+    const deletedAt = readMeta(doc).deletedAt;
+    if (deletedAt !== null && deletedAt !== deletedBefore) {
+      const edited = meta.get("bodyEditedAt");
+      if (typeof edited === "number" && edited >= deletedAt) {
+        doc.transact(() => meta.set("bodyEditedAt", deletedAt - 1), HOST_META);
+      }
+      return;
+    }
+    if (getBody(doc).toString() === bodyBefore) return;
+    doc.transact(() => meta.set("bodyEditedAt", Date.now()), HOST_META);
   }
 
   /** 登录 / 重连后补传所有 upload_state='local' 的附件 */

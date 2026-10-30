@@ -4,13 +4,17 @@
 //   2. 共享给我按 share_id 记水位：再次发现只拉第一页、不再逐条 note_get / note_create。
 //   3. forbidden：只记一次 sync_state 错误，sync_state 变更触发的 refreshTargets 不会重订；服务端再列出后才重订。
 //   4. 彻底删除跨设备：清空回收站的 outbox 发 DELETE ?purge=true；别处删了（墓碑 / gone）→ 删本机副本。
+import { getBody, getMetaMap } from "@bianfa/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as Y from "yjs";
 import type { AuthStatus, NoteRecord } from "../ipc/types.js";
 import { documentName, inboxName, SyncHost } from "../sync/host.js";
 import { emitTestEvent, mockCommand, resetCommands } from "./setup.js";
 
 interface ProviderStub {
   name: string;
+  /** 宿主交给 provider 的那份 hostDoc：用例借它看 meta、模拟远端事务 */
+  document?: Y.Doc | undefined;
   destroyed: boolean;
   isSynced: boolean;
   hasUnsyncedChanges: boolean;
@@ -41,17 +45,20 @@ vi.mock("@hocuspocus/provider", () => {
     destroyed = false;
     attached = false;
     name: string;
+    document: Y.Doc | undefined;
     onAuthenticationFailed: ProviderStub["onAuthenticationFailed"];
     onStateless: ProviderStub["onStateless"];
     onSynced: ProviderStub["onSynced"];
     private listeners = new Map<string, Set<() => void>>();
     constructor(cfg: {
       name: string;
+      document?: Y.Doc;
       onAuthenticationFailed?: ProviderStub["onAuthenticationFailed"];
       onStateless?: ProviderStub["onStateless"];
       onSynced?: ProviderStub["onSynced"];
     }) {
       this.name = cfg.name;
+      this.document = cfg.document;
       this.onAuthenticationFailed = cfg.onAuthenticationFailed;
       this.onStateless = cfg.onStateless;
       this.onSynced = cfg.onSynced;
@@ -172,6 +179,9 @@ const tombstones: ReturnType<typeof remoteNote>[] = [];
 /** note_forget_purged 的调用；keepOnForget 里的 = Rust 判定「还有没传上去的内容」，不删 */
 const forgetCalls: string[] = [];
 const keepOnForget = new Set<string>();
+/** 本地库里还没推进 hostDoc 的 updates（note_updates_since 取一次就清空），按便笺 id */
+const localUpdates = new Map<string, string[]>();
+
 /** Rust outbox 里待发的彻底删除，及其结果；purgeStatus 按 id 指定服务端的回应（缺省 204） */
 const purgeQueue: string[] = [];
 const purgeConfirmed: string[] = [];
@@ -247,7 +257,12 @@ function installDb() {
     return rec;
   });
   mockCommand("note_load_doc", () => ({ snapshotB64: null, snapshotUptoSeq: 0, updatesB64: [], headSeq: 1 }));
-  mockCommand("note_updates_since", () => ({ updatesB64: [], headSeq: 1 }));
+  mockCommand("note_updates_since", (a) => {
+    const id = a.noteId as string;
+    const updatesB64 = localUpdates.get(id) ?? [];
+    localUpdates.delete(id);
+    return { updatesB64, headSeq: 1 + updatesB64.length };
+  });
   mockCommand("note_set_synced", () => undefined);
   mockCommand("note_forget_purged", (a) => {
     const id = a.noteId as string;
@@ -360,6 +375,7 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     purgeConfirmed.length = 0;
     purgeFailed.length = 0;
     purgeStatus.clear();
+    localUpdates.clear();
     installDb();
     installApi();
   });
@@ -568,6 +584,103 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     expect(syncErrors.filter((e) => e.noteId === T1)).toHaveLength(0);
     expect(t1.destroyed).toBe(true);
     expect(p1.destroyed).toBe(true);
+  });
+
+  // ── 「编辑胜」（specs/03 §3）：bodyEditedAt > deletedAt → 恢复。bodyEditedAt 只能由真正的正文编辑来盖 ──
+  const hostDocOf = (noteId: string, ws: string) => {
+    const d = providersNamed(documentName(ws, noteId))[0]?.document;
+    if (!d) throw new Error("hostDoc 未建立");
+    return d;
+  };
+  /** 在 hostDoc 的拷贝上做 change，把增量当成本地库里新写进的 update 排队，再发 db:changed 让宿主去拉 */
+  const localChange = (noteId: string, hostDoc: Y.Doc, change: (d: Y.Doc) => void) => {
+    const local = new Y.Doc();
+    Y.applyUpdateV2(local, Y.encodeStateAsUpdateV2(hostDoc));
+    change(local);
+    const update = Y.encodeStateAsUpdateV2(local, Y.encodeStateVector(hostDoc));
+    localUpdates.set(noteId, [...(localUpdates.get(noteId) ?? []), Buffer.from(update).toString("base64")]);
+    emitTestEvent("db:changed", {
+      rev: 0,
+      origin: "local",
+      tables: ["notes", "ydoc_updates"],
+      ids: [noteId],
+    });
+  };
+  /** 另一台设备做了 change，增量以远端来源进 hostDoc（宿主的「编辑胜」只在远端事务后检查） */
+  const remoteChange = (hostDoc: Y.Doc, change: (d: Y.Doc) => void) => {
+    const peer = new Y.Doc();
+    Y.applyUpdateV2(peer, Y.encodeStateAsUpdateV2(hostDoc));
+    change(peer);
+    Y.applyUpdateV2(hostDoc, Y.encodeStateAsUpdateV2(peer, Y.encodeStateVector(hostDoc)), "remote-peer");
+  };
+  const editBody = (d: Y.Doc, text: string) => {
+    const p = new Y.XmlElement("paragraph");
+    p.insert(0, [new Y.XmlText(text)]);
+    getBody(d).insert(0, [p]);
+  };
+
+  it("本地删除后，随便来一条远端改动都不会把它「恢复」：删除只改 meta，不盖 bodyEditedAt", async () => {
+    // 以前宿主把本地改动推进 hostDoc 后，不管改的是什么都盖 bodyEditedAt = 现在——删除本身也算，
+    // 于是删完一秒 bodyEditedAt 就比 deletedAt 晚；下一条远端事务一到就触发「编辑胜」，
+    // 弹「已恢复：另一台设备在删除后编辑了这张便笺」，便笺回到列表（服务端投影也据此判它没删）。
+    await startHost();
+    const hostDoc = hostDocOf(P1, PERSONAL);
+    const deletedAt = Date.now();
+    localChange(P1, hostDoc, (d) => getMetaMap(d).set("deletedAt", deletedAt));
+    await vi.waitFor(() => expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt), { timeout: 4000 });
+    await flush();
+
+    remoteChange(hostDoc, (d) => getMetaMap(d).set("color", "teal")); // 另一台改了个颜色
+    expect(getMetaMap(hostDoc).get("color")).toBe("teal");
+    expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt);
+    expect(getMetaMap(hostDoc).get("bodyEditedAt")).toBeUndefined();
+  });
+
+  it("同一批里先改正文、紧接着删除（1 秒去抖窗口内）：以删除为准", async () => {
+    await startHost();
+    const hostDoc = hostDocOf(P1, PERSONAL);
+    const deletedAt = Date.now();
+    localChange(P1, hostDoc, (d) => {
+      editBody(d, "删之前最后改一句");
+      getMetaMap(d).set("deletedAt", deletedAt);
+    });
+    await vi.waitFor(() => expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt), { timeout: 4000 });
+    await flush();
+
+    remoteChange(hostDoc, (d) => getMetaMap(d).set("color", "teal"));
+    expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt);
+  });
+
+  it("先改正文、马上删除，但被去抖拆成两批推送：删除仍然算数", async () => {
+    // 盖章盖的是推送时刻，可能比用户点删除还晚；本机删除那一批要把它压回删除之前
+    await startHost();
+    const hostDoc = hostDocOf(P1, PERSONAL);
+    localChange(P1, hostDoc, (d) => editBody(d, "改完马上删"));
+    await vi.waitFor(() => expect(getMetaMap(hostDoc).get("bodyEditedAt")).toEqual(expect.any(Number)), {
+      timeout: 4000,
+    });
+    const deletedAt = (getMetaMap(hostDoc).get("bodyEditedAt") as number) - 500;
+    localChange(P1, hostDoc, (d) => getMetaMap(d).set("deletedAt", deletedAt));
+    await vi.waitFor(() => expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt), { timeout: 4000 });
+    await flush();
+
+    remoteChange(hostDoc, (d) => getMetaMap(d).set("color", "teal"));
+    expect(getMetaMap(hostDoc).get("deletedAt")).toBe(deletedAt);
+    expect(getMetaMap(hostDoc).get("bodyEditedAt") as number).toBeLessThan(deletedAt);
+  });
+
+  it("正文真的改了才盖 bodyEditedAt；别处删除之后这边又编辑过，仍按「编辑胜」恢复", async () => {
+    await startHost();
+    const hostDoc = hostDocOf(P1, PERSONAL);
+    localChange(P1, hostDoc, (d) => editBody(d, "这边改了正文"));
+    await vi.waitFor(() => expect(getMetaMap(hostDoc).get("bodyEditedAt")).toEqual(expect.any(Number)), {
+      timeout: 4000,
+    });
+    const editedAt = getMetaMap(hostDoc).get("bodyEditedAt") as number;
+
+    // 另一台在这次编辑之前就删了（离线删、后同步上来）：编辑在后，编辑胜
+    remoteChange(hostDoc, (d) => getMetaMap(d).set("deletedAt", editedAt - 1000));
+    expect(getMetaMap(hostDoc).get("deletedAt")).toBeNull();
   });
 });
 
