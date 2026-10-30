@@ -301,6 +301,19 @@ export function installDesktopBridge(opts: DesktopBridgeOptions): DesktopBridge 
         if (note) note.ackedSeq = Math.max(note.ackedSeq, Number(args.headSeq));
         return undefined;
       }
+      // ── 彻底删除（本用例没清空过回收站、服务端也没有墓碑：队列恒为空） ──
+      case "notes_purge_outbox":
+        return [];
+      case "note_purge_confirmed":
+      case "note_purge_failed":
+        return undefined;
+      case "note_forget_purged": {
+        // Rust db::notes::forget_purged 的简化版：本机改动全部被服务端确认过才删（内存库没有正文可看）
+        const note = notes.get(String(args.noteId));
+        if (!note || note.updates.length > note.ackedSeq) return false;
+        notes.delete(note.id);
+        return true;
+      }
       case "note_version_save":
         return { id: "version-e2e" };
       case "sync_state_set_error":
