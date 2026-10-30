@@ -219,9 +219,14 @@ pub fn notes_pending_sync(state: State<'_, AppState>) -> IpcResult<Vec<PendingSy
 
 #[tauri::command]
 pub fn trash_empty(app: AppHandle) -> IpcResult<serde_json::Value> {
-    let purged = events::mutate(&app, "local", &["notes", "checklist_items"], vec![], |tx| {
-        notes::trash_empty(tx)
-    })?;
+    // tables 带上 outbox：sync host 看到它就去把这批「彻底删除」发给服务端
+    let purged = events::mutate(
+        &app,
+        "local",
+        &["notes", "checklist_items", "outbox"],
+        vec![],
+        |tx| notes::trash_empty(tx),
+    )?;
     Ok(serde_json::json!({ "purged": purged }))
 }
 
@@ -235,6 +240,55 @@ pub fn notes_purge_expired(app: AppHandle) -> IpcResult<serde_json::Value> {
         |tx| notes::purge_expired(tx),
     )?;
     Ok(serde_json::json!({ "purged": purged }))
+}
+
+/// 待发给服务端的「彻底删除」（清空回收站时入队，见 `db::notes::trash_empty`）。
+#[tauri::command]
+pub fn notes_purge_outbox(state: State<'_, AppState>) -> IpcResult<Vec<String>> {
+    state.with_db(notes::purge_outbox)
+}
+
+/// 服务端已确认删除：出队，物理删掉本地墓碑。
+#[tauri::command]
+pub fn note_purge_confirmed(app: AppHandle, note_id: String) -> IpcResult<()> {
+    events::mutate(&app, "system", &["notes"], vec![note_id.clone()], |tx| {
+        notes::purge_confirmed(tx, &note_id)
+    })
+}
+
+/// 发送失败：留在队列里等下次在线重试。
+#[tauri::command]
+pub fn note_purge_failed(
+    state: State<'_, AppState>,
+    note_id: String,
+    error: String,
+) -> IpcResult<()> {
+    state.with_tx(|tx| notes::purge_failed(tx, &note_id, &error))
+}
+
+/// 别处已彻底删除这张（发现列出服务端墓碑 / sync 回 gone）：本机也删掉，开着的窗口一并销毁。
+/// 返回是否真的删了——本机还有没传上去的内容时不删（见 `db::notes::forget_purged`）。
+#[tauri::command]
+pub fn note_forget_purged(app: AppHandle, note_id: String) -> IpcResult<bool> {
+    // 发现每轮都会把服务端所有墓碑过一遍，绝大多数本机早就没有了：先查，免得每张都发一次 db:changed
+    let state = app.state::<AppState>();
+    if !state.with_db(|c| notes::exists(c, &note_id))? {
+        return Ok(false);
+    }
+    let removed = events::mutate(
+        &app,
+        "remote",
+        &["notes", "note_window_state", "checklist_items"],
+        vec![note_id.clone()],
+        |tx| notes::forget_purged(tx, &note_id),
+    )?;
+    if removed {
+        // destroy 而不是 close：close 会走 CloseRequested 把窗口位置写回一张已经不存在的便笺
+        if let Some(win) = windows::note_window(&app, &note_id) {
+            let _ = win.destroy();
+        }
+    }
+    Ok(removed)
 }
 
 /// Extra (not in 07): todos page. Open items first, then most recently edited note first, then

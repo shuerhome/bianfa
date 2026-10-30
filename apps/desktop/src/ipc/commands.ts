@@ -99,6 +99,17 @@ export const trashEmpty = () => call<{ purged: number }>("trash_empty");
 
 export const notesPurgeExpired = () => call<{ purged: number }>("notes_purge_expired");
 
+// ── 彻底删除跨设备：清空回收站 → outbox → DELETE ?purge=true；别处删了 → 本机跟着删 ──
+export const notesPurgeOutbox = () => call<string[]>("notes_purge_outbox");
+
+export const notePurgeConfirmed = (noteId: string) => call<void>("note_purge_confirmed", { noteId });
+
+export const notePurgeFailed = (noteId: string, error: string) =>
+  call<void>("note_purge_failed", { noteId, error });
+
+/** 返回是否真的删了：本机还有没传上去的内容时留着（Rust db::notes::forget_purged） */
+export const noteForgetPurged = (noteId: string) => call<boolean>("note_forget_purged", { noteId });
+
 // ── 待办聚合（跨便笺 checklist 行；workspaceId null = 本机全部便笺） ──
 export const todosList = (args: { includeDone: boolean; workspaceId: string | null; limit?: number }) =>
   call<TodoItem[]>("todos_list", args);

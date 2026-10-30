@@ -3,6 +3,7 @@
 //      发现与 db:changed 同时要求建同一张时只建一个 provider。
 //   2. 共享给我按 share_id 记水位：再次发现只拉第一页、不再逐条 note_get / note_create。
 //   3. forbidden：只记一次 sync_state 错误，sync_state 变更触发的 refreshTargets 不会重订；服务端再列出后才重订。
+//   4. 彻底删除跨设备：清空回收站的 outbox 发 DELETE ?purge=true；别处删了（墓碑 / gone）→ 删本机副本。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthStatus, NoteRecord } from "../ipc/types.js";
 import { documentName, inboxName, SyncHost } from "../sync/host.js";
@@ -120,9 +121,9 @@ const remoteNote = (id: string, workspaceId: string, version: number, headSeq = 
   encryption: "none",
   created_at: ISO,
   updated_at: ISO,
-  deleted_at: null,
+  deleted_at: null as string | null,
   purge_after: null,
-  purged_at: null,
+  purged_at: null as string | null,
   expires_at: null,
   archived_at: null,
   import_source: null,
@@ -166,6 +167,35 @@ const apiCalls: Array<{ method: string; path: string }> = [];
 const server = { teamVersion: 7 };
 /** 个人工作区里额外的一行（用例按需塞入，例如「没有任何正文的空行」） */
 let blankNote: ReturnType<typeof remoteNote> | null = null;
+/** 个人工作区里的服务端墓碑（别处彻底删除过的便笺） */
+const tombstones: ReturnType<typeof remoteNote>[] = [];
+/** note_forget_purged 的调用；keepOnForget 里的 = Rust 判定「还有没传上去的内容」，不删 */
+const forgetCalls: string[] = [];
+const keepOnForget = new Set<string>();
+/** Rust outbox 里待发的彻底删除，及其结果；purgeStatus 按 id 指定服务端的回应（缺省 204） */
+const purgeQueue: string[] = [];
+const purgeConfirmed: string[] = [];
+const purgeFailed: string[] = [];
+const purgeStatus = new Map<string, number>();
+
+const localRecord = (id: string, workspaceId: string | null): NoteRecord => ({
+  id,
+  title: "",
+  excerpt: "",
+  color: "amber",
+  zMode: 0,
+  pinned: false,
+  createdAt: 0,
+  updatedAt: 0,
+  deletedAt: null,
+  isOpen: false,
+  synced: true,
+  workspaceId,
+  bodyHtml: "",
+  schemaVersion: 1,
+  headSeq: 1,
+  contentText: "",
+});
 
 function installDb() {
   mockCommand("settings_get", () => ({}));
@@ -219,6 +249,26 @@ function installDb() {
   mockCommand("note_load_doc", () => ({ snapshotB64: null, snapshotUptoSeq: 0, updatesB64: [], headSeq: 1 }));
   mockCommand("note_updates_since", () => ({ updatesB64: [], headSeq: 1 }));
   mockCommand("note_set_synced", () => undefined);
+  mockCommand("note_forget_purged", (a) => {
+    const id = a.noteId as string;
+    forgetCalls.push(id);
+    return keepOnForget.has(id) ? false : rows.delete(id);
+  });
+  // 和 Rust 一样：失败过的排到后面（ORDER BY attempts, id）
+  mockCommand("notes_purge_outbox", () => {
+    const fails = (id: string) => purgeFailed.filter((x) => x === id).length;
+    return [...purgeQueue].sort((a, b) => fails(a) - fails(b));
+  });
+  mockCommand("note_purge_confirmed", (a) => {
+    const id = a.noteId as string;
+    purgeConfirmed.push(id);
+    purgeQueue.splice(purgeQueue.indexOf(id), 1);
+    return undefined;
+  });
+  mockCommand("note_purge_failed", (a) => {
+    purgeFailed.push(a.noteId as string);
+    return undefined;
+  });
   mockCommand("sync_state_set_error", (a) => {
     const noteId = a.noteId as string;
     syncErrors.push({ noteId, errCode: (a.errCode as string | null | undefined) ?? null });
@@ -243,9 +293,7 @@ function installApi() {
       const since = Number(url.searchParams.get("since_version") ?? 0);
       const all =
         wsId === PERSONAL
-          ? blankNote
-            ? [remoteNote(P1, PERSONAL, 5), blankNote]
-            : [remoteNote(P1, PERSONAL, 5)]
+          ? [remoteNote(P1, PERSONAL, 5), ...(blankNote ? [blankNote] : []), ...tombstones]
           : wsId === TEAM
             ? [remoteNote(T1, TEAM, server.teamVersion)]
             : [];
@@ -260,6 +308,10 @@ function installApi() {
     }
     if (url.pathname === "/v1/shared-with-me") {
       return ok({ items: [sharedItem(SHARE1, S1, OTHER)], next_cursor: null });
+    }
+    if (method === "DELETE" && url.pathname.startsWith("/v1/notes/")) {
+      const status = purgeStatus.get(url.pathname.slice("/v1/notes/".length)) ?? 204;
+      return { status, headers: {}, bodyText: status === 204 ? "" : JSON.stringify({ error: `e${status}` }) };
     }
     return { status: 404, headers: {}, bodyText: JSON.stringify({ error: "not_found" }) };
   });
@@ -301,6 +353,13 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
     hoisted.providers.length = 0;
     server.teamVersion = 7;
     blankNote = null;
+    tombstones.length = 0;
+    forgetCalls.length = 0;
+    keepOnForget.clear();
+    purgeQueue.length = 0;
+    purgeConfirmed.length = 0;
+    purgeFailed.length = 0;
+    purgeStatus.clear();
     installDb();
     installApi();
   });
@@ -423,6 +482,92 @@ describe("SyncHost 发现：团队工作区 / 共享给我", () => {
       expect(providersNamed(documentName(TEAM, T1))).toHaveLength(2);
       expect(providersNamed(documentName(OTHER, S1))).toHaveLength(2);
     });
+  });
+
+  it("别处彻底删除：发现列出墓碑 → 删掉本机副本、拆掉它的通道；本机没有的墓碑不建行", async () => {
+    // 以前墓碑只是 `continue`：本机已有的那份永远留着。第二台设备上就是这么多出几张
+    // 「另一台已经彻底删掉」的便笺的。
+    const GONE = "019a0000-0000-7000-8000-00000000c00a";
+    const NEVER = "019a0000-0000-7000-8000-00000000c00b";
+    rows.set(GONE, localRecord(GONE, PERSONAL));
+    for (const [id, version] of [
+      [GONE, 6],
+      [NEVER, 7],
+    ] as const) {
+      tombstones.push({ ...remoteNote(id, PERSONAL, version), deleted_at: ISO, purged_at: ISO });
+    }
+    await startHost();
+
+    await vi.waitFor(() => expect(forgetCalls).toEqual(expect.arrayContaining([GONE, NEVER])));
+    expect(rows.has(GONE)).toBe(false);
+    expect(providersNamed(documentName(PERSONAL, GONE)).every((p) => p.destroyed)).toBe(true);
+    expect(created.map((c) => c.noteId)).not.toContain(NEVER);
+    expect(providersNamed(documentName(PERSONAL, NEVER))).toHaveLength(0);
+  });
+
+  it("清空回收站：outbox 逐条发 DELETE ?purge=true；成功 / 404 / 410 出队，失败留着且挡不住后来的", async () => {
+    const OK = "019a0000-0000-7000-8000-00000000e001";
+    const NF = "019a0000-0000-7000-8000-00000000e002";
+    const GN = "019a0000-0000-7000-8000-00000000e003";
+    const ERR = "019a0000-0000-7000-8000-00000000e004";
+    const LATER = "019a0000-0000-7000-8000-00000000e005";
+    purgeQueue.push(OK, NF, GN, ERR);
+    purgeStatus.set(NF, 404);
+    purgeStatus.set(GN, 410);
+    purgeStatus.set(ERR, 503);
+    const deletes = () => apiCalls.filter((c) => c.method === "DELETE").map((c) => c.path);
+
+    // 登录后的发现跑完就发一轮
+    await startHost();
+    await vi.waitFor(() => expect(purgeFailed).toEqual([ERR]));
+    expect(purgeConfirmed).toEqual([OK, NF, GN]);
+    expect(purgeQueue).toEqual([ERR]);
+    expect(deletes()).toEqual([OK, NF, GN, ERR].map((id) => `/v1/notes/${id}?purge=true`));
+
+    // 又清空一次回收站（Rust trash_empty 的 emit 带 outbox）→ 立刻再发；失败过的 ERR 排到后面，
+    // 不会因为它一直 503 就把新入队的 LATER 堵死
+    purgeQueue.push(LATER);
+    emitTestEvent("db:changed", {
+      rev: 0,
+      origin: "local",
+      tables: ["notes", "checklist_items", "outbox"],
+      ids: [],
+    });
+    await vi.waitFor(() => expect(purgeConfirmed).toContain(LATER));
+    await vi.waitFor(() => expect(purgeFailed).toEqual([ERR, ERR]));
+    expect(deletes().slice(4)).toEqual([LATER, ERR].map((id) => `/v1/notes/${id}?purge=true`));
+
+    // 400 这类重试也不会变的：出队（不能每分钟撞一次撞到天荒地老）；429 会自己好：留着
+    const BAD = "019a0000-0000-7000-8000-00000000e006";
+    const SLOW = "019a0000-0000-7000-8000-00000000e007";
+    purgeStatus.set(BAD, 400);
+    purgeStatus.set(SLOW, 429);
+    purgeQueue.push(BAD, SLOW);
+    emitTestEvent("db:changed", { rev: 0, origin: "local", tables: ["outbox"], ids: [] });
+    await vi.waitFor(() => expect(purgeFailed).toContain(SLOW));
+    expect(purgeConfirmed).toContain(BAD);
+    expect(purgeQueue).toEqual(expect.arrayContaining([ERR, SLOW]));
+    expect(purgeQueue).not.toContain(BAD);
+  });
+
+  it("sync 回 gone：本机副本能删就删、不记错；还有没传上去的内容就留着并标「已过期」", async () => {
+    await startHost();
+    const t1 = providersNamed(documentName(TEAM, T1))[0];
+    const p1 = providersNamed(documentName(PERSONAL, P1))[0];
+    if (!t1 || !p1) throw new Error("provider 未建立");
+    keepOnForget.add(P1);
+
+    t1.onAuthenticationFailed?.({ reason: "gone" });
+    p1.onAuthenticationFailed?.({ reason: "gone" });
+
+    await vi.waitFor(() =>
+      expect(syncErrors.filter((e) => e.noteId === P1)).toEqual([{ noteId: P1, errCode: "gone" }]),
+    );
+    expect(rows.has(T1)).toBe(false);
+    expect(rows.has(P1)).toBe(true);
+    expect(syncErrors.filter((e) => e.noteId === T1)).toHaveLength(0);
+    expect(t1.destroyed).toBe(true);
+    expect(p1.destroyed).toBe(true);
   });
 });
 

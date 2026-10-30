@@ -7,6 +7,8 @@
 //   房间：note:<ws>:<id>，ws = 本地行的 workspace_id（团队 / 共享给我的便笺在各自的工作区；null → 个人）；
 //         服务端按 effective_note_permission 授权，ws 与便笺实际所在工作区不一致 → forbidden。
 //   信号房 inbox:<ws>（stateless bump / authz.revoked）。forbidden / gone 的便笺进 denied，发现再列出前不重订。
+//   彻底删除：清空回收站 → Rust outbox → flushPurges 发 DELETE ?purge=true（离线攒着、在线补发）；
+//             别处删了（发现列出墓碑 / sync 回 gone）→ forgetPurged 删本机副本（还有没传上去的内容时留着）。
 //   附件：db:changed(tables 含 attachments) / 登录 / 重连 → attachment_upload（Rust 走 presign → PUT → commit）。
 import {
   applyUpdateV2,
@@ -19,7 +21,8 @@ import {
 } from "@bianfa/shared";
 import { HocuspocusProvider, HocuspocusProviderWebsocket, WebSocketStatus } from "@hocuspocus/provider";
 import * as Y from "yjs";
-import { fetchNotesSince } from "../api/notes.js";
+import { isApiError } from "../api/http.js";
+import { fetchNotesSince, purgeRemoteNote } from "../api/notes.js";
 import { fetchSharedWithMe } from "../api/shares.js";
 import { fetchWorkspaces } from "../api/workspaces.js";
 import { buildProjection } from "../editor/projection.js";
@@ -30,11 +33,15 @@ import {
   clientLog,
   noteAppendUpdate,
   noteCreate,
+  noteForgetPurged,
   noteGet,
   noteLoadDoc,
+  notePurgeConfirmed,
+  notePurgeFailed,
   noteSetSynced,
   notesList,
   notesPendingSync,
+  notesPurgeOutbox,
   noteUpdatesSince,
   noteVersionSave,
   settingsGet,
@@ -59,6 +66,10 @@ const MAX_PROVIDERS = 63;
 const PING_MS = 25_000;
 const OFFLINE_POLL_MS = 30_000;
 const AWARENESS_MIN_INTERVAL_MS = 500;
+/** 彻底删除发送失败后多久再试（tick 检查） */
+const PURGE_RETRY_MS = 60_000;
+/** 会自己好起来的 4xx：登录态、超时、要求升级客户端、限流。其余 4xx 重试也没用 */
+const RETRYABLE_4XX = [401, 408, 426, 429];
 /** 曾经硬编码的同步地址；只用于识别老设置并迁移掉，不再作为默认值使用（见 syncUrlFromApi）。 */
 export const LEGACY_SYNC_WS_URL = "wss://ws.bianfa.app/ws/v1";
 
@@ -127,6 +138,11 @@ export class SyncHost {
   private started = false;
   /** 本轮 refreshTargets 里因通道占满被跳过的便笺数（只为汇总日志，不参与判定） */
   private skippedThisPass = 0;
+  /** flushPurges 正在跑；跑的过程中又有新入队（又清空了一次回收站）→ purgeAgain，跑完再来一轮 */
+  private purging = false;
+  private purgeAgain = false;
+  /** 彻底删除发送失败后的下一次重试时刻；0 = 没有待重试 */
+  private purgeRetryAt = 0;
   /**
    * db:changed 触发的重新选目标要去抖：每张便笺同步完成都会回写 acked_seq，Rust 随之
    * emit 一次 db:changed(sync_state)，于是 64 张一起完成 = 同一秒里跑 64 轮完整的重新选目标，
@@ -307,6 +323,8 @@ export class SyncHost {
           }
         }
         await this.discoverSharedWithMe();
+        // 放在发现之后：服务端早已清除的那些，上面已经顺着墓碑把本地删掉、出了队，不用再发一遍
+        void this.flushPurges();
       }
     } catch (err) {
       if (isIpcError(err) && err.code === "upgrade_required") this.pause("upgrade-required");
@@ -321,8 +339,11 @@ export class SyncHost {
     for (let page = 0; page < 20; page += 1) {
       const res = await fetchNotesSince(workspaceId, since);
       for (const n of res.notes) {
-        // 已清除的墓碑（正文已被服务端清空）只需要本地知道它没了；不建行
-        if (n.purgedAt !== null) continue;
+        // 已清除的墓碑（正文已被服务端清空）：别处彻底删除了这张。本机有就跟着删，没有也绝不为它建行
+        if (n.purgedAt !== null) {
+          await this.forgetPurged(n.id);
+          continue;
+        }
         // 服务端有行、却一个字节的 CRDT 都没有 —— 这还不是一张便笺。
         // sync 的 onLoadDocument 是在客户端 attach 到房间的那一刻就把 notes 行建出来的，
         // 早于任何正文到达；那个客户端要是没能把正文发上来（比如它那一版同步是坏的），
@@ -432,10 +453,15 @@ export class SyncHost {
       return;
     }
     if (reason === "gone" && noteId) {
+      // gone = 服务端已彻底删除（sync auth：note purged）。本机副本能删就跟着删；
+      // 还有没传上去的内容时留着、标成「已过期」，让用户自己把内容挪走。
       this.denied.add(noteId);
       this.dropProvider(noteId);
-      void syncStateSetError({ noteId, errCode: "gone" });
-      this.status.setNote(noteId, "error", "gone");
+      void this.forgetPurged(noteId).then((removed) => {
+        if (removed) return;
+        void syncStateSetError({ noteId, errCode: "gone" });
+        this.status.setNote(noteId, "error", "gone");
+      });
       return;
     }
     // 通道占满（too_many_documents / 4429）：这是容量信号，不是坏 token。绝不能落到下面的鉴权失败分支——
@@ -461,6 +487,74 @@ export class SyncHost {
       return;
     }
     window.setTimeout(() => this.socket?.connect(), 500 * this.authFailures);
+  }
+
+  /** 别处已彻底删除：本机副本跟着删。删不删由 Rust 判定（还有没传上去的内容就留着）；返回是否删了。 */
+  private async forgetPurged(noteId: string): Promise<boolean> {
+    const removed = await noteForgetPurged(noteId).catch((e: unknown) => {
+      clientLog(
+        "error",
+        "sync",
+        `移除已被彻底删除的便笺 ${noteId} 失败：${e instanceof Error ? e.message : String(e)}`,
+      );
+      return false;
+    });
+    if (removed) {
+      this.dropProvider(noteId);
+      clientLog("info", "sync", `便笺 ${noteId} 已在别处彻底删除，本机副本已移除`);
+    }
+    return removed;
+  }
+
+  /**
+   * 清空回收站留下的「彻底删除」逐条发给服务端（outbox 在 Rust 侧持久化：离线攒着、在线补发）。
+   * 服务端删完会 bump lsn、通知发现房间，其他设备随后看到墓碑就删掉本机副本（forgetPurged）。
+   *
+   * 404 / 410（服务端没有这张，或早已清除）算完成。其余 4xx 重试也不会变（403 = 团队便笺没有管理权限、
+   * 400 = 请求本身不对）：同样出队，服务端那份如实留着，下一轮发现会照服务端的样子把它拉回来。
+   * 只有可能自己好起来的才留在队列里：网络 / 5xx，以及 401（登录态）、408、426（升级客户端）、429。
+   * 这一轮遇到它就到此为止——离线时不要每张都撞一次——由 tick 在 PURGE_RETRY_MS 之后重试；
+   * 重连、重新登录也会再来一轮。
+   */
+  private async flushPurges(): Promise<void> {
+    if (!this.auth?.loggedIn || this.paused) return;
+    if (this.purging) {
+      this.purgeAgain = true;
+      return;
+    }
+    this.purging = true;
+    try {
+      do {
+        this.purgeAgain = false;
+        const ids = await notesPurgeOutbox().catch((e: unknown) => {
+          clientLog("error", "sync", `读取待删除队列失败：${e instanceof Error ? e.message : String(e)}`);
+          return [] as string[];
+        });
+        for (const id of ids) {
+          if (!this.auth?.loggedIn || this.paused) return;
+          const failure = await purgeRemoteNote(id).then(
+            () => null,
+            (e: unknown) => e,
+          );
+          const status = failure === null ? null : isApiError(failure) ? failure.details.status : null;
+          const permanent =
+            status !== null && status >= 400 && status < 500 && !RETRYABLE_4XX.includes(status);
+          if (failure === null || permanent) {
+            if (permanent && status !== 404 && status !== 410)
+              clientLog("warn", "sync", `服务端拒绝彻底删除 ${id}（HTTP ${status}），只删本机`);
+            await notePurgeConfirmed(id).catch(() => undefined);
+            continue;
+          }
+          const message = failure instanceof Error ? failure.message : String(failure);
+          clientLog("warn", "sync", `彻底删除 ${id} 没发出去，稍后重试：${message}`);
+          await notePurgeFailed(id, message).catch(() => undefined);
+          this.purgeRetryAt = Date.now() + PURGE_RETRY_MS;
+          return;
+        }
+      } while (this.purgeAgain);
+    } finally {
+      this.purging = false;
+    }
   }
 
   /** 目标集合：有打开窗口的 + 待上传的 */
@@ -698,6 +792,7 @@ export class SyncHost {
   private onDbChanged(p: DbChangedPayload): void {
     if (!this.auth?.loggedIn) return;
     if (p.tables.includes("note_window_state") || p.tables.includes("sync_state")) this.refreshSoon();
+    if (p.tables.includes("outbox")) void this.flushPurges();
     if (p.tables.includes("attachments")) {
       // attachment_import：ids 是附件 id，不是便笺 id
       for (const id of p.ids) this.enqueueUpload(id);
@@ -799,6 +894,10 @@ export class SyncHost {
       void this.refreshTargets().catch((e: unknown) => {
         clientLog("error", "sync", `重选同步目标失败：${e instanceof Error ? e.message : String(e)}`);
       });
+    }
+    if (this.purgeRetryAt !== 0 && now >= this.purgeRetryAt) {
+      this.purgeRetryAt = 0;
+      void this.flushPurges();
     }
   }
 

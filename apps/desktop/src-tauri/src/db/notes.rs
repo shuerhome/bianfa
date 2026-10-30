@@ -509,8 +509,107 @@ pub fn trash_empty(conn: &Connection) -> IpcResult<i64> {
         .collect::<Result<_, _>>()?;
     for (id, synced) in &ids {
         purge_or_delete(conn, id, *synced)?;
+        // 不看 synced：发现路径建出来、还没来得及 ack 的便笺 synced=0，服务端却有它。
+        // 服务端没有的那些，发出去只会回 404，照样出队。
+        enqueue_purge(conn, id)?;
     }
     Ok(ids.len() as i64)
+}
+
+/// 用户主动「彻底删除」必须让服务端也删（`DELETE /v1/notes/:id?purge=true`），否则其他设备永远留着这张。
+/// 记进 outbox，sync host 在线时发出；服务端确认后 `purge_confirmed` 出队并把本地墓碑物理删掉。
+///
+/// 只有 `trash_empty` 走这里，本地 30 天自动过期（`purge_expired`）**不外发**：服务端有自己的
+/// note.purge 定时任务；而且这台机器若漏收了别处的「恢复」，按本地时钟过期再去删服务端，
+/// 就会把已经被恢复的便笺一起删掉。
+fn enqueue_purge(conn: &Connection, id: &str) -> IpcResult<()> {
+    conn.execute(
+        "INSERT INTO outbox (idempotency_key, entity_type, entity_id, op, payload)
+         VALUES ('note.purge:' || ?1, 'note', ?1, 'purge', x'')
+         ON CONFLICT (idempotency_key) DO UPDATE SET status = 'pending', next_attempt_at = 0",
+        [id],
+    )?;
+    Ok(())
+}
+
+const PURGE_OUTBOX_WHERE: &str = "entity_type = 'note' AND op = 'purge'";
+
+/// outbox 里待发的「彻底删除」（便笺 id）。失败过的排到后面：发送方遇到第一次失败就停下这一轮
+/// （离线时不挨个撞），按 attempts 排序保证一张持续失败的便笺挡不住后面新入队的。
+pub fn purge_outbox(conn: &Connection) -> IpcResult<Vec<String>> {
+    let sql = format!(
+        "SELECT entity_id FROM outbox WHERE {PURGE_OUTBOX_WHERE} AND status = 'pending' ORDER BY attempts, id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// 服务端已删（或这张在服务端本来就没有 / 早已清除）：出队，并把本地墓碑物理删掉。
+/// 只删墓碑（purged=1）：同 id 的行若已被发现路径重新建出来（purged=0），不归这里管——
+/// 服务端删完会出墓碑，下一轮发现由 `forget_purged` 处理。
+pub fn purge_confirmed(conn: &Connection, id: &str) -> IpcResult<()> {
+    conn.execute(
+        &format!("DELETE FROM outbox WHERE {PURGE_OUTBOX_WHERE} AND entity_id = ?1"),
+        [id],
+    )?;
+    let purged: Option<i64> = conn
+        .query_row("SELECT purged FROM notes WHERE id = ?1", [id], |r| r.get(0))
+        .optional()?;
+    if purged == Some(1) {
+        delete_physical(conn, id)?;
+    }
+    Ok(())
+}
+
+/// 发送失败（网络 / 5xx）：留在队列里记一笔，下次在线时重试。
+pub fn purge_failed(conn: &Connection, id: &str, error: &str) -> IpcResult<()> {
+    conn.execute(
+        &format!(
+            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2
+             WHERE {PURGE_OUTBOX_WHERE} AND entity_id = ?1"
+        ),
+        params![id, error],
+    )?;
+    Ok(())
+}
+
+/// 别处已把这张彻底删除（发现列出了服务端墓碑，或 sync 回 gone）→ 本机也删掉。返回是否真的删了。
+///
+/// 唯一不删的情况：本机还有**没传上去、又确实有内容**的改动（head_seq > acked_seq，且正文非空或带附件）。
+/// 那是用户刚在这台机器上写的东西，服务端已经没有地方接收了；留着它（打开会显示「已过期」），
+/// 让用户自己把内容挪走。发现路径建出来、正文还没拉下来的空壳不算——删掉它什么都不会丢。
+pub fn forget_purged(conn: &Connection, id: &str) -> IpcResult<bool> {
+    let row: Option<(i64, i64, i64, String)> = conn
+        .query_row(
+            "SELECT n.purged, n.head_seq, COALESCE(s.acked_seq, 0), n.content_text
+               FROM notes n LEFT JOIN sync_state s ON s.note_id = n.id WHERE n.id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()?;
+    let Some((purged, head_seq, acked_seq, text)) = row else {
+        return Ok(false);
+    };
+    if purged == 0 && head_seq > acked_seq {
+        let has_attachments = conn
+            .query_row(
+                "SELECT 1 FROM note_attachments WHERE note_id = ?1 LIMIT 1",
+                [id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if !text.trim().is_empty() || has_attachments {
+            return Ok(false);
+        }
+    }
+    delete_physical(conn, id)?;
+    conn.execute(
+        &format!("DELETE FROM outbox WHERE {PURGE_OUTBOX_WHERE} AND entity_id = ?1"),
+        [id],
+    )?;
+    Ok(true)
 }
 
 pub fn purge_expired(conn: &Connection) -> IpcResult<i64> {
@@ -711,7 +810,14 @@ pub(crate) mod tests {
         assert!(!exists(c, "t1").unwrap());
         let t2 = get(c, "t2").unwrap();
         assert_eq!(t2.content_text, "");
-        assert!(list(c, true, None).unwrap().is_empty());
+        // 墓碑不出现在列表里（include_trashed 也一样）；es / ne 是上面留下的正常便笺
+        let ids: Vec<String> = list(c, true, None)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert!(!ids.iter().any(|id| id == "t1" || id == "t2"));
         create(
             c,
             "t3",
@@ -861,5 +967,81 @@ pub(crate) mod tests {
         assert_eq!(rows, 0);
         let n = checklist::counts(c, None).unwrap();
         assert_eq!((n.open, n.done), (0, 0));
+    }
+
+    #[test]
+    fn purge_outbox_and_remote_forget() {
+        let db = Db::open_in_memory(TEST_KEY).unwrap();
+        let c = db.conn();
+        let u = empty_update_v2();
+        let queued = |c: &Connection| {
+            let mut v = purge_outbox(c).unwrap();
+            v.sort();
+            v
+        };
+
+        // 用户清空回收站：已同步 → 墓碑，未同步 → 物理删；两张都要入队（未同步的服务端也可能有）
+        create(c, "a", &u, &proj("a", Some(1)), None, None, None, "local").unwrap();
+        set_synced(c, "a", 1).unwrap();
+        create(c, "b", &u, &proj("b", Some(1)), None, None, None, "local").unwrap();
+        assert_eq!(trash_empty(c).unwrap(), 2);
+        assert_eq!(queued(c), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(trash_empty(c).unwrap(), 0);
+        assert_eq!(queued(c).len(), 2);
+
+        // 发送失败：留在队列里，并排到没失败过的后面；确认：出队，墓碑物理删掉
+        purge_failed(c, "a", "network").unwrap();
+        assert_eq!(
+            purge_outbox(c).unwrap(),
+            vec!["b".to_string(), "a".to_string()]
+        );
+        purge_confirmed(c, "a").unwrap();
+        purge_confirmed(c, "b").unwrap();
+        assert!(!exists(c, "a").unwrap());
+        assert!(queued(c).is_empty());
+
+        // 本地 30 天自动过期不外发；服务端墓碑到了之后，本地墓碑被清掉
+        create(c, "x", &u, &proj("x", Some(1)), None, None, None, "local").unwrap();
+        set_synced(c, "x", 1).unwrap();
+        assert_eq!(purge_expired(c).unwrap(), 1);
+        assert!(queued(c).is_empty());
+        assert!(forget_purged(c, "x").unwrap());
+        assert!(!exists(c, "x").unwrap());
+
+        // 别处彻底删除：改动全部确认过的副本删掉
+        create(
+            c,
+            "clean",
+            &u,
+            &proj("内容", None),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
+        set_synced(c, "clean", 1).unwrap();
+        assert!(forget_purged(c, "clean").unwrap());
+        assert!(!exists(c, "clean").unwrap());
+        // 还有没传上去的正文：留着
+        create(
+            c,
+            "dirty",
+            &u,
+            &proj("刚写的字", None),
+            None,
+            None,
+            None,
+            "local",
+        )
+        .unwrap();
+        assert!(!forget_purged(c, "dirty").unwrap());
+        assert!(exists(c, "dirty").unwrap());
+        // 没 ack、但只是个没有正文的空壳：删
+        create(c, "shell", &u, &proj("", None), None, None, None, "local").unwrap();
+        assert!(forget_purged(c, "shell").unwrap());
+        assert!(!exists(c, "shell").unwrap());
+        // 本机没有这张：什么都不做
+        assert!(!forget_purged(c, "nope").unwrap());
     }
 }

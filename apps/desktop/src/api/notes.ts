@@ -222,3 +222,11 @@ export async function moveRemoteNote(
   );
   return { note: mapNote(r.note), moved: Boolean(r.moved) };
 }
+
+/**
+ * DELETE /v1/notes/:id?purge=true —— 彻底删除：服务端清正文、留墓碑、bump lsn 并通知发现房间，
+ * 其他设备下一轮发现看到墓碑就删掉本机副本。只由 sync host 发送清空回收站留下的 outbox。
+ */
+export async function purgeRemoteNote(noteId: string): Promise<void> {
+  await apiJson<void>("DELETE", `/v1/notes/${encodeURIComponent(noteId)}`, { query: { purge: true } });
+}
