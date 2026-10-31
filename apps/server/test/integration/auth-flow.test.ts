@@ -556,6 +556,49 @@ describe.skipIf(!hasDb)("auth end-to-end", () => {
     expect(dev2.rows[0]?.revoked_at).toBeNull();
   });
 
+  it("桌面 token 不跟浏览器授权时的 cookie 会话（7 天）一起过期：会话过期后 access 照用、refresh 换来的也照用", async () => {
+    // 桌面端登录走浏览器 PKCE：authorize 时的 cookie 会话被记进 token 的 sessionId。那个会话 7 天过期、
+    // 桌面端从不续它。以前 verifyBearer 要求它还活着：登录满 7 天后 refresh 照样 200，换来的每张 access token
+    // 一用就 401——客户端以为自己还登录着，同步无声无息地停摆（线上一台设备就这么卡住了几十张便笺）。
+    // 新开一次登录拿一个独立的 cookie 会话，只让它过期，不碰 u1.cookie（后面的用例还要用）。
+    // 密码已在上面「安全码重置密码」那条里改成 PASSWORD_2。
+    const cookie = await signIn(u1, PASSWORD_2);
+    const login = await pkceLogin(cookie, u1.device);
+    expect(login.status, await login.clone().text()).toBe(200);
+    const tokens = await json<Tokens>(login);
+    u1.tokens = tokens;
+    const latest = await f.admin.query(
+      'SELECT id FROM session WHERE "userId" = $1 ORDER BY "createdAt" DESC LIMIT 1',
+      [u1.id],
+    );
+    const sessionId = latest.rows[0]?.id as string;
+    // 前提：这组 token 确实绑在这个会话上，否则下面的断言什么也说明不了
+    const bound = await f.admin.query(
+      'SELECT count(*)::int AS n FROM "oauthAccessToken" WHERE "sessionId" = $1',
+      [sessionId],
+    );
+    expect(bound.rows[0]?.n).toBeGreaterThan(0);
+
+    await f.admin.query(`UPDATE session SET "expiresAt" = now() - interval '1 minute' WHERE id = $1`, [
+      sessionId,
+    ]);
+
+    expect(await rt.verifyBearer(tokens.access_token, undefined as never)).toMatchObject({
+      deviceId: u1.device,
+    });
+    expect((await v1("GET", "/me", tokens.access_token)).status).toBe(200);
+
+    const refreshed = await form("/api/auth/oauth2/token", {
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      client_id: CLIENT_ID,
+    });
+    expect(refreshed.status, await refreshed.clone().text()).toBe(200);
+    const next = await json<Tokens>(refreshed);
+    u1.tokens = next;
+    expect((await v1("GET", "/me", next.access_token)).status).toBe(200);
+  });
+
   it("设备码流程：/device/code → /device/approve（cookie）→ /oauth2/token device_code grant → 同一组 token；审计 auth.device_requested", async () => {
     const dc = await post("/api/auth/device/code", { client_id: CLIENT_ID, scope: SCOPE }, { origin: "" });
     expect(dc.status, await dc.clone().text()).toBe(200);
